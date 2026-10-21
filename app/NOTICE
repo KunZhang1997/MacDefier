@@ -1,0 +1,66 @@
+MacDefier third-party notices
+=============================
+
+## Stats (MonitorKit)
+
+Copyright (c) 2019 Serhiy Mytrovtsiy
+License: MIT
+Source: https://github.com/exelban/stats
+
+## PureMac (CleanupKit)
+
+Copyright (c) 2026 PureMac Contributors
+License: MIT
+Source: https://github.com/momenbasel/PureMac
+Note: Scan strategy / safety allow-list spirit adapted into CleanupKit.
+      Deletion uses Trash (trashItem), not permanent removeItem.
+
+## ZIPFoundation (Pet pack import)
+
+Copyright (c) 2017-2024 Thomas Zoechling (and contributors)
+License: MIT
+Source: https://github.com/weichsel/ZIPFoundation
+Pinned: 0.9.19 (vendored at app/Vendor/ZIPFoundation)
+Note: Stream-safe pet ZIP extraction only. MacDefier enforces entry type,
+      path, size, and image megapixel gates on top of the library.
+
+The complete license text for Stats, PureMac, and ZIPFoundation follows.
+The listed copyright notices apply to their respective components.
+
+MIT License
+-----------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Keep this NOTICE with all distributions.
+
+2026-10-20: DiskActivitySampler.swift adapts proc_pid_rusage and IOKit Statistics
+access from Stats Modules/Disk/readers.swift (ProcessReader / ActivityReader).
+Copyright (c) 2019 Serhiy Mytrovtsiy; MIT license above. MacDefier adds elapsed
+monotonic time, process-start identities, counter-reset checks and demand control.
+No Mole GPL implementation is included in this change.
+
+## Sample pet artwork
+
+The Robot - Free Sprite by pzUH
+License: CC0 1.0 Universal (not relicensed under MIT)
+Source: https://opengameart.org/content/the-robot-free-sprite
+License text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+Applies to: MacDefier/Resources/Pet/Samples/defier-guard-bot.zip
+and its companion manifest.

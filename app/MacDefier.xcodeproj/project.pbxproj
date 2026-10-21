@@ -1,0 +1,773 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01752930F4604C2C24E6ED6D /* IconExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8285FB4001F4E56DA9611D4F /* IconExport.swift */; };
+		0301E894C1E40B6DC972AFEB /* OllamaModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB521B1F3EC286586D65049 /* OllamaModelManager.swift */; };
+		03F8E7C54FA05AB5A69C4489 /* CleanupAIScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F105B7EA1E239424D39A16 /* CleanupAIScan.swift */; };
+		05FB8F8057C29AC4551111C6 /* SoftwareAIScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */; };
+		0A78BB3011F649B786F0C26D /* CleanupConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */; };
+		0C8C8EA7F1BFD7CB493F27EE /* WindowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D5F1ADD926D626BF63DC0 /* WindowChrome.swift */; };
+		1477B3066F3EB58B7692BD01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6F241F1AA68EA4366A4DD815 /* Assets.xcassets */; };
+		1E2FA2E319B5E8315FA30D83 /* CapeClothSim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9403EAEC408CBC434D215C /* CapeClothSim.swift */; };
+		20CE67126F5CCF72AC3668D2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3624DED30FA8ED33847BFCD6 /* SettingsView.swift */; };
+		21D90F7A9DDECE5C9A615E09 /* ScanProgressL10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */; };
+		25372A1CF66064B3A28ACB95 /* DiskTreemapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73839C617C8261DABD77A058 /* DiskTreemapView.swift */; };
+		2EA14EDE9020C7BD7AC175B7 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C892AD5FACC8F972FBD3DC /* Theme.swift */; };
+		2F57463BA2E1881449ACA602 /* MisterDefenderChatBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E07B62E71F8B5E362297AE /* MisterDefenderChatBody.swift */; };
+		325EED23220F22DB0A21F68A /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */; };
+		3436902280D8BDFB5EF11C28 /* MonitorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18F9162E74F8091F3932F31D /* MonitorKit */; };
+		36A966D69F4E960E8D41AB01 /* PetBanter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */; };
+		39AD5FF0B8539C36EDD31B51 /* PetArchiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D804A720609B6536CC22AC8 /* PetArchiveKit */; };
+		3B776331DB3E229BBEEE4B65 /* DiagnosticScanEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */; };
+		3EA957E4D14EA573F22F7CDB /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */; };
+		440E2E1F4492434F3ECB93DF /* MDScanActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */; };
+		483ADCF882765BB0B62C87B0 /* AIRequestTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */; };
+		528A23535FEF747460CDC2A7 /* Collaboration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 26D3B2D9CF0485B10DF9955A /* Collaboration.framework */; };
+		53B2D31DAFBA352A9233BDD6 /* CleanupKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3D9F256BD40F86E4699F9979 /* CleanupKit */; };
+		5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */; };
+		5E837AEFDED8D4A849E54331 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4B66D561E50C3498D4F5D323 /* ZIPFoundation */; };
+		60C13DDE1D590C037FFECC1E /* AIChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */; };
+		687E340ABC021FAEC9CE5747 /* PetTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */; };
+		6ABCB663C4788E7EC6DB3709 /* MacDefierApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8C8B79FFE60BD9B8835113 /* MacDefierApp.swift */; };
+		6E83644FEF29C2E38F557B9F /* DiagnosticScore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */; };
+		6F95CA181C98E4996A3AAB75 /* NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = D81A855AE8E3495540442F41 /* NOTICE */; };
+		7111FCA7488AB59ECC7EBECA /* ScanReusePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */; };
+		71462F979B0E723E5AB342F7 /* AIToolCleanupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */; };
+		71E179B21F99DB63FDA97A57 /* OllamaRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */; };
+		7A9A5CCAC29A6C07CA61016E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 26EAD9B173E9C78BE522B217 /* Localizable.strings */; };
+		7C476AA9FE28E0ACEF0B66FE /* MisterDefenderOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */; };
+		7D0C030D344865FB8AD61F1A /* MonitorHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 053FEC222808713A96416F21 /* MonitorHistoryView.swift */; };
+		802A581DF153E6A04512A185 /* MonitorAIAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678F056418B5C1426EFB696E /* MonitorAIAssist.swift */; };
+		870ADBC84EFDA278B9666E1E /* PetDragContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366766C2122E7F19AF88F40E /* PetDragContainer.swift */; };
+		884A40BACE1E5324A2A1300B /* PackPetSpriteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD65D0D38693C8C88BF67683 /* PackPetSpriteView.swift */; };
+		8C040654AED9AB23D65D1A6C /* SoftwareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2D9DD81377D370B8667825 /* SoftwareView.swift */; };
+		906CBAEA2AED1E02590047ED /* DiagnosticScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */; };
+		95575B8DE5C8ADD636711254 /* CleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A786D8E6483C8A3886C2246F /* CleanupView.swift */; };
+		9A3412A709B82EC40449A909 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8747957DBA099F2E4C67497 /* ContentView.swift */; };
+		9F22EB927856CC3A6AC68426 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C573BB3186C301B644A5EFEE /* AppDelegate.swift */; };
+		A35916C3651B79F5754CFB36 /* MDAIResultCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */; };
+		A37132EFDF93DBD353F9F4E4 /* AIToolCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */; };
+		A4A94CAC61FC23792CE35BAE /* UninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */; };
+		A5509A58FB9ECFA4A7E85C04 /* AppNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */; };
+		A55B3263C8026D45E04BD946 /* DiskTreemapLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */; };
+		AD95BA4B6905FCD77E052287 /* AIConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68D48FD8B15226E578D17BB /* AIConversationStore.swift */; };
+		ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */ = {isa = PBXBuildFile; fileRef = 4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */; };
+		AFC1233B5D64724F86AF947D /* AIEndpointPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */; };
+		B10186CBE68DE33D397CFBEB /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93ECBF1AAFF4F4785672E28 /* MenuBarController.swift */; };
+		B752614D08B2BC844BBE832F /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7182B093F87430724F25D938 /* AppLanguage.swift */; };
+		BB66670CC81FFB405806154A /* AIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A2D70A5C3C46860184429 /* AIClient.swift */; };
+		C0457B0035DB662A7D2C1773 /* UninstallErrorText.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */; };
+		C33631F7BCF181973D432182 /* DiagnosticView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */; };
+		C6759238298836A96AB1F6B1 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = D116DBAB752ED37912A60185 /* Format.swift */; };
+		C72706622971D716166FD2C0 /* LocalModelsPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */; };
+		C8BC1343F300CD620E42E18F /* DiskMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6DB6BD7CD4F96E90B8B22DF /* DiskMapView.swift */; };
+		CAF83A01DD0F77AA2E247A98 /* DefierPetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B468F826569366D53AC74D47 /* DefierPetView.swift */; };
+		CCBF5C8E876C9F5A0BBE9118 /* SettingsExplanationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80FF8BEB892688DFF8F09D7 /* SettingsExplanationsView.swift */; };
+		D236F3622994931DDA148584 /* ChatIntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92F47F93772BCCD86597AAF /* ChatIntentRouter.swift */; };
+		D4FE83D37B94685CA93EE575 /* DefierChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */; };
+		DF9C9A898B771E78C768571C /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC510936D911D956A4DC1E9 /* L10n.swift */; };
+		E1812CBF893DA13B3A69AFB5 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 055F7E6C398BB7037816BBA6 /* MenuBarPanelView.swift */; };
+		EE188B11F08016F2DDB7037A /* PetLookController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D755F746CC2E0BA08C14DAD5 /* PetLookController.swift */; };
+		EE2CFEE838BAF2965A0C84F6 /* DefierAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B22FDFA5E20898662BB5F8D /* DefierAction.swift */; };
+		F0A5A35C27E7069B7117B373 /* PetPackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */; };
+		F246517B16EE3FCF2F03DB19 /* MonitorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */; };
+		F7024625A00558640EC46E3D /* DiagnosticScanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */; };
+		FA8DC5A445A22BA8B7A4C6CA /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC32D4DB5FD8A404C588866 /* AppRoute.swift */; };
+		FBE3E977DD23443A0E02D9B8 /* PetCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */; };
+		FCDE61464D70EF09D4179AB0 /* defier-guard-bot.pet.json in Resources */ = {isa = PBXBuildFile; fileRef = D979C43F2C6D314492EAFF2C /* defier-guard-bot.pet.json */; };
+		FF86226853AE1B2C4DB6F86A /* LocalizedCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		053FEC222808713A96416F21 /* MonitorHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorHistoryView.swift; sourceTree = "<group>"; };
+		055F7E6C398BB7037816BBA6 /* MenuBarPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelView.swift; sourceTree = "<group>"; };
+		06F105B7EA1E239424D39A16 /* CleanupAIScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupAIScan.swift; sourceTree = "<group>"; };
+		0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetPackStore.swift; sourceTree = "<group>"; };
+		0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDAIResultCard.swift; sourceTree = "<group>"; };
+		1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCatalog.swift; sourceTree = "<group>"; };
+		1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressL10n.swift; sourceTree = "<group>"; };
+		207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierChatModels.swift; sourceTree = "<group>"; };
+		26D3B2D9CF0485B10DF9955A /* Collaboration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Collaboration.framework; path = System/Library/Frameworks/Collaboration.framework; sourceTree = SDKROOT; };
+		26E07B62E71F8B5E362297AE /* MisterDefenderChatBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MisterDefenderChatBody.swift; sourceTree = "<group>"; };
+		2A9403EAEC408CBC434D215C /* CapeClothSim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapeClothSim.swift; sourceTree = "<group>"; };
+		2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		341FF49AC1510175F1CA1415 /* MonitorKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MonitorKit; path = MonitorKit; sourceTree = SOURCE_ROOT; };
+		3624DED30FA8ED33847BFCD6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		366766C2122E7F19AF88F40E /* PetDragContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDragContainer.swift; sourceTree = "<group>"; };
+		3B2EA652602703E0B0DF0604 /* CleanupKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CleanupKit; path = CleanupKit; sourceTree = SOURCE_ROOT; };
+		3B3A2D70A5C3C46860184429 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
+		3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticView.swift; sourceTree = "<group>"; };
+		41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MisterDefenderOverlay.swift; sourceTree = "<group>"; };
+		4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapLayout.swift; sourceTree = "<group>"; };
+		4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanEngine.swift; sourceTree = "<group>"; };
+		4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "defier-guard-bot.zip"; sourceTree = "<group>"; };
+		519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupService.swift; sourceTree = "<group>"; };
+		5528A313B066642149F4E6E9 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanService.swift; sourceTree = "<group>"; };
+		5BC510936D911D956A4DC1E9 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		5DD1C85396CB8E004FF168B5 /* MacDefier.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacDefier.entitlements; sourceTree = "<group>"; };
+		678F056418B5C1426EFB696E /* MonitorAIAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorAIAssist.swift; sourceTree = "<group>"; };
+		6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelsPicker.swift; sourceTree = "<group>"; };
+		6F241F1AA68EA4366A4DD815 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7182B093F87430724F25D938 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIChatViewModel.swift; sourceTree = "<group>"; };
+		72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanReusePolicy.swift; sourceTree = "<group>"; };
+		7373C2B82AF7FF46979A349D /* MacDefier.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacDefier.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		73839C617C8261DABD77A058 /* DiskTreemapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapView.swift; sourceTree = "<group>"; };
+		78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEndpointPolicy.swift; sourceTree = "<group>"; };
+		7E87D355178B91B417D8A9DF /* ZIPFoundation */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ZIPFoundation; path = Vendor/ZIPFoundation; sourceTree = SOURCE_ROOT; };
+		7FC32D4DB5FD8A404C588866 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
+		8285FB4001F4E56DA9611D4F /* IconExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconExport.swift; sourceTree = "<group>"; };
+		933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDScanActivityCard.swift; sourceTree = "<group>"; };
+		9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetCoordinator.swift; sourceTree = "<group>"; };
+		969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliUninstallSheet.swift; sourceTree = "<group>"; };
+		9B22FDFA5E20898662BB5F8D /* DefierAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierAction.swift; sourceTree = "<group>"; };
+		9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetTypes.swift; sourceTree = "<group>"; };
+		9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupView.swift; sourceTree = "<group>"; };
+		A68D48FD8B15226E578D17BB /* AIConversationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConversationStore.swift; sourceTree = "<group>"; };
+		A6DB6BD7CD4F96E90B8B22DF /* DiskMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskMapView.swift; sourceTree = "<group>"; };
+		A786D8E6483C8A3886C2246F /* CleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupView.swift; sourceTree = "<group>"; };
+		AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorViews.swift; sourceTree = "<group>"; };
+		ACB521B1F3EC286586D65049 /* OllamaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelManager.swift; sourceTree = "<group>"; };
+		B468F826569366D53AC74D47 /* DefierPetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierPetView.swift; sourceTree = "<group>"; };
+		B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupConfirmSheet.swift; sourceTree = "<group>"; };
+		B8747957DBA099F2E4C67497 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B92F47F93772BCCD86597AAF /* ChatIntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatIntentRouter.swift; sourceTree = "<group>"; };
+		BB2D9DD81377D370B8667825 /* SoftwareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareView.swift; sourceTree = "<group>"; };
+		BD65D0D38693C8C88BF67683 /* PackPetSpriteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackPetSpriteView.swift; sourceTree = "<group>"; };
+		BE9CB496679AE634E0ED6284 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareAIScan.swift; sourceTree = "<group>"; };
+		C573BB3186C301B644A5EFEE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C7C892AD5FACC8F972FBD3DC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		C80FF8BEB892688DFF8F09D7 /* SettingsExplanationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsExplanationsView.swift; sourceTree = "<group>"; };
+		CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScore.swift; sourceTree = "<group>"; };
+		D116DBAB752ED37912A60185 /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
+		D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNavigator.swift; sourceTree = "<group>"; };
+		D755F746CC2E0BA08C14DAD5 /* PetLookController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetLookController.swift; sourceTree = "<group>"; };
+		D81A855AE8E3495540442F41 /* NOTICE */ = {isa = PBXFileReference; path = NOTICE; sourceTree = "<group>"; };
+		D93ECBF1AAFF4F4785672E28 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		D979C43F2C6D314492EAFF2C /* defier-guard-bot.pet.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "defier-guard-bot.pet.json"; sourceTree = "<group>"; };
+		DC15799A308BEBEA3992E304 /* PetArchiveKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PetArchiveKit; path = PetArchiveKit; sourceTree = SOURCE_ROOT; };
+		DC5D5F1ADD926D626BF63DC0 /* WindowChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowChrome.swift; sourceTree = "<group>"; };
+		DF8C8B79FFE60BD9B8835113 /* MacDefierApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDefierApp.swift; sourceTree = "<group>"; };
+		DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallErrorText.swift; sourceTree = "<group>"; };
+		E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSheet.swift; sourceTree = "<group>"; };
+		E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRequestTransport.swift; sourceTree = "<group>"; };
+		F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaRuntime.swift; sourceTree = "<group>"; };
+		F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBanter.swift; sourceTree = "<group>"; };
+		F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
+		FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5B0C1C3A28B9B2525A9DC5A0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3436902280D8BDFB5EF11C28 /* MonitorKit in Frameworks */,
+				53B2D31DAFBA352A9233BDD6 /* CleanupKit in Frameworks */,
+				5E837AEFDED8D4A849E54331 /* ZIPFoundation in Frameworks */,
+				39AD5FF0B8539C36EDD31B51 /* PetArchiveKit in Frameworks */,
+				528A23535FEF747460CDC2A7 /* Collaboration.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0AC42D3270C4A58B0ED11EA5 /* Pet */ = {
+			isa = PBXGroup;
+			children = (
+				2A9403EAEC408CBC434D215C /* CapeClothSim.swift */,
+				B468F826569366D53AC74D47 /* DefierPetView.swift */,
+				BD65D0D38693C8C88BF67683 /* PackPetSpriteView.swift */,
+				F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */,
+				9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */,
+				366766C2122E7F19AF88F40E /* PetDragContainer.swift */,
+				D755F746CC2E0BA08C14DAD5 /* PetLookController.swift */,
+				0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */,
+				9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */,
+			);
+			path = Pet;
+			sourceTree = "<group>";
+		};
+		0E2C39432BFC689A1D91E7F7 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				3B2EA652602703E0B0DF0604 /* CleanupKit */,
+				341FF49AC1510175F1CA1415 /* MonitorKit */,
+				DC15799A308BEBEA3992E304 /* PetArchiveKit */,
+				7E87D355178B91B417D8A9DF /* ZIPFoundation */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		0E616C27A5A8FC40809E1249 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7373C2B82AF7FF46979A349D /* MacDefier.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0ED4220C83573C25DAC9CDC9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				9054FF8E1DF8686217BE733C /* Monitor */,
+				0AC42D3270C4A58B0ED11EA5 /* Pet */,
+				C4B2923ED321E1BE5BEAEED9 /* Software */,
+				9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */,
+				06F105B7EA1E239424D39A16 /* CleanupAIScan.swift */,
+				B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */,
+				A786D8E6483C8A3886C2246F /* CleanupView.swift */,
+				3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */,
+				A6DB6BD7CD4F96E90B8B22DF /* DiskMapView.swift */,
+				4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */,
+				73839C617C8261DABD77A058 /* DiskTreemapView.swift */,
+				6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */,
+				0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */,
+				933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */,
+				055F7E6C398BB7037816BBA6 /* MenuBarPanelView.swift */,
+				26E07B62E71F8B5E362297AE /* MisterDefenderChatBody.swift */,
+				41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */,
+				C80FF8BEB892688DFF8F09D7 /* SettingsExplanationsView.swift */,
+				3624DED30FA8ED33847BFCD6 /* SettingsView.swift */,
+				C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */,
+				BB2D9DD81377D370B8667825 /* SoftwareView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1F851F78E79741B942DCFD31 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */,
+				3B3A2D70A5C3C46860184429 /* AIClient.swift */,
+				A68D48FD8B15226E578D17BB /* AIConversationStore.swift */,
+				78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */,
+				E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */,
+				F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */,
+				519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */,
+				B92F47F93772BCCD86597AAF /* ChatIntentRouter.swift */,
+				9B22FDFA5E20898662BB5F8D /* DefierAction.swift */,
+				207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */,
+				ACB521B1F3EC286586D65049 /* OllamaModelManager.swift */,
+				F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
+		7A8E0E56B962BF7F4E746486 /* MacDefier */ = {
+			isa = PBXGroup;
+			children = (
+				1F851F78E79741B942DCFD31 /* AI */,
+				C6E087FCE4C58039F3B1ED14 /* Diagnostic */,
+				CF1A25B01579CC8E91639471 /* Resources */,
+				0ED4220C83573C25DAC9CDC9 /* Views */,
+				C573BB3186C301B644A5EFEE /* AppDelegate.swift */,
+				7182B093F87430724F25D938 /* AppLanguage.swift */,
+				D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */,
+				7FC32D4DB5FD8A404C588866 /* AppRoute.swift */,
+				6F241F1AA68EA4366A4DD815 /* Assets.xcassets */,
+				B8747957DBA099F2E4C67497 /* ContentView.swift */,
+				D116DBAB752ED37912A60185 /* Format.swift */,
+				8285FB4001F4E56DA9611D4F /* IconExport.swift */,
+				5BC510936D911D956A4DC1E9 /* L10n.swift */,
+				2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */,
+				1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */,
+				5DD1C85396CB8E004FF168B5 /* MacDefier.entitlements */,
+				DF8C8B79FFE60BD9B8835113 /* MacDefierApp.swift */,
+				D93ECBF1AAFF4F4785672E28 /* MenuBarController.swift */,
+				1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */,
+				72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */,
+				C7C892AD5FACC8F972FBD3DC /* Theme.swift */,
+				DC5D5F1ADD926D626BF63DC0 /* WindowChrome.swift */,
+			);
+			path = MacDefier;
+			sourceTree = "<group>";
+		};
+		9054FF8E1DF8686217BE733C /* Monitor */ = {
+			isa = PBXGroup;
+			children = (
+				678F056418B5C1426EFB696E /* MonitorAIAssist.swift */,
+				053FEC222808713A96416F21 /* MonitorHistoryView.swift */,
+				AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */,
+			);
+			path = Monitor;
+			sourceTree = "<group>";
+		};
+		B5333FFB4DE4C3060333E1BB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				26D3B2D9CF0485B10DF9955A /* Collaboration.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C4B2923ED321E1BE5BEAEED9 /* Software */ = {
+			isa = PBXGroup;
+			children = (
+				969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */,
+				DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */,
+				E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */,
+			);
+			path = Software;
+			sourceTree = "<group>";
+		};
+		C6E087FCE4C58039F3B1ED14 /* Diagnostic */ = {
+			isa = PBXGroup;
+			children = (
+				4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */,
+				58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */,
+				FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */,
+				CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */,
+			);
+			path = Diagnostic;
+			sourceTree = "<group>";
+		};
+		CF1A25B01579CC8E91639471 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				26EAD9B173E9C78BE522B217 /* Localizable.strings */,
+				CFD0CE80E9E43D542204A062 /* Pet */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		CFD0CE80E9E43D542204A062 /* Pet */ = {
+			isa = PBXGroup;
+			children = (
+				D599DE184B9C7006D03F970A /* Samples */,
+			);
+			path = Pet;
+			sourceTree = "<group>";
+		};
+		D599DE184B9C7006D03F970A /* Samples */ = {
+			isa = PBXGroup;
+			children = (
+				D979C43F2C6D314492EAFF2C /* defier-guard-bot.pet.json */,
+				4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */,
+			);
+			path = Samples;
+			sourceTree = "<group>";
+		};
+		F99EB1B23949E02FB6D5E12B = {
+			isa = PBXGroup;
+			children = (
+				7A8E0E56B962BF7F4E746486 /* MacDefier */,
+				0E2C39432BFC689A1D91E7F7 /* Packages */,
+				D81A855AE8E3495540442F41 /* NOTICE */,
+				B5333FFB4DE4C3060333E1BB /* Frameworks */,
+				0E616C27A5A8FC40809E1249 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		540609D7BF8538EAA661BB06 /* MacDefier */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F7EE3A480074D6E9585A45AA /* Build configuration list for PBXNativeTarget "MacDefier" */;
+			buildPhases = (
+				F58EF33E3ADB99EEE07131BE /* Sources */,
+				CE98AA270470E427229AD26D /* Resources */,
+				5B0C1C3A28B9B2525A9DC5A0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MacDefier;
+			packageProductDependencies = (
+				18F9162E74F8091F3932F31D /* MonitorKit */,
+				3D9F256BD40F86E4699F9979 /* CleanupKit */,
+				4B66D561E50C3498D4F5D323 /* ZIPFoundation */,
+				1D804A720609B6536CC22AC8 /* PetArchiveKit */,
+			);
+			productName = MacDefier;
+			productReference = 7373C2B82AF7FF46979A349D /* MacDefier.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FD5DDD2A5AFD7CE04C4063DE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					540609D7BF8538EAA661BB06 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 53ABA21166B8843A493D1752 /* Build configuration list for PBXProject "MacDefier" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hans",
+			);
+			mainGroup = F99EB1B23949E02FB6D5E12B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				46D91AE6C74F4AA899F46E91 /* XCLocalSwiftPackageReference "CleanupKit" */,
+				7161392524326F7C39F290C5 /* XCLocalSwiftPackageReference "MonitorKit" */,
+				57C315326C9E5B524DFDBE92 /* XCLocalSwiftPackageReference "PetArchiveKit" */,
+				AA7C68E3D8AD87F441D3B874 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0E616C27A5A8FC40809E1249 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				540609D7BF8538EAA661BB06 /* MacDefier */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CE98AA270470E427229AD26D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1477B3066F3EB58B7692BD01 /* Assets.xcassets in Resources */,
+				7A9A5CCAC29A6C07CA61016E /* Localizable.strings in Resources */,
+				6F95CA181C98E4996A3AAB75 /* NOTICE in Resources */,
+				FCDE61464D70EF09D4179AB0 /* defier-guard-bot.pet.json in Resources */,
+				ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F58EF33E3ADB99EEE07131BE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60C13DDE1D590C037FFECC1E /* AIChatViewModel.swift in Sources */,
+				BB66670CC81FFB405806154A /* AIClient.swift in Sources */,
+				AD95BA4B6905FCD77E052287 /* AIConversationStore.swift in Sources */,
+				AFC1233B5D64724F86AF947D /* AIEndpointPolicy.swift in Sources */,
+				483ADCF882765BB0B62C87B0 /* AIRequestTransport.swift in Sources */,
+				3EA957E4D14EA573F22F7CDB /* AISettings.swift in Sources */,
+				71462F979B0E723E5AB342F7 /* AIToolCleanupService.swift in Sources */,
+				A37132EFDF93DBD353F9F4E4 /* AIToolCleanupView.swift in Sources */,
+				9F22EB927856CC3A6AC68426 /* AppDelegate.swift in Sources */,
+				B752614D08B2BC844BBE832F /* AppLanguage.swift in Sources */,
+				A5509A58FB9ECFA4A7E85C04 /* AppNavigator.swift in Sources */,
+				FA8DC5A445A22BA8B7A4C6CA /* AppRoute.swift in Sources */,
+				1E2FA2E319B5E8315FA30D83 /* CapeClothSim.swift in Sources */,
+				D236F3622994931DDA148584 /* ChatIntentRouter.swift in Sources */,
+				03F8E7C54FA05AB5A69C4489 /* CleanupAIScan.swift in Sources */,
+				0A78BB3011F649B786F0C26D /* CleanupConfirmSheet.swift in Sources */,
+				95575B8DE5C8ADD636711254 /* CleanupView.swift in Sources */,
+				5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */,
+				9A3412A709B82EC40449A909 /* ContentView.swift in Sources */,
+				EE2CFEE838BAF2965A0C84F6 /* DefierAction.swift in Sources */,
+				D4FE83D37B94685CA93EE575 /* DefierChatModels.swift in Sources */,
+				CAF83A01DD0F77AA2E247A98 /* DefierPetView.swift in Sources */,
+				3B776331DB3E229BBEEE4B65 /* DiagnosticScanEngine.swift in Sources */,
+				F7024625A00558640EC46E3D /* DiagnosticScanService.swift in Sources */,
+				906CBAEA2AED1E02590047ED /* DiagnosticScanStore.swift in Sources */,
+				6E83644FEF29C2E38F557B9F /* DiagnosticScore.swift in Sources */,
+				C33631F7BCF181973D432182 /* DiagnosticView.swift in Sources */,
+				C8BC1343F300CD620E42E18F /* DiskMapView.swift in Sources */,
+				A55B3263C8026D45E04BD946 /* DiskTreemapLayout.swift in Sources */,
+				25372A1CF66064B3A28ACB95 /* DiskTreemapView.swift in Sources */,
+				C6759238298836A96AB1F6B1 /* Format.swift in Sources */,
+				01752930F4604C2C24E6ED6D /* IconExport.swift in Sources */,
+				DF9C9A898B771E78C768571C /* L10n.swift in Sources */,
+				325EED23220F22DB0A21F68A /* LaunchAtLogin.swift in Sources */,
+				C72706622971D716166FD2C0 /* LocalModelsPicker.swift in Sources */,
+				FF86226853AE1B2C4DB6F86A /* LocalizedCatalog.swift in Sources */,
+				A35916C3651B79F5754CFB36 /* MDAIResultCard.swift in Sources */,
+				440E2E1F4492434F3ECB93DF /* MDScanActivityCard.swift in Sources */,
+				6ABCB663C4788E7EC6DB3709 /* MacDefierApp.swift in Sources */,
+				B10186CBE68DE33D397CFBEB /* MenuBarController.swift in Sources */,
+				E1812CBF893DA13B3A69AFB5 /* MenuBarPanelView.swift in Sources */,
+				2F57463BA2E1881449ACA602 /* MisterDefenderChatBody.swift in Sources */,
+				7C476AA9FE28E0ACEF0B66FE /* MisterDefenderOverlay.swift in Sources */,
+				802A581DF153E6A04512A185 /* MonitorAIAssist.swift in Sources */,
+				7D0C030D344865FB8AD61F1A /* MonitorHistoryView.swift in Sources */,
+				F246517B16EE3FCF2F03DB19 /* MonitorViews.swift in Sources */,
+				0301E894C1E40B6DC972AFEB /* OllamaModelManager.swift in Sources */,
+				71E179B21F99DB63FDA97A57 /* OllamaRuntime.swift in Sources */,
+				884A40BACE1E5324A2A1300B /* PackPetSpriteView.swift in Sources */,
+				36A966D69F4E960E8D41AB01 /* PetBanter.swift in Sources */,
+				FBE3E977DD23443A0E02D9B8 /* PetCoordinator.swift in Sources */,
+				870ADBC84EFDA278B9666E1E /* PetDragContainer.swift in Sources */,
+				EE188B11F08016F2DDB7037A /* PetLookController.swift in Sources */,
+				F0A5A35C27E7069B7117B373 /* PetPackStore.swift in Sources */,
+				687E340ABC021FAEC9CE5747 /* PetTypes.swift in Sources */,
+				21D90F7A9DDECE5C9A615E09 /* ScanProgressL10n.swift in Sources */,
+				7111FCA7488AB59ECC7EBECA /* ScanReusePolicy.swift in Sources */,
+				CCBF5C8E876C9F5A0BBE9118 /* SettingsExplanationsView.swift in Sources */,
+				20CE67126F5CCF72AC3668D2 /* SettingsView.swift in Sources */,
+				05FB8F8057C29AC4551111C6 /* SoftwareAIScan.swift in Sources */,
+				8C040654AED9AB23D65D1A6C /* SoftwareView.swift in Sources */,
+				2EA14EDE9020C7BD7AC175B7 /* Theme.swift in Sources */,
+				C0457B0035DB662A7D2C1773 /* UninstallErrorText.swift in Sources */,
+				A4A94CAC61FC23792CE35BAE /* UninstallSheet.swift in Sources */,
+				0C8C8EA7F1BFD7CB493F27EE /* WindowChrome.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		26EAD9B173E9C78BE522B217 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				BE9CB496679AE634E0ED6284 /* en */,
+				5528A313B066642149F4E6E9 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		1C4F3DE5758612328528B27A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MacDefier;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © MacDefier. Monitor sampling adapted from Stats (MIT).";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app;
+				PRODUCT_NAME = MacDefier;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
+			};
+			name = Release;
+		};
+		50D9DBF4A1A50EC293673292 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		787D968A3122CCFCD1135E89 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		83E27DBF1A90C2B52E718A5E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "MacDefier Dev";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © MacDefier. Monitor sampling adapted from Stats (MIT).";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app.dev;
+				PRODUCT_NAME = "MacDefier-Dev";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		53ABA21166B8843A493D1752 /* Build configuration list for PBXProject "MacDefier" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				50D9DBF4A1A50EC293673292 /* Debug */,
+				787D968A3122CCFCD1135E89 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F7EE3A480074D6E9585A45AA /* Build configuration list for PBXNativeTarget "MacDefier" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				83E27DBF1A90C2B52E718A5E /* Debug */,
+				1C4F3DE5758612328528B27A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		46D91AE6C74F4AA899F46E91 /* XCLocalSwiftPackageReference "CleanupKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = CleanupKit;
+		};
+		57C315326C9E5B524DFDBE92 /* XCLocalSwiftPackageReference "PetArchiveKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = PetArchiveKit;
+		};
+		7161392524326F7C39F290C5 /* XCLocalSwiftPackageReference "MonitorKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = MonitorKit;
+		};
+		AA7C68E3D8AD87F441D3B874 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/ZIPFoundation;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		18F9162E74F8091F3932F31D /* MonitorKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MonitorKit;
+		};
+		1D804A720609B6536CC22AC8 /* PetArchiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PetArchiveKit;
+		};
+		3D9F256BD40F86E4699F9979 /* CleanupKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CleanupKit;
+		};
+		4B66D561E50C3498D4F5D323 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FD5DDD2A5AFD7CE04C4063DE /* Project object */;
+}

@@ -1,0 +1,44 @@
+{
+  "animations": {
+    "alert": {
+      "count": 8,
+      "fps": 8,
+      "start": 20
+    },
+    "happy": {
+      "count": 10,
+      "fps": 8,
+      "start": 30
+    },
+    "idle": {
+      "count": 10,
+      "fps": 5,
+      "start": 0
+    },
+    "scan": {
+      "count": 9,
+      "fps": 9,
+      "start": 50
+    },
+    "sleep": {
+      "count": 4,
+      "fps": 2,
+      "start": 40
+    },
+    "talk": {
+      "count": 8,
+      "fps": 8,
+      "start": 10
+    }
+  },
+  "columns": 10,
+  "description": "CC0 platform guard robot (OpenGameArt The Robot Free Sprite). Window pet only; chat stays Mr. Defier.",
+  "displayName": "守卫机器人",
+  "frameHeight": 384,
+  "frameWidth": 384,
+  "id": "defier-guard-bot",
+  "license": "CC0",
+  "rows": 6,
+  "source": "https://opengameart.org/content/the-robot-free-sprite",
+  "spritesheetPath": "spritesheet.png"
+}

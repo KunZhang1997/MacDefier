@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+
+# 构建产物
+app/build/
+.build/
+dist/
+
+# 本地安全副本与退役件（工程权威以源码为准）
+backups/
+
+# 只读开源对照（体量大；需要时按 README 重新拉取）
+/vendor/
+
+# Xcode 用户态
+xcuserdata/
+*.xcuserstate
+
+# 本机缓存、凭据和编辑器状态
+DerivedData/
+.swiftpm/
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.p8
+*.key
+*.orig
+*.rej
+*.log
+.grok/
+.workbuddy/
+.workbuddy-ai/
+
+# 本机项目资料不随公开源码提交
+/AGENTS.md
+/CLAUDE.md
+/research/
+/workspace/
+/reports/
+/docs/
+/design-qa.md
+/revised_chapter2_round1.md
+
+# 退役的重复 Xcode 工程
+/app/MacDefier [0-9]*.xcodeproj/
+
+# iCloud 产生的重复工具链接
+/app/tools/PetSnapshot/Sources/PetSnapshot/* [0-9]*.swift

@@ -1,0 +1,81 @@
+name: MacDefier
+options:
+  bundleIdPrefix: com.macdefier
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+packages:
+  MonitorKit:
+    path: MonitorKit
+  CleanupKit:
+    path: CleanupKit
+  ZIPFoundation:
+    path: Vendor/ZIPFoundation
+  PetArchiveKit:
+    path: PetArchiveKit
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+targets:
+  MacDefier:
+    type: application
+    platform: macOS
+    sources:
+      - path: MacDefier
+        excludes:
+          - "**/.DS_Store"
+          - "**/Resources/Pet/README.md"
+      - path: NOTICE
+        buildPhase: resources
+    resources:
+      - path: MacDefier/Resources
+        excludes:
+          - "**/.DS_Store"
+          - "**/README.md"
+          - "**/*.zip"
+          # keep **/*.lproj and Localizable.strings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app
+        PRODUCT_NAME: MacDefier
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: MacDefier
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © MacDefier. Monitor sampling adapted from Stats (MIT)."
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
+      configs:
+        # Dev 与正式包并存：不同 PRODUCT_NAME / Bundle ID / Keychain service
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.dev
+          PRODUCT_NAME: MacDefier-Dev
+          INFOPLIST_KEY_CFBundleDisplayName: MacDefier Dev
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG"
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app
+          PRODUCT_NAME: MacDefier
+          ENABLE_HARDENED_RUNTIME: YES
+          # 正式发版由 package-release 注入 Developer ID；本地 Release 仍可 ad-hoc
+    dependencies:
+      - package: MonitorKit
+      - package: CleanupKit
+      - package: ZIPFoundation
+        product: ZIPFoundation
+      - package: PetArchiveKit
+        product: PetArchiveKit
+      - sdk: Collaboration.framework
+    scheme:
+      testTargets: []
