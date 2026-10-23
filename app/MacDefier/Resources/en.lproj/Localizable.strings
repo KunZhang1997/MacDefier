@@ -105,7 +105,7 @@
 "cleanup.none_selected" = "Nothing selected";
 "cleanup.clear_selection" = "Clear selection";
 "cleanup.clear_selection_help" = "Uncheck all items (does not move anything to Trash)";
-"cleanup.select_safe" = "Select low-risk";
+"cleanup.select_safe" = "Select low-risk items";
 "common.select_all" = "Select all";
 "common.deselect_all" = "Deselect all";
 "cleanup.select_all_help" = "Select all available items in this scan, including items requiring care. Protected items stay unselected. Selection alone does not clean anything; confirmation is still required.";
@@ -262,6 +262,8 @@
 "settings.version" = "Version";
 "settings.email" = "Contact email";
 "settings.email_hint" = "Compose a message in the default email app";
+"settings.github" = "Open-source repository";
+"settings.github_hint" = "Open the GitHub repository in the default browser";
 "settings.api_base_url" = "Base URL";
 "settings.api_key" = "API Key";
 "settings.model_placeholder" = "model-name";
@@ -1359,3 +1361,6 @@
 "cleanup.reason.cancelled" = "Cleanup was not performed on these items.";
 "cleanup.reason.busy" = "Wait for the other cleanup or uninstall operation, then scan again.";
 "cleanup.reason.unknown" = "The file could not be moved to Trash. Expand technical details for the system error.";
+
+"cleanup.rescan.changed_detail" = "Files have changed. Scan again to continue selecting items.";
+"cleanup.rescan.expired_detail" = "The previous scan has expired. Scan again to continue selecting items.";

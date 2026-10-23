@@ -31,6 +31,7 @@ struct CleanupPreviewIndex: Sendable {
     private(set) var paths: [String: [String]] = [:]
     private(set) var identities: [String: SelectionIdentity] = [:]
     private var records: [Record] = []
+    private var fileSnapshots: [String: UninstallFileBoundary.Snapshot] = [:]
     private(set) var totalBytes: UInt64 = 0
 
     /// Called on a utility task; a cancelled/superseded scan stops preparation too.
@@ -75,6 +76,11 @@ struct CleanupPreviewIndex: Sendable {
                 index.locations[item.id] = Location(group: gi, item: ii)
                 index.paths[item.id] = displayPaths
                 index.identities[item.id] = identity
+                for path in displayPaths where index.fileSnapshots[path] == nil {
+                    // Identity only: normal directory content/mtime changes do
+                    // not invalidate an otherwise reusable preview.
+                    index.fileSnapshots[path] = try? UninstallFileBoundary.snapshot(path)
+                }
                 let primary = try canonical(item.path)
                 index.records.append(Record(id: item.id, path: primary,
                                             components: primary.split(separator: "/"), bytes: item.bytes))
@@ -87,6 +93,28 @@ struct CleanupPreviewIndex: Sendable {
         }
         index.totalBytes = index.bytes(selectedIDs: nil)
         return Prepared(groups: groups, index: index)
+    }
+
+    func overlapsResources(_ changed: Set<String>) -> Bool {
+        guard !changed.isEmpty else { return false }
+        return identities.values.contains { identity in
+            identity.paths.contains { target in
+                changed.contains { ResourceMutationCoordinator.overlaps(target, $0) }
+            }
+        }
+    }
+
+    /// Off-main return validation; execution still performs its own live checks.
+    /// Unreadable targets without a scan-time identity remain unknown, rather
+    /// than causing repeated refreshes solely because metadata is unavailable.
+    func hasUnchangedFilesystemTargets() -> Bool {
+        for snapshot in fileSnapshots.values {
+            guard !Task.isCancelled, UninstallFileBoundary.stillMatches(snapshot) else { return false }
+        }
+        for path in Set(paths.values.flatMap { $0 }) where fileSnapshots[path] == nil {
+            guard !Task.isCancelled, !UninstallFileBoundary.isMissing(path) else { return false }
+        }
+        return true
     }
 
     /// Linear pass over the already ordered path tree; parents cover descendants.

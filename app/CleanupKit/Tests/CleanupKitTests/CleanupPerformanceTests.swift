@@ -133,13 +133,15 @@ final class CleanupPerformanceTests: XCTestCase {
         service.startScan { ready.fulfill() }
         await fulfillment(of: [ready], timeout: 2)
         service.setLastScanCompletedAtForTesting(Date().addingTimeInterval(-CleanupReusePolicy.cleanupTTL + 0.1))
-        let expired = expectation(description: "one expiry notification")
+        let expired = expectation(description: "expiry returns to the scan entry once")
         expired.assertForOverFulfill = true
-        let subscription = service.objectWillChange.sink {
-            if service.hasStalePreview { expired.fulfill() }
+        let subscription = service.$phase.dropFirst().sink {
+            if case .idle = $0 { expired.fulfill() }
         }
         await fulfillment(of: [expired], timeout: 2)
-        XCTAssertTrue(service.hasStalePreview)
+        XCTAssertEqual(service.phase, .idle)
+        XCTAssertEqual(service.preparationFailure, .expiredPreview)
+        XCTAssertTrue(service.groups.isEmpty)
         withExtendedLifetime(subscription) {}
     }
 }

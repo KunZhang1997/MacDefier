@@ -1,7 +1,13 @@
 // PathReclaimDeduper + scan TTL (Batch 5).
 
+import Combine
 import XCTest
 @testable import CleanupKit
+
+private actor TTLTrashRecorder {
+    private(set) var callCount = 0
+    func record() { callCount += 1 }
+}
 
 final class PathReclaimDeduperTests: XCTestCase {
     func testParentCoversChildBytesOnce() {
@@ -117,32 +123,48 @@ final class PathReclaimDeduperTests: XCTestCase {
         service.setSelected(itemID: service.allItems[0].id, selected: true)
         XCTAssertTrue(service.hasFreshPreview)
 
-        // 注入过期时间：confirmTrash 不得调用 executor
+        // An expired confirmation never invokes the executor. Returning then
+        // discards the snapshot instead of leaving a disabled preview behind.
         service.setLastScanCompletedAtForTesting(Date().addingTimeInterval(-11 * 60))
         XCTAssertFalse(service.hasFreshPreview)
-        var trashCalled = false
+        let recorder = TTLTrashRecorder()
         service.testTrashHandler = { _ in
-            trashCalled = true
+            await recorder.record()
             return CleanupResult(cleanedCount: 1, trashedPaths: [path], succeededPaths: [path])
         }
         service.confirmTrash()
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertFalse(trashCalled, "stale preview must not run trash")
-        if case .preview = service.phase {} else {
-            XCTFail("phase must stay preview when confirm rejected as stale")
-        }
+        let reusable = await service.reconcilePreviewOnReturn()
+        XCTAssertFalse(reusable)
+        let staleCalls = await recorder.callCount
+        XCTAssertEqual(staleCalls, 0, "stale preview must not run trash")
+        XCTAssertEqual(service.phase, .idle)
+        XCTAssertEqual(service.preparationFailure, .expiredPreview)
+        XCTAssertTrue(service.groups.isEmpty, "expired rows must not remain disabled")
+        XCTAssertEqual(service.selectedCount, 0)
+        XCTAssertEqual(service.selectedBytes, 0)
+        XCTAssertEqual(try? String(contentsOfFile: path, encoding: .utf8), "x")
 
-        // 新鲜时间可执行
-        service.setLastScanCompletedAtForTesting(Date())
+        // Only a new scan and new user selection can make confirmation ready.
+        let rescanned = expectation(description: "fresh fixture scanned again")
+        XCTAssertTrue(service.startScan(force: true) { rescanned.fulfill() })
+        await fulfillment(of: [rescanned], timeout: 1)
         XCTAssertTrue(service.hasFreshPreview)
+        XCTAssertEqual(service.selectedCount, 0, "rescan must not restore expired consent")
         service.confirmTrash()
-        let deadline = Date().addingTimeInterval(1)
-        while Date() < deadline {
-            if case .done = service.phase { break }
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 10_000_000)
+        await Task.yield()
+        let unselectedCalls = await recorder.callCount
+        XCTAssertEqual(unselectedCalls, 0, "fresh but unselected preview must not run trash")
+        service.setSelected(itemID: service.allItems[0].id, selected: true)
+        let cleaned = expectation(description: "explicit fresh confirmation completed")
+        let subscription = service.$phase.sink {
+            if case .done = $0 { cleaned.fulfill() }
         }
-        XCTAssertTrue(trashCalled, "fresh preview may trash")
+        service.confirmTrash()
+        await fulfillment(of: [cleaned], timeout: 1)
+        let freshCalls = await recorder.callCount
+        XCTAssertEqual(freshCalls, 1, "fresh, explicitly selected preview may reach the fake executor")
+        XCTAssertEqual(try? String(contentsOfFile: path, encoding: .utf8), "x", "the fake executor must leave the fixture intact")
+        withExtendedLifetime(subscription) {}
+        service.reset()
     }
 }

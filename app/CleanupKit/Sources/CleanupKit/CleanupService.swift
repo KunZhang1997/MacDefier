@@ -67,23 +67,79 @@ public final class CleanupService: ObservableObject {
     var testScanHandler: (@Sendable (_ generation: Int) async -> [CleanupCategoryGroup])?
     /// 测试注入：可控延迟清理。
     var testTrashHandler: (@Sendable (_ items: [CleanableItem]) async -> CleanupResult)?
+    var testPreviewValidationHandler: (@Sendable () async -> Bool)?
 
     private var resourceObserver: AnyCancellable?
+    private var resourcesChangedDuringScan: Set<String> = []
 
     public init() {
         resourceObserver = NotificationCenter.default.publisher(for: CleanupResourceEvents.didChange)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.invalidateAfterResourceChange() }
+            .sink { [weak self] notification in
+                let paths = notification.userInfo?["paths"] as? [String] ?? []
+                Task { @MainActor [weak self] in
+                    await self?.invalidateAfterResourceChange(paths: paths)
+                }
+            }
     }
 
-    private func invalidateAfterResourceChange() {
-        guard !isDestructiveBusy else { return }
-        cancelScan()
-        scanJourney = ScanJourney()
-        scanPartialGroups = []
-        lastScanCompletedAt = nil
-        clearAllSelection()
-        if case .preview = phase { preparationFailure = .changedTargets }
+    /// Mutations elsewhere only invalidate overlapping preview resources. An
+    /// active scan finishes normally, then discards affected results; cleanup
+    /// owns its frozen operation until completion.
+    func invalidateAfterResourceChange(paths: [String]) async {
+        guard !paths.isEmpty, !isDestructiveBusy else { return }
+        let generation = scanGeneration
+        let changed = await Task.detached(priority: .utility) {
+            Set(paths.map(PathGate.normalize))
+        }.value
+        guard scanGeneration == generation, !isDestructiveBusy else { return }
+        if case .scanning = phase {
+            resourcesChangedDuringScan.formUnion(changed)
+        } else if case .preview = phase, previewIndex.overlapsResources(changed) {
+            discardPreview(reason: .changedTargets)
+        }
+    }
+
+    /// Called when the cleanup page returns or the app becomes active. A valid
+    /// preview and its selection stay intact. Stale/missing/replaced targets
+    /// return to the explicit scan entry without starting or cancelling work.
+    @discardableResult
+    public func reconcilePreviewOnReturn() async -> Bool {
+        guard !phase.isBusy, !isDestructiveBusy, case .preview = phase,
+              !groups.isEmpty else { return false }
+        guard hasFreshPreview else {
+            discardPreview(reason: preparationFailure == .changedTargets ? .changedTargets : .expiredPreview)
+            return false
+        }
+        let generation = scanGeneration
+        let index = previewIndex
+        let handler = testPreviewValidationHandler
+        let validation = Task.detached(priority: .utility) {
+            if let handler { return await handler() }
+            return index.hasUnchangedFilesystemTargets()
+        }
+        let unchanged = await withTaskCancellationHandler {
+            await validation.value
+        } onCancel: {
+            validation.cancel()
+        }
+        guard !Task.isCancelled, scanGeneration == generation,
+              !phase.isBusy, !isDestructiveBusy, case .preview = phase else { return false }
+        guard hasFreshPreview else {
+            discardPreview(reason: .expiredPreview)
+            return false
+        }
+        guard unchanged else {
+            discardPreview(reason: .changedTargets)
+            return false
+        }
+        return true
+    }
+
+    private func discardPreview(reason: CleanupPreparationFailure) {
+        guard !phase.isBusy, !isDestructiveBusy else { return }
+        reset()
+        preparationFailure = reason
     }
 
     /// 仅 hasFreshPreview == true 才允许复用；缺少完成时间视为过期。
@@ -154,6 +210,8 @@ public final class CleanupService: ObservableObject {
             preparationFailure = nil
             scanHint = ""
             scanJourney = ScanJourney()
+            scanPartialGroups = []
+            resourcesChangedDuringScan = []
             aiNarrative = nil
             lastAIError = nil
             usedAI = false
@@ -226,6 +284,7 @@ public final class CleanupService: ObservableObject {
         let priorGroups = canResume ? scanPartialGroups : []
         let completed = canResume ? Set(scanJourney.completedIDs.compactMap(CleanupCategory.init(rawValue:))) : []
         scanPartialGroups = priorGroups
+        resourcesChangedDuringScan = []
         scanJourney.begin(JunkScanner.cleanupScanCategories.map(\.rawValue), resuming: canResume)
 
         scanTask = Task { [weak self] in
@@ -267,6 +326,13 @@ public final class CleanupService: ObservableObject {
                 return
             }
             self.scanTask = nil
+            if prepared.index.overlapsResources(self.resourcesChangedDuringScan) {
+                self.phase = .preview
+                self.discardPreview(reason: .changedTargets)
+                completion?()
+                return
+            }
+            self.resourcesChangedDuringScan = []
             self.previewIndex = prepared.index
             self.groups = prepared.groups
             self.refreshByteSummaries()
@@ -326,7 +392,7 @@ public final class CleanupService: ObservableObject {
             do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
             guard let self, self.lastScanCompletedAt == completedAt, case .preview = self.phase else { return }
             self.previewExpiryTask = nil
-            self.objectWillChange.send()
+            self.discardPreview(reason: .expiredPreview)
         }
     }
 

@@ -388,11 +388,26 @@ struct SettingsView: View {
                             .font(.system(size: 13).monospacedDigit())
                             .foregroundStyle(MDTheme.secondary)
                     }
-                    settingsRow(L10n.t("settings.email"), showLine: false) {
+                    settingsRow(L10n.t("settings.email"), showLine: true) {
                         Link("Kunzhang1997@outlook.com", destination: URL(string: "mailto:Kunzhang1997@outlook.com")!)
                             .font(.system(size: 12))
                             .foregroundStyle(MDTheme.accent)
                             .accessibilityHint(L10n.t("settings.email_hint"))
+                    }
+                    settingsRow(L10n.t("settings.github"), showLine: false) {
+                        Link(destination: URL(string: "https://github.com/KunZhang1997/MacDefier")!) {
+                            HStack(spacing: 5) {
+                                Text("GitHub · KunZhang1997/MacDefier")
+                                Image(systemName: "arrow.up.right")
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(MDTheme.accent)
+                        .help("https://github.com/KunZhang1997/MacDefier")
+                        .accessibilityLabel(L10n.t("settings.github") + ", KunZhang1997/MacDefier")
+                        .accessibilityHint(L10n.t("settings.github_hint"))
+                        .accessibilityIdentifier("settings.github")
                     }
                 }
             }

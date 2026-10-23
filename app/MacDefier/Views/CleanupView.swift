@@ -13,6 +13,7 @@ struct CleanupView: View {
     @State private var aiSettings = AISettingsStore.load()
     @State private var showAIReview = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     private static let initialItemLimit = 40
     private static let itemPageSize = 40
@@ -68,7 +69,7 @@ struct CleanupView: View {
             MDScanWorkbench(journey: cleanup.scanJourney, stages: JunkScanner.cleanupScanCategories.map(\.rawValue)) {
                 content
             }
-            if case .preview = cleanup.phase, cleanup.selectedCount > 0 {
+            if case .preview = cleanup.phase, cleanup.hasFreshPreview, cleanup.selectedCount > 0 {
                 cleanupActionBar
             }
         }
@@ -78,6 +79,15 @@ struct CleanupView: View {
             // Only scan when navigator asks *and* we don't already have chat/page results.
             if nav.consumeCleanupScanFlag() {
                 runScanIfNeeded()
+            }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await cleanup.reconcilePreviewOnReturn()
+        }
+        .onChange(of: cleanup.preparationFailure) { _, failure in
+            if failure == .expiredPreview || failure == .changedTargets {
+                confirmTrash = false
             }
         }
         .onChange(of: nav.shouldStartCleanupScan) { _, on in
@@ -140,7 +150,7 @@ struct CleanupView: View {
         runScan(force: true)
     }
 
-    /// Results stay inspectable while stopped, scanning or stale; only fresh previews accept selection.
+    /// Only a current preview offers selection; invalid results return to the scan entry.
     private var canSelectPreview: Bool {
         cleanup.canEditSelection
     }
@@ -149,7 +159,7 @@ struct CleanupView: View {
         cleanup.selectedCount > 0 && canSelectPreview
     }
 
-    /// Persistent primary action; scrolling and scan expiry never rename or hide it.
+    /// Selection actions belong only to a current preview.
     private var cleanupActionBar: some View {
         MDSelectionActionBar(selectedCount: cleanup.selectedCount,
             selectedBytes: Format.bytes(Double(cleanup.selectedBytes)), canClean: canCleanSelection,
@@ -181,7 +191,9 @@ struct CleanupView: View {
     private var content: some View {
         switch cleanup.phase {
         case .idle:
-            if cleanup.scanJourney.status == .stopped {
+            if cleanup.preparationFailure == .expiredPreview || cleanup.preparationFailure == .changedTargets {
+                rescanState
+            } else if cleanup.scanJourney.status == .stopped {
                 VStack(spacing: 0) {
                     MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
                         title: L10n.t("scan.card.resume"),
@@ -206,14 +218,9 @@ struct CleanupView: View {
                 if !cleanup.groups.isEmpty { previewState }
             }
         case .preview:
-            VStack(spacing: 0) {
-                if cleanup.hasStalePreview {
-                    MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
-                        title: L10n.t("scan.card.rescan"), detail: L10n.t("scan.card.saved"),
-                        compact: !cleanup.groups.isEmpty, action: { runScan(preservingSelection: true) },
-                        identifier: "cleanup.rescan")
-                        .disabled(cleanup.isAIEnriching).padding(MDTheme.pagePadding)
-                }
+            if cleanup.hasStalePreview {
+                rescanState
+            } else {
                 previewState
             }
         case .cleaning(let progress):
@@ -229,6 +236,15 @@ struct CleanupView: View {
         MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
             title: L10n.t("scan.card.start"), detail: L10n.t("scan.card.cleanup_detail"),
             action: { runScan() }, identifier: "cleanup.scanPrimary")
+            .padding(MDTheme.pagePadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var rescanState: some View {
+        MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
+            title: L10n.t("scan.card.rescan"),
+            detail: L10n.t(cleanup.preparationFailure == .changedTargets ? "cleanup.rescan.changed_detail" : "cleanup.rescan.expired_detail"),
+            action: { runScan() }, identifier: "cleanup.rescan")
             .padding(MDTheme.pagePadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -384,6 +400,15 @@ struct CleanupView: View {
 
     @ViewBuilder
     private var summarySelectionActions: some View {
+                Button(L10n.t("cleanup.select_safe")) {
+                    guard canSelectPreview else { return }
+                    cleanup.selectLowRiskOnly()
+                    expandCategoriesWithSelection()
+                }
+                .disabled(!canSelectPreview)
+                .help(L10n.t("cleanup.select_safe_help"))
+                .accessibilityIdentifier("cleanup.selectLowRisk")
+                .fixedSize()
                 Button(L10n.t("common.select_all")) {
                     guard canSelectPreview else { return }
                     cleanup.setAllSelected(true)
@@ -449,8 +474,27 @@ struct CleanupView: View {
     private func categoryHeader(_ group: CleanupCategoryGroup) -> some View {
         let isOpen = expanded.contains(group.category)
         let caution = needsCaution(group.category)
-            // U7：展开热区 = 箭头+图标+标题+空白+体积；Toggle 独立
+        let selectable = group.items.filter { $0.risk != .skip }
+        // Selection stays in the same leading column as item checkboxes.
+        // The separate disclosure button never changes selection.
         return HStack(spacing: 8) {
+                MDCheckbox(
+                    L10n.t("cleanup.select_group", group.category.localizedTitle),
+                    isOn: Binding(
+                        get: {
+                            !selectable.isEmpty && selectable.allSatisfy(\.isSelected)
+                        },
+                        set: { on in
+                            guard canSelectPreview else { return }
+                            cleanup.setAllSelected(on, in: group.category)
+                            if on { expanded.insert(group.category) }
+                        }
+                    )
+                )
+                .disabled(!canSelectPreview || selectable.isEmpty)
+                .help(L10n.t("cleanup.select_group_help"))
+                .accessibilityIdentifier("cleanup.selectGroup.\(group.category.rawValue)")
+
                 Button {
                     if isOpen { expanded.remove(group.category) }
                     else { expanded.insert(group.category) }
@@ -484,23 +528,6 @@ struct CleanupView: View {
                 .buttonStyle(.plain)
                 .help(group.category.localizedWhatIsIt)
 
-                let selectable = group.items.filter { $0.risk != .skip }
-                MDCheckbox(
-                    L10n.t("cleanup.select_group", group.category.localizedTitle),
-                    isOn: Binding(
-                        get: {
-                            !selectable.isEmpty && selectable.allSatisfy(\.isSelected)
-                        },
-                        set: { on in
-                            guard canSelectPreview else { return }
-                            cleanup.setAllSelected(on, in: group.category)
-                            if on { expanded.insert(group.category) }
-                        }
-                    )
-                )
-                .disabled(!canSelectPreview || selectable.isEmpty)
-                .help(L10n.t("cleanup.select_group_help"))
-                .accessibilityIdentifier("cleanup.selectGroup.\(group.category.rawValue)")
             }
             .mdResultHeader()
             .background(groupRowBackground(first: true, last: !isOpen))
@@ -526,49 +553,29 @@ struct CleanupView: View {
         let pathsOpen = expandedItemPaths.contains(item.id)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
-                MDCheckbox(
-                    item.localizedDisplayTitle,
-                    isOn: Binding(
-                        get: { cleanup.isItemSelected(id: item.id) },
-                        set: {
-                            guard canSelectPreview else { return }
-                            cleanup.setSelected(itemID: item.id, selected: $0)
-                        }
-                    )
-                ) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.localizedDisplayTitle)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(MDTheme.label)
-                            .lineLimit(1)
-                        Text(item.homeRelativePath)
-                            .font(.system(size: 11))
-                            .foregroundStyle(MDTheme.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .mdCopyPathMenu(item.path)
-                        if item.ifCleaned.hasPrefix("ai_cleanup:") || item.ifCleaned.hasPrefix("cleanup_blocked:") {
-                            Text(item.localizedIfCleaned).font(.system(size: 10))
-                                .foregroundStyle(MDTheme.tertiary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        let what = item.localizedWhatIsIt
-                        if !what.isEmpty,
-                           item.category == .installerPackages
-                            || item.category == .largeAppData
-                            || item.risk == .caution {
-                            Text(what)
-                                .font(.system(size: 10))
-                                .foregroundStyle(MDTheme.tertiary)
-                                .lineLimit(1)
-                        }
+                if item.risk == .skip {
+                    MDCheckbox(item.localizedDisplayTitle, isOn: .constant(false))
+                        .disabled(true)
+                        .help(item.path)
+                        .accessibilityIdentifier("cleanup.item.\(item.id)")
+                    itemDescription(item)
+                } else {
+                    MDCheckbox(
+                        item.localizedDisplayTitle,
+                        isOn: Binding(
+                            get: { cleanup.isItemSelected(id: item.id) },
+                            set: {
+                                guard canSelectPreview else { return }
+                                cleanup.setSelected(itemID: item.id, selected: $0)
+                            }
+                        )
+                    ) {
+                        itemDescription(item)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(!canSelectPreview)
+                    .help(item.path)
+                    .accessibilityIdentifier("cleanup.item.\(item.id)")
                 }
-                .disabled(!canSelectPreview || item.risk == .skip)
-                .opacity(item.risk == .skip ? 0.45 : 1)
-                .help(item.path)
-                .accessibilityIdentifier("cleanup.item.\(item.id)")
 
                 if pathCount > 1 {
                     Button {
@@ -619,6 +626,37 @@ struct CleanupView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, MDTheme.rowVerticalPadding)
+    }
+
+    private func itemDescription(_ item: CleanableItem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.localizedDisplayTitle)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(MDTheme.label)
+                .lineLimit(1)
+            Text(item.homeRelativePath)
+                .font(.system(size: 11))
+                .foregroundStyle(MDTheme.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .mdCopyPathMenu(item.path)
+            if item.ifCleaned.hasPrefix("ai_cleanup:") || item.ifCleaned.hasPrefix("cleanup_blocked:") {
+                Text(item.localizedIfCleaned).font(.system(size: 10))
+                    .foregroundStyle(MDTheme.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            let what = item.localizedWhatIsIt
+            if !what.isEmpty,
+               item.category == .installerPackages
+                || item.category == .largeAppData
+                || item.risk == .caution {
+                Text(what)
+                    .font(.system(size: 10))
+                    .foregroundStyle(MDTheme.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func homeRelative(_ path: String) -> String {

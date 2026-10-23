@@ -105,7 +105,7 @@
 "cleanup.none_selected" = "未选择项目";
 "cleanup.clear_selection" = "清空勾选";
 "cleanup.clear_selection_help" = "取消全部已勾选项（不是清理进废纸篓）";
-"cleanup.select_safe" = "勾选低风险";
+"cleanup.select_safe" = "勾选低风险项";
 "common.select_all" = "全选";
 "common.deselect_all" = "取消全选";
 "cleanup.select_all_help" = "选择本次扫描中全部可选项目，包含需要谨慎处理的项目；受保护项目不会选中。只改变勾选，清理仍须另行确认。";
@@ -262,6 +262,8 @@
 "settings.version" = "版本";
 "settings.email" = "联系邮箱";
 "settings.email_hint" = "在默认邮件应用中新建邮件";
+"settings.github" = "开源仓库";
+"settings.github_hint" = "在默认浏览器中打开 GitHub 仓库";
 "settings.api_base_url" = "接口地址";
 "settings.api_key" = "API 密钥";
 "settings.model_placeholder" = "模型名";
@@ -1354,3 +1356,6 @@
 "cleanup.reason.cancelled" = "这部分项目没有执行清理。";
 "cleanup.reason.busy" = "请等待另一项清理或卸载操作结束，再重新扫描。";
 "cleanup.reason.unknown" = "文件未能移到废纸篓。可展开技术详情查看系统返回的原因。";
+
+"cleanup.rescan.changed_detail" = "文件已发生变化，重新扫描后可继续选择。";
+"cleanup.rescan.expired_detail" = "上次扫描已过期，重新扫描后可继续选择。";
