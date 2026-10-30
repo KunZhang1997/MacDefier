@@ -138,9 +138,15 @@ public actor JunkScanner {
             normalize("\(home)/Library/Caches/com.apple.dt.Xcode") // claimed by Xcode scan
         ].map { $0 } + BrowserCleanupCatalog.userCacheExcludedRoots(home: home).map { normalize($0) })
 
+        // Google is a parent of Chrome's dedicated browser roots. Enumerate its
+        // children so a generic parent row cannot duplicate or delete Chrome data.
+        let googleRoot = normalize("\(root)/Google")
         var items = listImmediateChildren(of: root, category: .userCache) { [self] _, path in
-                    !excluded.contains(self.normalize(path)) && !self.isUnderAnyExcluded(path, excluded)
-                }
+            self.normalize(path) != googleRoot && !excluded.contains(self.normalize(path)) && !self.isUnderAnyExcluded(path, excluded)
+        }
+        items += listImmediateChildren(of: "\(root)/Google", category: .userCache) { [self] _, path in
+            !excluded.contains(self.normalize(path)) && !self.isUnderAnyExcluded(path, excluded)
+        }
 
         // PureMac also folds common dev caches into userCache scan
         // npm: only `_cacache` (not whole `~/.npm`) to avoid double-count with node scan's `~/.npm`
@@ -285,10 +291,13 @@ public actor JunkScanner {
                     appName: spec.brand.displayName,
                     displayTitle: title,
                     whatIsIt: spec.kind.what,
-                    ifCleaned: blockedReason ?? spec.kind.effect,
+                    ifCleaned: blockedReason == nil ? spec.kind.effect : "cleanup_blocked:browserOwner",
                     risk: blockedReason == nil ? spec.kind.risk : .skip,
                     extraPaths: extra,
-                    sizeIsLowerBound: partial
+                    sizeIsLowerBound: partial,
+                    browserKind: spec.kind,
+                    browserDetail: spec.detail,
+                    browserProfile: spec.profile
                 )
             )
         }

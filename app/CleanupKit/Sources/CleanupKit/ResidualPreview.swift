@@ -31,6 +31,8 @@ public struct ResidualItem: Identifiable, Sendable, Hashable {
     public let bytes: UInt64
     public var isSelected: Bool
     public let note: String
+    public let retentionReason: String?
+    public var canSelect: Bool { retentionReason == nil }
 
     public init(
         id: String = UUID().uuidString,
@@ -38,14 +40,16 @@ public struct ResidualItem: Identifiable, Sendable, Hashable {
         kind: ResidualKind,
         bytes: UInt64,
         isSelected: Bool? = nil,
-        note: String
+        note: String,
+        retentionReason: String? = nil
     ) {
         self.id = id
         self.path = path
         self.kind = kind
         self.bytes = bytes
-        self.isSelected = isSelected ?? kind.defaultSelected
+        self.isSelected = retentionReason == nil && (isSelected ?? kind.defaultSelected)
         self.note = note
+        self.retentionReason = retentionReason
     }
 
     public var name: String {
@@ -60,6 +64,17 @@ public struct ResidualItem: Identifiable, Sendable, Hashable {
 public enum ResidualPreview {
     /// Enhanced residual match for uninstall Sheet.
     public static func findResiduals(for app: InstalledApp) -> [ResidualItem] {
-        ResidualMatcher.findResiduals(for: app, sensitivity: .enhanced)
+        let items = ResidualMatcher.findResiduals(for: app, sensitivity: .enhanced)
+        guard items.contains(where: { $0.kind == .containers }) else { return items }
+        let target = UninstallTargetIdentity(app: app, residualPaths: items.map(\.path))
+        let installed = AppInventory.fetchInstalledApps(includeSystemApps: true, computeSize: false)
+        return items.map { item in
+            guard item.kind == .containers else { return item }
+            let ownership = ContainerOwnershipScanner.inspect(path: item.path,
+                isGroupContainer: item.path.contains("/Library/Group Containers/"), installed: installed)
+            let reason = target.containerRetentionReason(ownership, preview: app.canTrashAppBundle)
+            return ResidualItem(id: item.id, path: item.path, kind: item.kind, bytes: item.bytes,
+                                isSelected: item.isSelected, note: item.note, retentionReason: reason)
+        }
     }
 }

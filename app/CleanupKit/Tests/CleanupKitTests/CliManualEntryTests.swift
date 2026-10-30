@@ -34,8 +34,8 @@ final class CliManualEntryTests: XCTestCase {
     }
 
     private func assertExecutionBlocked(_ tool: CliTool, home: URL, code: String,
-                                        file: StaticString = #filePath, line: UInt = #line) {
-        let result = CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
+                                        file: StaticString = #filePath, line: UInt = #line) async {
+        let result = await CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
             XCTFail("No destructive callback is permitted", file: file, line: line)
             return ([], [], [], 0)
         }
@@ -44,7 +44,7 @@ final class CliManualEntryTests: XCTestCase {
                       result.errors.joined(separator: ";"), file: file, line: line)
     }
 
-    func testUnchangedStandaloneBinaryPlansOnlyExplicitFile() throws {
+    func testUnchangedStandaloneBinaryPlansOnlyExplicitFile() async throws {
         let home = try fixture()
         let program = try executable(".local/bin/codex", in: home)
         let selected = try codex(in: home)
@@ -53,7 +53,7 @@ final class CliManualEntryTests: XCTestCase {
         let plan = try CliUninstallExecutor.manualProgramPlan(selected, home: home.path)
         XCTAssertEqual(plan.map(\.path), [program.path])
         var calls: [String] = []
-        let result = CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
+        let result = await CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
             calls.append(source.path)
             return (["fixture callback"], [], [], 0)
         }
@@ -62,7 +62,7 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: program, encoding: .utf8), "fixture only")
     }
 
-    func testUnchangedHardlinkedCodexNeverPlansSharedBinOrOtherCommand() throws {
+    func testUnchangedHardlinkedCodexNeverPlansSharedBinOrOtherCommand() async throws {
         let home = try fixture()
         let program = try executable(".local/bin/codex", in: home)
         let alias = home.appendingPathComponent(".local/bin/codex-aarch64-apple-darwin")
@@ -75,7 +75,7 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertEqual(Set(plan.map(\.path)), Set([program.path, alias.path]))
         XCTAssertFalse(plan.contains { $0.path == unrelated.path || $0.path == home.appendingPathComponent(".local/bin").path })
         var calls: [String] = []
-        let result = CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
+        let result = await CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
             calls.append(source.path)
             return (["fixture callback"], [], [], 0)
         }
@@ -95,17 +95,17 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertEqual(plan.first?.path, shim.path)
     }
 
-    func testReplacementAfterScanIsKeptUntilFreshScan() throws {
+    func testReplacementAfterScanIsKeptUntilFreshScan() async throws {
         let home = try fixture()
         let program = try executable(".local/bin/codex", in: home)
         let selected = try codex(in: home)
         try FileManager.default.moveItem(at: program, to: home.appendingPathComponent("old-codex"))
         _ = try executable(".local/bin/codex", in: home, contents: "reinstalled")
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
         XCTAssertEqual(try String(contentsOf: program, encoding: .utf8), "reinstalled")
         let rescanned = try codex(in: home)
         var called = false
-        let result = CliUninstallExecutor.uninstallManualProgram(rescanned, home: home.path) { _ in
+        let result = await CliUninstallExecutor.uninstallManualProgram(rescanned, home: home.path) { _ in
             called = true
             return (["fixture callback"], [], [], 0)
         }
@@ -113,7 +113,7 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertTrue(called)
     }
 
-    func testInPlaceUpdateAfterScanIsKeptEvenWithSameInode() throws {
+    func testInPlaceUpdateAfterScanIsKeptEvenWithSameInode() async throws {
         let home = try fixture()
         let program = try executable(".local/bin/codex", in: home)
         let selected = try codex(in: home)
@@ -123,10 +123,10 @@ final class CliManualEntryTests: XCTestCase {
         try Data("changed only".utf8).write(to: program)
         try FileManager.default.setAttributes([.modificationDate: oldModified.addingTimeInterval(2)], ofItemAtPath: program.path)
         XCTAssertEqual(try UninstallFileBoundary.snapshot(program.path).item, before.item)
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
     }
 
-    func testSameDirectorySymlinkRetargetAfterScanIsKept() throws {
+    func testSameDirectorySymlinkRetargetAfterScanIsKept() async throws {
         let home = try fixture()
         let target = try executable(".local/bin/codex-aarch64-apple-darwin", in: home)
         let shim = home.appendingPathComponent(".local/bin/codex")
@@ -135,30 +135,30 @@ final class CliManualEntryTests: XCTestCase {
         let other = try executable(".local/bin/unrelated", in: home)
         try FileManager.default.moveItem(at: shim, to: home.appendingPathComponent("old-shim"))
         try FileManager.default.createSymbolicLink(at: shim, withDestinationURL: other)
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
         XCTAssertEqual(try String(contentsOf: other, encoding: .utf8), "fixture only")
     }
 
-    func testParentDirectoryReplacementAfterScanIsKept() throws {
+    func testParentDirectoryReplacementAfterScanIsKept() async throws {
         let home = try fixture()
         _ = try executable(".local/bin/codex", in: home)
         let selected = try codex(in: home)
         try FileManager.default.moveItem(at: home.appendingPathComponent(".local/bin"),
                                          to: home.appendingPathComponent("old-bin"))
         _ = try executable(".local/bin/codex", in: home, contents: "replacement parent")
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_owner_changed")
     }
 
-    func testStandalonePathWithoutScanEvidenceIsNotAuthorized() throws {
+    func testStandalonePathWithoutScanEvidenceIsNotAuthorized() async throws {
         let home = try fixture()
         let program = try executable(".local/bin/codex", in: home)
         let selected = CliTool(id: "manual:codex", displayName: "Codex", channel: .manual, packageId: "codex",
                                programPaths: [program.path], programBytes: 0, dataDirs: [], agents: [],
                                bins: ["codex"], protected: false)
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_ownership_unverified")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_ownership_unverified")
     }
 
-    func testSharedBinRootIsNeverOwnedOrPlannedEvenForLegacyLocalRow() throws {
+    func testSharedBinRootIsNeverOwnedOrPlannedEvenForLegacyLocalRow() async throws {
         let home = try fixture()
         _ = try executable(".local/bin/codex", in: home)
         let root = home.appendingPathComponent(".local/bin").path
@@ -166,7 +166,7 @@ final class CliManualEntryTests: XCTestCase {
                                programPaths: [root], programBytes: 0, dataDirs: [], agents: [],
                                bins: ["codex"], protected: false)
         XCTAssertEqual(CliOwnershipBoundary.programRoots(selected, home: home.path), [])
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_shared_root")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_shared_root")
     }
 
     func testHomeBinStandaloneEntryIsSupportedWithoutSelectingSharedRoot() throws {
@@ -197,7 +197,7 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertEqual(plan.first?.path, shim.path)
     }
 
-    func testKnownOpencodeLeafPlansOnlyBinaryAndExplicitShim() throws {
+    func testKnownOpencodeLeafPlansOnlyBinaryAndExplicitShim() async throws {
         let home = try fixture()
         let program = try executable(".local/share/opencode/bin/opencode", in: home)
         let data = try executable(".local/share/opencode/sessions/fixture-data", in: home, contents: "precious")
@@ -210,7 +210,7 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertEqual(selected.dataDirs.map(\.path), [home.appendingPathComponent(".local/share/opencode").path])
         XCTAssertEqual(Set(try CliUninstallExecutor.manualProgramPlan(selected, home: home.path).map(\.path)), expected)
         var calls: [String] = []
-        let result = CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
+        let result = await CliUninstallExecutor.uninstallManualProgram(selected, home: home.path) { source in
             calls.append(source.path)
             return (["fixture callback"], [], [], 0)
         }
@@ -286,12 +286,12 @@ final class CliManualEntryTests: XCTestCase {
         XCTAssertNoThrow(try CliOwnershipBoundary.validateAgent(agent, tool: selected, home: home.path))
     }
 
-    func testNewSameNamedRegularEntryIsNotInferredFromEarlierScan() throws {
+    func testNewSameNamedRegularEntryIsNotInferredFromEarlierScan() async throws {
         let home = try fixture()
         _ = try executable(".local/bin/codex", in: home)
         let selected = try codex(in: home)
         _ = try executable("bin/codex", in: home, contents: "different install")
-        assertExecutionBlocked(selected, home: home, code: "cli_manual_ownership_unverified")
+        await assertExecutionBlocked(selected, home: home, code: "cli_manual_ownership_unverified")
     }
 
     func testInjectedExecutionAllowsDataOnlyAfterManualProgramAndVerificationSucceed() async throws {
@@ -308,7 +308,7 @@ final class CliManualEntryTests: XCTestCase {
         let result = await CliUninstallExecutor.execute(
             tool: selected, options: .init(stopAgents: false, uninstallProgram: true, trashDataDirs: true),
             execution: .init(program: { tool in
-                CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
+                await CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
                     events.record("program")
                     return (["fixture callback"], [], [], 0)
                 }
@@ -337,7 +337,7 @@ final class CliManualEntryTests: XCTestCase {
         let result = await CliUninstallExecutor.execute(
             tool: selected, options: .init(stopAgents: false, uninstallProgram: true, trashDataDirs: true),
             execution: .init(program: { tool in
-                CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
+                await CliUninstallExecutor.uninstallManualProgram(tool, home: home.path) { _ in
                     XCTFail("changed program must not reach trash callback")
                     return ([], [], [], 0)
                 }

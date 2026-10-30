@@ -2,7 +2,7 @@ import AppKit
 import CleanupKit
 import SwiftUI
 
-enum MDScanArtworkKind { case cleanup, aiTools, disk }
+enum MDScanArtworkKind { case cleanup, aiTools, disk, software }
 
 /// A presentation clock only. Scanner events own stages, counts and completion.
 /// Keeping it in the page preserves the frame when the card becomes compact.
@@ -77,6 +77,12 @@ struct MDScanActivityCard: View {
             && journey.status == .running && journey.activeID != nil
     }
 
+    /// Running and paused work stays compact even before the first result.
+    /// A completed/discarded scan does not make an empty start entry compact.
+    private var usesCompactLayout: Bool {
+        compact || journey.status == .running || journey.status == .stopped
+    }
+
     var body: some View {
         Group {
             if let action {
@@ -109,7 +115,7 @@ struct MDScanActivityCard: View {
     }
 
     @ViewBuilder private var composition: some View {
-        if compact {
+        if usesCompactLayout {
             HStack(spacing: 14) {
                 artwork.frame(width: 116, height: 78)
                 invitation(alignment: .leading)
@@ -117,15 +123,16 @@ struct MDScanActivityCard: View {
                 accessory
             }
             .padding(.horizontal, 14).padding(.vertical, 8)
-            .frame(minHeight: 94)
+            .frame(height: 94)
         } else {
             GeometryReader { geometry in
                 let width = min(360, max(130, min(geometry.size.width - 48,
                     (geometry.size.height - 100) * 1.5)))
-                VStack(spacing: 10) {
+                VStack(spacing: 20) {
                     Spacer(minLength: 0)
                     artwork.frame(width: width, height: width / 1.5)
                     invitation(alignment: .center)
+                        .layoutPriority(1)
                     accessory
                     Spacer(minLength: 0)
                 }
@@ -140,17 +147,22 @@ struct MDScanActivityCard: View {
             MDScanArtwork(kind: kind, journey: journey, stageID: clock.stageID,
                           elapsed: reduceMotion ? 0 : clock.elapsed(at: context.date),
                           reduceMotion: reduceMotion, opaqueSupports: reduceTransparency,
-                          compact: compact)
+                          compact: usesCompactLayout)
         }
+        .clipped()
         .accessibilityHidden(true).allowsHitTesting(false)
     }
 
     private func invitation(alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: 5) {
-            Text(title).font(compact ? .callout.weight(.semibold) : .title3.weight(.semibold))
+            Text(title).font(usesCompactLayout ? .callout.weight(.semibold) : .title3.weight(.semibold))
+                .lineLimit(usesCompactLayout ? 2 : nil)
                 .foregroundStyle(MDTheme.label).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+                .help(title)
             if let detail, !detail.isEmpty {
                 Text(detail).font(.caption).foregroundStyle(MDTheme.secondary)
+                    .lineLimit(usesCompactLayout ? 1 : nil)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -188,6 +200,7 @@ private struct MDScanArtwork: View {
             case .cleanup: cleanup(context, size)
             case .aiTools: aiTools(context, size)
             case .disk: disk(context, size)
+            case .software: software(context, size)
             }
         }
     }
@@ -290,5 +303,20 @@ private struct MDScanArtwork: View {
             led.fill(Path(ellipseIn: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2)),
                      with: .color(Color(hex: 0xD7C295)))
         }
+    }
+
+    private func software(_ context: GraphicsContext, _ size: CGSize) {
+        support(in: rect(0.1, 0.67, 0.8, 0.16, size), context: context)
+        image("ScanSoftware", in: rect(0, 0, 1, 1, size), context: context)
+        guard journey.status == .running, !reduceMotion else { return }
+        // A small optical pass over the application tiles, never fake progress.
+        let phase = elapsed.truncatingRemainder(dividingBy: 2.8) / 2.8
+        let x = size.width * (-0.3 + phase * 1.6)
+        var light = context
+        light.opacity = 0.18
+        light.clip(to: Path(roundedRect: rect(0.12, 0.15, 0.76, 0.65, size), cornerRadius: 12))
+        light.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(
+            Gradient(colors: [.clear, .white, .clear]),
+            startPoint: CGPoint(x: x, y: 0), endPoint: CGPoint(x: x + size.width * 0.18, y: size.height)))
     }
 }

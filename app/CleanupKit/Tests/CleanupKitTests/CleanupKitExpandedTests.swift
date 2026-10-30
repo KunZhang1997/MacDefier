@@ -459,7 +459,7 @@ final class TrashExecutorSafePathTests: XCTestCase {
 
 final class CliUninstallSafetyTests: XCTestCase {
     /// Soft link under allow tree pointing outside allow: target entity must survive; link trashed or blocked.
-    func testTrashPathDoesNotDeleteSymlinkTargetOutsideAllow() throws {
+    func testTrashPathDoesNotDeleteSymlinkTargetOutsideAllow() async throws {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
         let base = fm.temporaryDirectory.appendingPathComponent("CLITrashSym-\(UUID().uuidString)", isDirectory: true)
@@ -480,7 +480,7 @@ final class CliUninstallSafetyTests: XCTestCase {
         let link = base.appendingPathComponent("link-to-outside")
         try fm.createSymbolicLink(atPath: link.path, withDestinationPath: targetFile.path)
 
-        let r = CliUninstallExecutor.trashPath(link.path, bytesHint: 0)
+        let r = await CliUninstallExecutor.trashPath(link.path, bytesHint: 0)
         // Target entity must still exist regardless of link outcome
         XCTAssertTrue(fm.fileExists(atPath: targetFile.path), "out-of-tree target must not be deleted")
         XCTAssertEqual(try String(contentsOf: targetFile, encoding: .utf8), "precious")
@@ -496,7 +496,7 @@ final class CliUninstallSafetyTests: XCTestCase {
     }
 
     /// Soft link under temp → another temp file: trash original link, target entity remains.
-    func testTrashPathSymlinkMovesLinkNotTargetWhenBothUnderAllow() throws {
+    func testTrashPathSymlinkMovesLinkNotTargetWhenBothUnderAllow() async throws {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("CLITrashSymOK-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
@@ -507,7 +507,7 @@ final class CliUninstallSafetyTests: XCTestCase {
         let link = base.appendingPathComponent("the-link")
         try fm.createSymbolicLink(atPath: link.path, withDestinationPath: targetFile.path)
 
-        let r = CliUninstallExecutor.trashPath(link.path, bytesHint: 8)
+        let r = await CliUninstallExecutor.trashPath(link.path, bytesHint: 8)
         XCTAssertTrue(r.errors.isEmpty, r.errors.joined(separator: "; "))
         XCTAssertTrue(fm.fileExists(atPath: targetFile.path), "target entity must remain")
         XCTAssertEqual(try String(contentsOf: targetFile, encoding: .utf8), "stay")
@@ -535,75 +535,100 @@ final class CliUninstallSafetyTests: XCTestCase {
 
 @MainActor
 final class SoftwareServiceLoadingTests: XCTestCase {
+    private final class InventoryGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var opened = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func wait() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                let ready = opened
+                if !ready { waiters.append(continuation) }
+                lock.unlock()
+                if ready { continuation.resume() }
+            }
+        }
+
+        func open() {
+            lock.lock()
+            opened = true
+            let pending = waiters
+            waiters.removeAll()
+            lock.unlock()
+            pending.forEach { $0.resume() }
+        }
+    }
+
+    private func fixture(_ name: String) -> InstalledApp {
+        InstalledApp(name: name, bundleIdentifier: "invalid.loading-fixture.\(name)",
+                     path: "/not-a-real-volume/LoadingFixture/\(name).app", version: "1",
+                     bytes: 0, isSystemLocation: false, canTrashAppBundle: false,
+                     sizeState: .pending)
+    }
+
     func testLoadSizeAfterRefreshDoesNotLeaveIsLoadingStuck() async {
         let service = SoftwareService()
-        // Start a real refresh (may take a moment on this Mac)
+        let gate = InventoryGate()
+        defer { service.cancelInventoryWork(); gate.open() }
+        let app = fixture("Metadata")
         let started = expectation(description: "refresh started loading")
-        service.refresh(force: true) {
-            // completion may fire after cancel; ignore
-        }
-        // Spin until isLoading true or timeout
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline {
-            if service.isLoading {
-                started.fulfill()
-                break
-            }
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
-        if !service.isLoading {
-            // Refresh finished too fast — still verify cancel path recovers
-            service.refresh(force: true)
-            await Task.yield()
+        let done = expectation(description: "metadata completed")
+        service.testInventoryHandler = {
             started.fulfill()
+            await gate.wait()
+            XCTAssertFalse(Task.isCancelled, "A size request must not cancel metadata enumeration")
+            return [app]
         }
+        service.testSizeHandler = { _ in nil }
+        service.refresh(force: true) { done.fulfill() }
         await fulfillment(of: [started], timeout: 3)
+        XCTAssertTrue(service.isLoading)
+        service.loadSize(for: app)
+        XCTAssertTrue(service.isLoading, "Metadata retains ownership of its loading state")
+        gate.open()
+        await fulfillment(of: [done], timeout: 3)
+        XCTAssertFalse(service.isLoading)
+        XCTAssertEqual(service.apps.map(\.path), [app.path])
 
-        let dummy = InstalledApp(
-            name: "Dummy",
-            bundleIdentifier: "com.macdefier.test.dummy",
-            path: "/Applications/Safari.app",
-            version: "1",
-            bytes: 0,
-            isSystemLocation: true,
-            canTrashAppBundle: false
-        )
-        // Cancels in-flight refresh + bumps generation
-        service.loadSize(for: dummy)
-
-        let clearDeadline = Date().addingTimeInterval(3)
-        while Date() < clearDeadline {
-            if !service.isLoading { break }
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        XCTAssertFalse(service.isLoading, "isLoading must clear after generation bump from loadSize")
-
-        // Subsequent refresh must be able to start (not permanently queued on stuck isLoading)
-        var secondCompleted = false
+        // A later refresh can still acquire and release the loading state.
+        service.testInventoryHandler = { [app] }
         let secondDone = expectation(description: "second refresh completes")
-        service.refresh(force: true) {
-            secondCompleted = true
-            secondDone.fulfill()
-        }
-        // If isLoading was stuck true without ownership, this would only queue and never run.
-        // Give it time to complete a real inventory.
-        await fulfillment(of: [secondDone], timeout: 60)
-        XCTAssertTrue(secondCompleted)
+        service.refresh(force: true) { secondDone.fulfill() }
+        await fulfillment(of: [secondDone], timeout: 3)
         XCTAssertFalse(service.isLoading)
     }
 
     func testCancelInventoryWorkClearsIsLoading() async {
         let service = SoftwareService()
-        service.refresh(force: true)
+        let gate = InventoryGate()
+        defer { service.cancelInventoryWork(); gate.open() }
+        let oldApp = fixture("Old")
+        let newApp = fixture("New")
+        let started = expectation(description: "old inventory started")
+        let oldDone = expectation(description: "cancelled inventory returned")
+        service.testInventoryHandler = {
+            started.fulfill()
+            await gate.wait() // Ignore cancellation so late-result protection is exercised.
+            return [oldApp]
+        }
+        service.testSizeHandler = { _ in nil }
+        service.refresh(force: true) { oldDone.fulfill() }
+        await fulfillment(of: [started], timeout: 3)
+        XCTAssertTrue(service.isLoading)
         service.cancelInventoryWork()
         XCTAssertFalse(service.isLoading)
-        // Can start again
+
+        service.testInventoryHandler = { [newApp] }
         let done = expectation(description: "after cancel")
         service.refresh(force: true) { done.fulfill() }
-        await fulfillment(of: [done], timeout: 60)
+        await fulfillment(of: [done], timeout: 3)
         XCTAssertFalse(service.isLoading)
+        XCTAssertEqual(service.apps.map(\.path), [newApp.path])
+        gate.open()
+        await fulfillment(of: [oldDone], timeout: 3)
+        XCTAssertFalse(service.isLoading)
+        XCTAssertEqual(service.apps.map(\.path), [newApp.path], "Cancelled metadata must not replace the newer list")
     }
 }
 

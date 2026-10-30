@@ -5,6 +5,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIFECYCLE="$ROOT/app/scripts/single_app_build.py"
+if [[ "${SINGLE_APP_PRODUCT:-}" != MacDefier ]]; then
+  exec python3 "$LIFECYCLE" run /bin/bash "$0" "$@"
+fi
 APP_DIR="$ROOT/app"
 CK_SRC="$APP_DIR/CleanupKit"
 CK_CACHE="${MACDEFIER_CK_TEST_DIR:-$HOME/Library/Caches/MacDefier-CleanupKit-test}"
@@ -49,6 +53,7 @@ assert_safe_scratch() {
 
 CK_CACHE="$(assert_safe_scratch "$CK_CACHE" "CleanupKit test cache" cleanup-test)"
 BUILD_CACHE="$(assert_safe_scratch "$BUILD_CACHE" "build cache" build-cache)"
+python3 "$LIFECYCLE" track "$BUILD_CACHE"
 
 echo "==> [1/7] xcodegen (cache tree if iCloud Desktop)"
 # Prefer building app from non-iCloud cache when source is under Desktop/iCloud
@@ -78,7 +83,8 @@ fi
 # Parse the summary and fail hard on any failure/error.
 set +e
 TEST_LOG="$(mktemp -t macdefier-ck-test.XXXXXX)"
-(cd "$CK_CACHE" && swift test 2>&1 | tee "$TEST_LOG")
+# Keep the package beside UninstallHelperKit so its relative dependency resolves.
+(cd "$WORK_APP/CleanupKit" && swift test --scratch-path "$CK_CACHE/.build" 2>&1 | tee "$TEST_LOG")
 TEST_EC=$?
 set -e
 if grep -Eiq 'failed \(| error: |XCTAssert[^[:space:]]* failed|Test Case .* failed| Testhad failures|failures before|failed \([1-9]' "$TEST_LOG"; then
@@ -140,6 +146,8 @@ xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Debug \
   -derivedDataPath build/DerivedData \
   -destination 'platform=macOS' build \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+python3 "$LIFECYCLE" cleanup
 
 echo "==> [7/7] App 全量构建（Release，不签名、不分发）"
 xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Release \

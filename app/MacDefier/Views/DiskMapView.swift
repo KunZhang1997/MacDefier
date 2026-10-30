@@ -165,7 +165,8 @@ struct DiskMapView: View {
                 if model.isScanning || model.scanJourney.status == .stopped {
                     scanActivity(compact: true)
                         .padding(.horizontal, MDTheme.pagePadding)
-                        .padding(.bottom, 10)
+                        .padding(.top, MDTheme.pagePadding)
+                        .padding(.bottom, MDTheme.resultCardGap)
                 }
                 summary(node)
                 if !node.isComplete && !model.isScanning { partialNotice(node) }
@@ -249,13 +250,15 @@ struct DiskMapView: View {
             .pickerStyle(.segmented).labelsHidden().frame(width: 76)
             .accessibilityIdentifier("diskmap.mode")
             if model.scanJourney.status != .stopped || node.path != model.scanScopeURL.path {
-                Button { model.scan(URL(fileURLWithPath: node.path)) } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).disabled(model.isScanning)
+                Button { model.scan(URL(fileURLWithPath: node.path)) } label: {
+                    Label(L10n.t("common.rescan"), systemImage: "arrow.clockwise")
+                }
+                    .buttonStyle(.bordered).controlSize(.small).disabled(model.isScanning)
                     .help(L10n.t("diskmap.rescan")).accessibilityLabel(L10n.t("diskmap.rescan"))
                     .accessibilityIdentifier("diskmap.rescan")
             }
             Button { showsInfo.toggle() } label: { Image(systemName: "info.circle") }
-                .buttonStyle(.borderless).help(L10n.t("diskmap.about"))
+                .buttonStyle(.borderless).frame(minWidth: 24, minHeight: 24).help(L10n.t("diskmap.about"))
                 .accessibilityLabel(L10n.t("diskmap.about"))
                 .popover(isPresented: $showsInfo) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -337,7 +340,7 @@ struct DiskMapView: View {
             Text(hovered?.sizeLabel ?? DiskMapFormat.size(Double(node.allocatedBytes), partial: !node.isComplete))
                 .font(.callout.weight(.semibold)).monospacedDigit().lineLimit(1)
             if hovered == nil || hovered?.node != nil {
-                Button { reveal(node) } label: { Image(systemName: "magnifyingglass") }
+                Button { reveal(node) } label: { Image(systemName: "folder") }
                     .help(L10n.t("diskmap.reveal")).accessibilityLabel(L10n.t("diskmap.reveal_item", node.name))
             }
         }
@@ -368,7 +371,7 @@ struct DiskMapView: View {
                     .accessibilityLabel(node.name)
                     Text(DiskMapFormat.size(Double(node.allocatedBytes), partial: !node.isComplete))
                         .monospacedDigit().font(.callout)
-                    Button { reveal(node) } label: { Image(systemName: "magnifyingglass") }
+                    Button { reveal(node) } label: { Image(systemName: "folder") }
                         .buttonStyle(.borderless).accessibilityLabel(L10n.t("diskmap.reveal_item", node.name))
                 }
                 .padding(.vertical, 3)
@@ -385,11 +388,10 @@ struct DiskMapView: View {
 
     private var emptyState: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            scanActivity(compact: false)
+            scanActivity(compact: model.isScanning || model.scanJourney.status == .stopped)
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(MDTheme.pagePadding)
     }
 
@@ -403,7 +405,7 @@ struct DiskMapView: View {
             clock: scanAnimation,
             title: isStopping ? L10n.t("scan.stopping") : model.isScanning && !isStopped
                 ? ScanProgressL10n.localize(isWaiting ? "scan.waiting" : model.scanJourney.activeID ?? "scan.stage.file_metadata")
-                : L10n.t(isStopped ? "scan.card.rescan" : "scan.card.start"),
+                : L10n.t(model.scanJourney.status == .idle ? "scan.card.start" : "scan.card.rescan"),
             detail: isStopping ? nil : model.isScanning && !isStopped ? L10n.t("scan.files_read", model.scannedEntries) :
                 (isStopped ? (model.current != nil ? L10n.t("scan.card.saved") : nil) : L10n.t("scan.card.disk_detail")),
             compact: compact,

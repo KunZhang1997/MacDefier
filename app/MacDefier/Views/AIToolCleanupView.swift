@@ -26,10 +26,17 @@ struct AIToolCleanupView: View {
             MDScanWorkbench(journey: model.scanJourney,
                 stages: AIToolCleanupService.scanStages.map { "scan.stage." + $0 }) {
                 VStack(spacing: 0) {
-                    if model.phase == .idle && !model.hasPreview && !hasScanContent {
-                        fullPageActivity
+                    if model.scanJourney.status == .idle && model.phase == .idle && !model.hasPreview && !hasScanContent {
+                        emptyState
                     } else {
-                        preview
+                        if showsScanActivity {
+                            scanActivity
+                                .padding(.horizontal, MDTheme.pagePadding)
+                                .padding(.top, MDTheme.pagePadding)
+                                .padding(.bottom, MDTheme.resultCardGap)
+                        }
+                        if hasScanContent || model.hasPreview { preview }
+                        else { Spacer(minLength: 0) }
                     }
                 }
             }
@@ -58,23 +65,12 @@ struct AIToolCleanupView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var fullPageActivity: some View {
-        Group {
-            if model.scanJourney.status == .stopped || model.requiresRescan {
-                scanActivity.padding(MDTheme.pagePadding)
-            } else {
-                emptyState
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var hasScanContent: Bool {
         !model.groups.isEmpty || !model.issues.isEmpty || model.lastResult != nil
     }
 
     private var showsScanActivity: Bool {
-        model.phase == .scanning || model.scanJourney.status == .stopped || model.requiresRescan
+        model.phase != .cleaning && (model.phase == .scanning || model.scanJourney.status == .stopped || model.requiresRescan)
     }
 
     private func startNewScan() {
@@ -88,20 +84,21 @@ struct AIToolCleanupView: View {
         if model.phase == .scanning {
             MDScanActivityCard(kind: .aiTools, journey: model.scanJourney, clock: scanAnimation,
                 title: L10n.t(model.scanJourney.status == .running && model.scanJourney.activeID == nil
-                              ? "scan.waiting" : model.scanHint), compact: hasScanContent,
+                              ? "scan.waiting" : model.scanHint), compact: true,
                 stop: { model.cancelScan() }, identifier: "aitools.stop")
         } else if model.scanJourney.status == .stopped {
             MDScanActivityCard(kind: .aiTools, journey: model.scanJourney, clock: scanAnimation,
                 title: L10n.t("scan.card.resume"),
                 detail: hasScanContent ? L10n.t("scan.card.saved") : nil,
-                compact: hasScanContent, action: { model.startScan(resuming: true) },
+                compact: true, action: { model.startScan(resuming: true) },
                 identifier: "aitools.resume")
                 .contextMenu { Button(L10n.t("common.rescan"), action: startNewScan) }
         } else if model.requiresRescan && model.phase != .cleaning {
             MDScanActivityCard(kind: .aiTools, journey: model.scanJourney, clock: scanAnimation,
                 title: L10n.t("scan.card.rescan"),
                 detail: hasScanContent ? L10n.t("scan.card.saved") : nil,
-                compact: hasScanContent, action: startNewScan, identifier: "aitools.scan")
+                compact: hasScanContent || model.hasPreview,
+                action: startNewScan, identifier: "aitools.scan")
         }
     }
 
@@ -110,34 +107,51 @@ struct AIToolCleanupView: View {
     }
 
     private var resultHeader: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.hasPreview
-                     ? L10n.t("aitools.summary", model.measuredCount, AIToolCleanupCopy.bytes(Double(model.eligibleBytes)))
-                     : L10n.t("scan.card.results"))
-                    .font(.subheadline.weight(.semibold))
-                if !inUseOwners.isEmpty {
-                    Text(L10n.t("aitools.in_use", inUseOwners.joined(separator: ", ")))
-                        .font(.caption2)
-                        .foregroundStyle(MDTheme.secondary)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                resultSummary.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 8)
+                resultActions.fixedSize(horizontal: true, vertical: false)
             }
-            Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 8) {
+                resultSummary
+                resultActions
+            }
+        }
+    }
+
+    private var resultSummary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(model.hasPreview
+                 ? L10n.t("aitools.summary", model.measuredCount, AIToolCleanupCopy.bytes(Double(model.eligibleBytes)))
+                 : L10n.t("scan.card.results"))
+                .font(.subheadline.weight(.semibold))
+            if !inUseOwners.isEmpty {
+                Text(L10n.t("aitools.in_use", inUseOwners.joined(separator: ", ")))
+                    .font(.caption2)
+                    .foregroundStyle(MDTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var resultActions: some View {
+        HStack(spacing: 10) {
             Button {
                 SoftwareService.shared.listKind = .cli
                 nav.route = .software
             } label: {
-                Image(systemName: "terminal")
+                Label(L10n.t("aitools.open_cli"), systemImage: "terminal")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered).controlSize(.small)
             .disabled(model.phase == .cleaning)
             .help(L10n.t("aitools.open_cli"))
             .accessibilityLabel(L10n.t("aitools.open_cli"))
             if !showsScanActivity {
                 Button(action: startNewScan) {
-                    Image(systemName: "arrow.clockwise")
+                    Label(L10n.t("common.rescan"), systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered).controlSize(.small)
                 .disabled(model.phase == .cleaning)
                 .help(L10n.t("scan.card.rescan"))
                 .accessibilityLabel(L10n.t("scan.card.rescan"))
@@ -149,7 +163,6 @@ struct AIToolCleanupView: View {
     private var preview: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: MDTheme.resultCardGap) {
-                if showsScanActivity { scanActivity }
                 if hasScanContent || (model.hasPreview && model.phase != .scanning) { resultHeader }
                 if model.hasPreview { selectionControls }
                 if let result = model.lastResult { resultView(result) }
@@ -169,7 +182,9 @@ struct AIToolCleanupView: View {
                 }
             }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.groups.map(\.id))
-            .padding(MDTheme.pagePadding)
+            .padding(.horizontal, MDTheme.pagePadding)
+            .padding(.top, showsScanActivity ? 0 : MDTheme.pagePadding)
+            .padding(.bottom, MDTheme.pagePadding)
         }
     }
 
@@ -251,7 +266,10 @@ struct AIToolCleanupView: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 24, height: 28)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(L10n.t("aitools.details_for", AIToolCleanupCopy.groupTitle(group)))
+                .accessibilityLabel(L10n.t("aitools.details_for_section",
+                                          L10n.t("scan.stage." + group.section.rawValue),
+                                          AIToolCleanupCopy.groupTitle(group)))
+                .accessibilityIdentifier("aitools.details." + group.id)
             }
             .mdResultHeader()
             if expanded.contains(group.id) {
@@ -283,11 +301,14 @@ struct AIToolCleanupView: View {
     private func groupCheckbox(_ group: AIToolCleanupGroup) -> some View {
         if !group.selectable.isEmpty {
             let ids = Set(group.selectable.map(\.id))
-            MDCheckbox(L10n.t("aitools.select_group", AIToolCleanupCopy.groupTitle(group)),
+            MDCheckbox(L10n.t("aitools.select_group_section",
+                              L10n.t("scan.stage." + group.section.rawValue),
+                              AIToolCleanupCopy.groupTitle(group)),
                        isOn: Binding(get: { ids.isSubset(of: model.selectedIDs) }, set: { _ in model.toggleGroup(group) })) {
                 groupLabel(group)
             }
                 .disabled(model.phase != .preview || model.requiresRescan)
+                .accessibilityIdentifier("aitools.selectGroup." + group.id)
         } else {
             HStack(spacing: 10) {
                 Image(systemName: group.kind == .tool ? "terminal" : group.kind == .conversation ? "bubble.left.and.bubble.right" : "info.circle")
@@ -363,6 +384,10 @@ struct AIToolCleanupView: View {
     private func groupSummary(_ group: AIToolCleanupGroup) -> String {
         if group.kind == .tool { return L10n.t("aitools.tools_shared", group.all.count) }
         if group.kind == .conversation {
+            if group.owner.map({ model.age(for: $0) == .dontList }) == true {
+                return L10n.t("aitools.sessions_total", group.all.count,
+                              AIToolCleanupCopy.bytes(Double(group.totalBytes))) + " · " + L10n.t("aitools.conversation_managed")
+            }
             let range = group.visible.isEmpty && group.owner.map { model.age(for: $0) != .dontList } == true
                 ? L10n.t("aitools.no_matching") : L10n.t("aitools.conversation_managed")
             return L10n.t("aitools.sessions_summary", group.all.count, AIToolCleanupCopy.bytes(Double(group.totalBytes)), group.visible.count) + " · " + range

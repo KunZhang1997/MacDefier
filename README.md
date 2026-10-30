@@ -40,15 +40,14 @@ An open-source macOS utility for system diagnostics, cleanup, app and AI-tool ma
 brew install xcodegen
 git clone https://github.com/KunZhang1997/MacDefier.git
 cd MacDefier/app
-xcodegen generate
-xcodebuild -project MacDefier.xcodeproj -scheme MacDefier \
-  -configuration Debug -destination 'platform=macOS' \
-  -derivedDataPath build/DerivedData build \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-open build/DerivedData/Build/Products/Debug/MacDefier-Dev.app
+./rebuild_and_launch.sh
 ```
 
-也可打开 `app/MacDefier.xcodeproj`，选择 MacDefier scheme 后运行。Debug 使用 `MacDefier-Dev.app` / `com.macdefier.app.dev`，Release 使用 `MacDefier.app` / `com.macdefier.app`。
+脚本生成 Xcode 工程、构建 Release，并更新 `/Applications/MacDefier.app`。日常运行使用生产 Bundle ID `com.macdefier.app`，保留现有设置和 Keychain 命名空间。Debug 用于临时编译、调试；兼容入口 `install-dev-app.sh` 已转向同一个 Release 安装流程。
+
+本地源码构建默认使用 ad-hoc 签名；正式分发通过 `app/scripts/package-release.sh`，由调用者提供 `SIGN_ID`、`TEAM_ID` 及公证配置。仓库只包含更新验签公钥。
+
+源码可能先于安装包更新；安装包版本与说明以对应 GitHub Release 为准。
 
 ## 检查
 
@@ -58,7 +57,9 @@ open build/DerivedData/Build/Products/Debug/MacDefier-Dev.app
 bash app/scripts/ci.sh
 ```
 
-测试和构建使用本地缓存目录。完整脚本会运行单元测试、AI 端点及传输检查、诊断与磁盘布局检查，再构建应用。
+测试和构建使用隔离缓存目录。完整脚本会运行 CleanupKit、PetArchiveKit、MonitorKit 单元测试，AI 端点及传输检查、诊断与磁盘布局检查，再构建 Debug 和 Release。
+
+卸载助手、更新器和构建生命周期还提供独立检查入口：`app/UninstallHelperKit` 的 `swift test`、`app/scripts/test-update-feed.sh`、`test-app-update-state.sh`、`test-app-update-controller.sh` 和 `bash app/rebuild_and_launch.sh --self-test`。
 
 ## 数据与权限
 
@@ -74,6 +75,8 @@ bash app/scripts/ci.sh
 | `app/CleanupKit/` | 扫描、清理、卸载及保护规则 |
 | `app/MonitorKit/` | 系统资源采样 |
 | `app/PetArchiveKit/` | 宠物包导入与校验 |
+| `app/UninstallHelperKit/` | 卸载助手协议、权限边界、客户端与测试 |
+| `app/UninstallHelper/` | 按需授权的卸载助手入口 |
 | `app/Vendor/ZIPFoundation/` | 固定版本的 ZIPFoundation 依赖 |
 | `app/scripts/` | 测试、构建与打包脚本 |
 
@@ -81,6 +84,6 @@ bash app/scripts/ci.sh
 
 MacDefier 源码使用 [MIT License](LICENSE)。允许使用、修改、分发及商业使用，分发时须保留许可证及版权声明。
 
-第三方组件保留各自许可证和署名，详见 [app/NOTICE](app/NOTICE)：[Stats](https://github.com/exelban/stats)、[PureMac](https://github.com/momenbasel/PureMac)、[ZIPFoundation](https://github.com/weichsel/ZIPFoundation) 使用 MIT；示例宠物素材 [The Robot - Free Sprite](https://opengameart.org/content/the-robot-free-sprite) 使用 CC0。
+第三方组件保留各自许可证和署名，详见 [app/NOTICE](app/NOTICE)：[Stats](https://github.com/exelban/stats)、[PureMac](https://github.com/momenbasel/PureMac)、[ZIPFoundation](https://github.com/weichsel/ZIPFoundation)、[Sparkle](https://github.com/sparkle-project/Sparkle) 使用 MIT；示例宠物素材 [The Robot - Free Sprite](https://opengameart.org/content/the-robot-free-sprite) 使用 CC0。
 
 欢迎通过 [Issues](https://github.com/KunZhang1997/MacDefier/issues) 报告问题，或提交 Pull Request。报告问题时请删除日志中的 API Key 和个人路径等私密信息。

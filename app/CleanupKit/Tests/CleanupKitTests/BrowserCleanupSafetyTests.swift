@@ -43,6 +43,36 @@ final class BrowserCleanupSafetyTests: XCTestCase {
         XCTAssertTrue(specs.flatMap(\.paths).contains { $0.hasSuffix("/Service Worker/CacheStorage") })
     }
 
+    func testCatalogSeparatesProfilesAndDataKindsWithoutBroadChromeRoot() throws {
+        let web = try file("Library/Caches/Google/Chrome/Default/Cache/entry")
+        let code = try file("Library/Caches/Google/Chrome/Profile 2/Code Cache/entry")
+        let storage = try file("Library/Caches/Google/Chrome/Default/Storage/entry")
+        let db = try file("Library/Application Support/Google/Chrome/Default/History")
+        let wal = try file("Library/Application Support/Google/Chrome/Default/History-wal")
+        let sw = try file("Library/Application Support/Google/Chrome/Default/Service Worker/CacheStorage/entry")
+        let specs = BrowserCleanupCatalog.specs(home: home, fm: fm).filter { $0.brand == .chrome }
+        func specFor(_ path: String) -> BrowserCleanupCatalog.Spec? {
+            specs.first { $0.paths.contains { path == $0 || path.hasPrefix($0 + "/") } }
+        }
+        XCTAssertEqual(specFor(web)?.kind, .cache)
+        XCTAssertEqual(specFor(web)?.profile, "Default")
+        XCTAssertEqual(specFor(code)?.profile, "Profile 2")
+        XCTAssertEqual(specFor(storage)?.kind, .siteData)
+        XCTAssertEqual(specFor(sw)?.kind, .siteData)
+        XCTAssertEqual(specFor(db)?.paths, specFor(wal)?.paths)
+        XCTAssertFalse(specs.flatMap(\.paths).contains(home + "/Library/Caches/Google/Chrome"))
+        XCTAssertFalse(specs.flatMap(\.paths).contains { $0.hasSuffix("/Cookies") || $0.hasSuffix("/Login Data") })
+    }
+
+    func testChineseBrowserCacheKeepsRebuildRiskButWebsiteStorageIsCaution() {
+        let cache = CleanableItem(name: "Chrome · 缓存", path: home + "/Library/Caches/Google/Chrome/Default/Cache", bytes: 1024, category: .browsers, isSelected: false, risk: .rebuild)
+        let site = CleanableItem(name: "Chrome · 网站数据", path: home + "/Library/Caches/Google/Chrome/Default/Storage", bytes: 1024, category: .browsers, isSelected: false, risk: .caution)
+        XCTAssertEqual(cache.risk, .rebuild)
+        XCTAssertTrue(cache.isLowRiskBulkEligible)
+        XCTAssertEqual(site.risk, .caution)
+        XCTAssertFalse(site.isLowRiskBulkEligible)
+    }
+
     func testScriptCacheCannotBeReintroducedByStalePreview() throws {
         let path = try file("Library/Application Support/Google/Chrome/Default/Service Worker/ScriptCache/entry")
         XCTAssertNotNil(probe().blockingReason(for: path, home: home))

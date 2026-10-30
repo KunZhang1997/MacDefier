@@ -9,6 +9,7 @@ struct ResidualItem {
     let path: String
     let kind: ResidualKind
     var isSelected = false
+    var canSelect = true
 }
 struct CliDataStub { let path: String }
 struct CliToolStub {
@@ -43,6 +44,14 @@ struct AICandidateStub {
              ResidualItem(path: "/FAKE/Pictures/Example.photoslibrary", kind: .mediaLibrary),
              ResidualItem(path: "/FAKE/Library/Group Containers/shared", kind: .containers)]
         }
+
+        let retained = AppBulkProbe(app: AppStub(canTrashAppBundle: true), items: [
+            ResidualItem(path: "/FAKE/Library/Containers/unverified", kind: .containers, canSelect: false)
+        ], keepUserData: false)
+        retained.selectAllItems()
+        check(!retained.items[0].isSelected, "app bulk excludes unverifiable containers")
+        retained.applyKeepUserData()
+        check(!retained.items[0].isSelected, "app remove-data preset excludes unverifiable containers")
 
         let app = AppBulkProbe(app: AppStub(canTrashAppBundle: true), items: residuals())
         app.applyKeepUserData()

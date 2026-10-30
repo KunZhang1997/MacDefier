@@ -11,15 +11,6 @@ struct MDAIResultCard: View {
     var body: some View {
         let blocks = MDAITextBlocks.blocks(from: stripAIPrefix(text))
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.accent)
-                Text(L10n.t("common.ai_review"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.accent)
-            }
-
             // U4: body height-capped + internal scroll
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -28,11 +19,11 @@ struct MDAIResultCard: View {
                             if let label = block.label {
                                 Text(label)
                                     .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(MDTheme.accent)
+                                    .foregroundStyle(MDTheme.secondary)
                                     .frame(width: 56, alignment: .leading)
                             } else {
                                 Circle()
-                                    .fill(MDTheme.accent.opacity(0.55))
+                                    .fill(MDTheme.tertiary)
                                     .frame(width: 5, height: 5)
                                     .padding(.top, 6)
                             }
@@ -49,22 +40,10 @@ struct MDAIResultCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: mdAIResultBodyMaxHeight, alignment: .top)
-            .mask(
-                // Soft fade when content is tall (hint more below)
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.88),
-                        .init(color: .black.opacity(0.15), location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MDTheme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(MDTheme.surfaceInset, in: RoundedRectangle(cornerRadius: MDTheme.resultCardRadius, style: .continuous))
     }
 
     private func stripAIPrefix(_ raw: String) -> String {

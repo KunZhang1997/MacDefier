@@ -25,8 +25,12 @@ public struct ContainerOwnership: Sendable, Hashable {
     public let applicationBundlePath: String?
     public let confidence: ContainerOwnershipConfidence
     public let evidence: [String]
+    public let applicationBundlePaths: [String]
+    public let teamIdentifiers: [String]
+    public let liveOwnerPaths: [String]
+    public let hasVerifiableApplicationPaths: Bool
 
-    public init(path: String, bundleID: String?, signingIdentifier: String? = nil, teamIdentifier: String? = nil, applicationBundlePath: String? = nil, confidence: ContainerOwnershipConfidence, evidence: [String]) {
+    public init(path: String, bundleID: String?, signingIdentifier: String? = nil, teamIdentifier: String? = nil, applicationBundlePath: String? = nil, confidence: ContainerOwnershipConfidence, evidence: [String], applicationBundlePaths: [String] = [], teamIdentifiers: [String] = [], liveOwnerPaths: [String] = [], hasVerifiableApplicationPaths: Bool = false) {
         self.path = path
         self.bundleID = bundleID
         self.signingIdentifier = signingIdentifier
@@ -34,6 +38,10 @@ public struct ContainerOwnership: Sendable, Hashable {
         self.applicationBundlePath = applicationBundlePath
         self.confidence = confidence
         self.evidence = evidence
+        self.applicationBundlePaths = Array(Set(applicationBundlePaths + [applicationBundlePath].compactMap { $0 })).sorted()
+        self.teamIdentifiers = Array(Set(teamIdentifiers + [teamIdentifier].compactMap { $0 })).sorted()
+        self.liveOwnerPaths = Array(Set(liveOwnerPaths)).sorted()
+        self.hasVerifiableApplicationPaths = hasVerifiableApplicationPaths
     }
 }
 
@@ -82,7 +90,8 @@ public enum ContainerOwnershipScanner {
         let xattrID = xattrString(path: normalized, name: "com.apple.containermanager.identifier")
         let signingIDs = stringValues(named: "signingIdentifier", in: metadata)
         let signingID = signingIDs.first
-        let teamID = stringValue(named: "teamIdentifier", in: metadata)
+        let teamIDs = stringValues(named: "teamIdentifier", in: metadata)
+        let teamID = teamIDs.first
         let appPaths = stringValues(named: "application_bundle", in: metadata)
         let appPath = appPaths.first
         let nameID = AppOwnership.looksLikeReverseDNS(name) ? name : nil
@@ -104,13 +113,14 @@ public enum ContainerOwnershipScanner {
             return ContainerOwnership(path: normalized, bundleID: metaID ?? xattrID ?? signingID,
                                       signingIdentifier: signingID, teamIdentifier: teamID,
                                       applicationBundlePath: appPath, confidence: .protected,
-                                      evidence: evidence + ["系统或 MacDefier 容器"])
+                                      evidence: evidence + ["系统或 MacDefier 容器"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs)
         }
-        guard uniqueIDs.count == 1, let bundleID = uniqueIDs.first, AppOwnership.looksLikeReverseDNS(bundleID) else {
+        guard uniqueIDs.count == 1, teamIDs.count <= 1,
+              let bundleID = uniqueIDs.first, AppOwnership.looksLikeReverseDNS(bundleID) else {
             return ContainerOwnership(path: normalized, bundleID: metaID ?? xattrID ?? signingID,
                                       signingIdentifier: signingID, teamIdentifier: teamID,
                                       applicationBundlePath: appPath, confidence: .ambiguous,
-                                      evidence: evidence.isEmpty ? ["缺少可验证的归属 metadata"] : evidence + ["归属 metadata 冲突"])
+                                      evidence: evidence.isEmpty ? ["缺少可验证的归属 metadata"] : evidence + ["归属 metadata 冲突"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs)
         }
         if isGroupContainer {
             // Groups can be shared.  Until every consumer is proven absent, listing is
@@ -118,12 +128,18 @@ public enum ContainerOwnershipScanner {
             return ContainerOwnership(path: normalized, bundleID: bundleID,
                                       signingIdentifier: signingID, teamIdentifier: teamID,
                                       applicationBundlePath: appPath, confidence: .ambiguous,
-                                      evidence: evidence + ["Group Container 可能被多个 App 共享"])
+                                      evidence: evidence + ["Group Container 可能被多个 App 共享"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs)
+        }
+        guard metaID?.lowercased() == bundleID || xattrID?.lowercased() == bundleID || signingID?.lowercased() == bundleID else {
+            return ContainerOwnership(path: normalized, bundleID: bundleID,
+                                      signingIdentifier: signingID, teamIdentifier: teamID,
+                                      applicationBundlePath: appPath, confidence: .ambiguous,
+                                      evidence: evidence + ["仅目录名推断，不能删除"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs)
         }
         let originalApps = appPaths.compactMap(rootApplicationPath)
-        if hasLiveApp(bundleID: bundleID, installed: installed)
-            || originalApps.contains(where: { applicationPathState($0) == .present })
-            || installed.contains(where: { app in
+        let verifiablePaths = !appPaths.isEmpty && originalApps.count == appPaths.count
+            && originalApps.allSatisfy(isStableInstallationPath)
+        let renamedApps = installed.filter { app in
                 originalApps.contains { original in
                     // A renamed/localized app or a duplicate name is enough to protect
                     // data. This does not grant ownership to the uninstall matcher.
@@ -131,44 +147,40 @@ public enum ContainerOwnershipScanner {
                     return !oldName.isEmpty && (oldName == app.name.mdNormalizedForMatching()
                         || oldName == URL(fileURLWithPath: app.path).deletingPathExtension().lastPathComponent.mdNormalizedForMatching())
                 }
-            }) {
+            }.map(\.path)
+        let liveOwners = liveAppPaths(bundleID: bundleID, installed: installed)
+            + originalApps.filter { applicationPathState($0) == .present } + renamedApps
+        if !liveOwners.isEmpty {
             return ContainerOwnership(path: normalized, bundleID: bundleID,
                                       signingIdentifier: signingID, teamIdentifier: teamID,
                                       applicationBundlePath: appPath, confidence: .installedOwner,
-                                      evidence: evidence + ["归属应用或其主程序仍存在"])
-        }
-        guard metaID?.lowercased() == bundleID || xattrID?.lowercased() == bundleID || signingID?.lowercased() == bundleID else {
-            return ContainerOwnership(path: normalized, bundleID: bundleID,
-                                      signingIdentifier: signingID, teamIdentifier: teamID,
-                                      applicationBundlePath: appPath, confidence: .ambiguous,
-                                      evidence: evidence + ["仅目录名推断，不能删除"])
+                                      evidence: evidence + ["归属应用或其主程序仍存在"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs, liveOwnerPaths: liveOwners, hasVerifiableApplicationPaths: verifiablePaths)
         }
         // A missing inventory match is not evidence of uninstall. Require a recorded,
         // local application location that is conclusively absent; unreadable paths,
         // detached volumes, temporary builds and metadata without an owner stay unknown.
-        guard !appPaths.isEmpty, originalApps.count == appPaths.count,
-              originalApps.allSatisfy({ isStableInstallationPath($0) && applicationPathState($0) == .missing }) else {
+        guard verifiablePaths, originalApps.allSatisfy({ applicationPathState($0) == .missing }) else {
             return ContainerOwnership(path: normalized, bundleID: bundleID,
                                       signingIdentifier: signingID, teamIdentifier: teamID,
                                       applicationBundlePath: appPath, confidence: .ambiguous,
-                                      evidence: evidence + ["缺少可核验的原应用位置，不能判为卸载残留"])
+                                      evidence: evidence + ["缺少可核验的原应用位置，不能判为卸载残留"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs)
         }
         return ContainerOwnership(path: normalized, bundleID: bundleID,
                                   signingIdentifier: signingID, teamIdentifier: teamID,
                                   applicationBundlePath: appPath, confidence: .verifiedOrphan,
-                                  evidence: evidence + ["原应用位置已不存在，未找到已安装的归属应用"])
+                                  evidence: evidence + ["原应用位置已不存在，未找到已安装的归属应用"], applicationBundlePaths: appPaths, teamIdentifiers: teamIDs, hasVerifiableApplicationPaths: true)
     }
 
-    private static func hasLiveApp(bundleID: String, installed: [InstalledApp]) -> Bool {
-        if installed.contains(where: { AppOwnership.bundleIDMatches(folderName: bundleID, bundleID: $0.bundleIdentifier) }) {
-            return true
-        }
+    private static func liveAppPaths(bundleID: String, installed: [InstalledApp]) -> [String] {
+        var paths = installed.filter {
+            AppOwnership.bundleIDMatches(folderName: bundleID, bundleID: $0.bundleIdentifier)
+        }.map(\.path)
         #if canImport(AppKit)
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID), fm.fileExists(atPath: url.path) {
-            return true
+            paths.append(rootApplicationPath(url.path) ?? url.path)
         }
         #endif
-        return false
+        return paths
     }
 
     /// Use the outer app, not an embedded helper that an update may have replaced.

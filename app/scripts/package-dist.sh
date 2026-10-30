@@ -3,6 +3,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIFECYCLE="$ROOT/app/scripts/single_app_build.py"
+if [[ "${SINGLE_APP_PRODUCT:-}" != MacDefier ]]; then
+  exec python3 "$LIFECYCLE" run /bin/bash "$0" "$@"
+fi
 APP_DIR="$ROOT/app"
 DIST_TRIAL="$ROOT/dist/trial"
 VER="${1:-0.1.0}"
@@ -12,8 +16,9 @@ ZIP_OUT="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}.zip"
 DMG_OUT="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}.dmg"
 ZIP_SUM="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}.sha256"
 DMG_SUM="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}.dmg.sha256"
-SHARE_DIR="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}-share"
+SHARE_DIR="$SINGLE_APP_WORK/share"
 NOTICE_SRC="$APP_DIR/NOTICE"
+ENTITLEMENTS="$APP_DIR/MacDefier/MacDefier.entitlements"
 
 # Refuse release-reserved basenames at dist root
 for reserved in \
@@ -33,6 +38,7 @@ case "$ZIP_OUT$DMG_OUT" in
 esac
 
 test -f "$NOTICE_SRC" || { echo "ERROR: missing NOTICE: $NOTICE_SRC" >&2; exit 1; }
+test -f "$ENTITLEMENTS" || { echo "ERROR: missing entitlements: $ENTITLEMENTS" >&2; exit 1; }
 
 echo "==> xcodegen"
 cd "$APP_DIR"
@@ -48,15 +54,13 @@ test -d "$PRODUCT" || { echo "missing $PRODUCT"; exit 1; }
 
 echo "==> package dist/trial (unsigned — not for public ship)"
 # Do not leave loose MacDefier.app at dist root
-rm -rf "$ROOT/dist/MacDefier.app" "$SHARE_DIR"
+
 mkdir -p "$DIST_TRIAL" "$SHARE_DIR"
 
 STAGE_APP="$SHARE_DIR/MacDefier.app"
 ditto "$PRODUCT" "$STAGE_APP"
-xattr -cr "$STAGE_APP" 2>/dev/null || true
-codesign --force --deep --sign - "$STAGE_APP"
 
-# NOTICE required in App Resources and zip root
+# Finish App resources before signing; later writes would invalidate the seal.
 ditto "$NOTICE_SRC" "$STAGE_APP/Contents/Resources/NOTICE"
 test -f "$STAGE_APP/Contents/Resources/NOTICE" || { echo "ERROR: NOTICE not in app Resources" >&2; exit 1; }
 
@@ -66,6 +70,12 @@ if find "$STAGE_APP" \( -name '*.debug.dylib' -o -name '__preview.dylib' \) | gr
   find "$STAGE_APP" \( -name '*.debug.dylib' -o -name '__preview.dylib' \) >&2
   exit 1
 fi
+
+xattr -cr "$STAGE_APP" 2>/dev/null || true
+# Sign nested code first, then apply the main App's own entitlements.
+codesign --force --deep --sign - "$STAGE_APP"
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "$STAGE_APP"
+codesign --verify --deep --strict --verbose=2 "$STAGE_APP"
 
 cat > "$SHARE_DIR/使用说明.txt" << EOF
 MacDefier ${VER} — 试用包（未公证 / unsigned）
@@ -92,7 +102,7 @@ rm -f "$ZIP_OUT"
 )
 test -f "$ZIP_OUT" || exit 1
 
-DMG_STAGE="$DIST_TRIAL/dmg-stage"
+DMG_STAGE="$SINGLE_APP_WORK/dmg-stage"
 rm -rf "$DMG_STAGE" "$DMG_OUT"
 mkdir -p "$DMG_STAGE"
 ditto "$STAGE_APP" "$DMG_STAGE/MacDefier.app"

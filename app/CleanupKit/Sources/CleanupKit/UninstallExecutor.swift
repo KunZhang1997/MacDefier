@@ -1,5 +1,4 @@
-// UninstallExecutor — identity-bound, unprivileged Trash moves.
-// Permission failures require a manual Finder action; no root shell fallback.
+// UninstallExecutor — identity-bound Trash moves with an app-only authorized fallback.
 
 import AppKit
 import Darwin
@@ -38,8 +37,8 @@ public actor UninstallExecutor {
 
         let identity = targetIdentity ?? legacyIdentity(appBundlePath)
         let mainSelected = selected.contains { Self.normalize($0.path) == Self.normalize(appBundlePath) }
-        var snapshots: [String: UninstallFileBoundary.Snapshot] = [:]
-        for item in selected { snapshots[item.path] = try? UninstallFileBoundary.snapshot(item.path) }
+        var snapshots: [String: Result<UninstallFileBoundary.Snapshot, Error>] = [:]
+        for item in selected { snapshots[item.path] = Result { try UninstallFileBoundary.snapshot(item.path) } }
         // Capture identities before quitting: quit hooks must not replace the selected app.
         if mainSelected {
             let quit = await quitIfRunning(appPath: appBundlePath, force: forceQuitIfNeeded)
@@ -52,8 +51,9 @@ public actor UninstallExecutor {
         }
 
         var mainMoved = !mainSelected
+        var authorizationCancelled = false
         for item in selected {
-            guard !Task.isCancelled else {
+            guard !Task.isCancelled && !authorizationCancelled else {
                 result.errors.append("cancelled")
                 result.failedPaths.append(item.path)
                 continue
@@ -65,16 +65,24 @@ public actor UninstallExecutor {
                 continue
             }
             do {
-                guard let source = snapshots[item.path] else {
+                guard let snapshot = snapshots[item.path] else {
                     throw UninstallFileBoundary.Failure(code: "uninstall_identity_changed", path: item.path)
                 }
-                try trashUserLevel(source, target: identity)
+                let source = try snapshot.get()
+                if isMain, identity.hasVerifiedExtensions, !identity.mainBundleMatchesSnapshot(source) {
+                    throw UninstallFileBoundary.Failure(code: "uninstall_identity_changed", path: item.path)
+                }
+                try await trashUserLevel(source, target: identity)
                 if isMain { mainMoved = true }
                 result.cleanedCount += 1
                 result.movedToTrashBytes &+= item.bytes
                 result.trashedPaths.append(item.path)
                 result.succeededPaths.append(item.path)
             } catch {
+                if let failure = error as? UninstallFileBoundary.Failure,
+                   ["uninstall_authorization_cancelled", "uninstall_system_result_unknown", "uninstall_helper_recovery_required"].contains(failure.code) {
+                    authorizationCancelled = true
+                }
                 result.errors.append(error.localizedDescription)
                 result.failedPaths.append(item.path)
             }
@@ -89,23 +97,21 @@ public actor UninstallExecutor {
 
     // MARK: - User level
 
-    private func trashUserLevel(_ source: UninstallFileBoundary.Snapshot, target: UninstallTargetIdentity) throws {
+    private func trashUserLevel(_ source: UninstallFileBoundary.Snapshot, target: UninstallTargetIdentity) async throws {
         let path = source.path
+        try UninstallFileBoundary.validate(source)
         // 软链：安全校验对解析后的目标做（且 resolved 必须在允许根内），删除操作用原始 URL（系统删链接本身）
         let url = URL(fileURLWithPath: path)
         let resolved = url.resolvingSymlinksInPath().path
-        let exists = fm.fileExists(atPath: path)
-        // fileExists 对断链软链可能 false；仍允许 trash 链接自身
-        let isSymlink = (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
-        guard exists || isSymlink else {
-            throw TrashError.missing(path)
-        }
         // Executor hard gate: never trash protected / non-removable bundles
         if AppInventory.isProtectedAppBundle(path) || AppInventory.isProtectedAppBundle(resolved) {
-            throw TrashError.blocked(path)
+            throw UninstallFileBoundary.Failure(code: "blocked", path: path)
         }
         guard isSafe(resolved, target: target) else {
-            throw TrashError.blocked(path)
+            if let reason = PathGate.uninstallContainerRetentionReason(resolved, target: target) {
+                throw UninstallFileBoundary.Failure(code: "uninstall_" + reason, path: path)
+            }
+            throw UninstallFileBoundary.Failure(code: "blocked", path: path)
         }
         if Self.normalize(path) == Self.normalize(target.originalAppPath),
            source.item.kind != mode_t(S_IFDIR) {
@@ -116,13 +122,18 @@ public actor UninstallExecutor {
             throw UninstallFileBoundary.Failure(code: "uninstall_identity_changed", path: path)
         }
 
-        guard UninstallFileBoundary.stillMatches(source) else {
-            throw UninstallFileBoundary.Failure(code: "uninstall_identity_changed", path: path)
-        }
+        try UninstallFileBoundary.validate(source)
         if let reason = AIToolCleanupGuard.live.blockingReasonForExplicitRemoval(source, home: fm.homeDirectoryForCurrentUser.path) {
             throw UninstallFileBoundary.Failure(code: "ai_cleanup_" + reason, path: path)
         }
-        _ = try UninstallFileBoundary.move(source)
+        do { _ = try await UninstallSystemTrash.move(source) }
+        catch let failure as UninstallFileBoundary.Failure {
+            guard Self.normalize(path) == Self.normalize(target.originalAppPath),
+                  source.parentPath == "/Applications",
+                  failure.path == source.path, failure.operation == "renameatx_np",
+                  ["uninstall_permission_denied", "uninstall_operation_not_permitted"].contains(failure.code) else { throw failure }
+            try await UninstallPrivilegedTrash.move(source)
+        }
     }
 
     // MARK: - Quit running app

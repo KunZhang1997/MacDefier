@@ -20,20 +20,20 @@ struct UninstallSheet: View {
         case loading, preview, working, done
     }
 
-    private var selectedCount: Int { items.filter(\.isSelected).count }
+    private var selectedCount: Int { items.filter { $0.canSelect && $0.isSelected }.count }
     private var selectedBytes: UInt64 {
-        items.filter(\.isSelected).reduce(0) { $0 + $1.bytes }
+        items.filter { $0.canSelect && $0.isSelected }.reduce(0) { $0 + $1.bytes }
     }
     private var retainedItems: [ResidualItem] {
-        items.filter { $0.kind != .appBundle && !$0.isSelected }
+        items.filter { $0.kind != .appBundle && (!$0.canSelect || !$0.isSelected) }
     }
     private var retainedBytes: UInt64 {
         retainedItems.reduce(0) { $0 + $1.bytes }
     }
     private var selectionSummaryTitle: String {
         guard selectedCount > 0 else { return L10n.t("cleanup.none_selected") }
-        let hasApp = items.contains { $0.isSelected && $0.kind == .appBundle }
-        let hasData = items.contains { $0.isSelected && $0.kind != .appBundle }
+        let hasApp = items.contains { $0.canSelect && $0.isSelected && $0.kind == .appBundle }
+        let hasData = items.contains { $0.canSelect && $0.isSelected && $0.kind != .appBundle }
         if hasData {
             return AppLanguage.current.isEnglish
                 ? (hasApp ? "App and selected data" : "Selected app data only")
@@ -95,6 +95,7 @@ struct UninstallSheet: View {
         }
         .frame(width: 640, height: 560)
         .background(Color(nsColor: .windowBackgroundColor))
+        .interactiveDismissDisabled(isWorking)
         .task {
             await loadResiduals()
         }
@@ -150,6 +151,7 @@ struct UninstallSheet: View {
             }
             Spacer()
             Button(L10n.t("uninstall.close")) { onClose() }
+                .disabled(isWorking)
                 .keyboardShortcut(.cancelAction)
         }
         .padding(16)
@@ -266,8 +268,8 @@ struct UninstallSheet: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(MDTheme.label)
                     Text(AppLanguage.current.isEnglish
-                         ? "Sheet only lists removable leftovers (app + related). Some list bulk may be shared/system paths not shown here."
-                         : "本窗只列可勾选的主程序与关联残留；列表体积可能含共享/系统路径，不会全部出现在这里。")
+                         ? "This preview lists the app, related items and data that must be retained. The list size may also include shared or system paths not shown here."
+                         : "本窗列出主程序、关联项目及必须保留的数据；列表体积还可能含未在这里显示的共享或系统路径。")
                         .font(.system(size: 10))
                         .foregroundStyle(MDTheme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -283,11 +285,14 @@ struct UninstallSheet: View {
     }
 
     private func residualRow(_ item: ResidualItem, showSeparator: Bool) -> some View {
-        MDListRowChrome(showSeparator: showSeparator, separatorLeading: 40, verticalPadding: MDTheme.rowVerticalPadding) {
+        let retentionMessage = item.retentionReason.map { L10n.t("uninstall.error." + $0) }
+        return MDListRowChrome(showSeparator: showSeparator, separatorLeading: 40, verticalPadding: MDTheme.rowVerticalPadding) {
             MDCheckbox(item.name, isOn: Binding(
-                get: { item.isSelected },
+                get: { item.canSelect && item.isSelected },
                 set: { newVal in
-                    if let i = items.firstIndex(where: { $0.id == item.id }) {
+                    if let i = items.firstIndex(where: { $0.id == item.id }),
+                       items[i].canSelect,
+                       items[i].kind != .appBundle || app.canTrashAppBundle {
                         items[i].isSelected = newVal
                     }
                 }
@@ -312,6 +317,12 @@ struct UninstallSheet: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .mdCopyPathMenu(item.path)
+                        if let retentionMessage {
+                            Text(retentionMessage)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     Spacer(minLength: 8)
                     Text(item.formattedSize)
@@ -320,8 +331,9 @@ struct UninstallSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .disabled(item.kind == .appBundle && !app.canTrashAppBundle)
-            .help(item.note)
+            .disabled(!item.canSelect || (item.kind == .appBundle && !app.canTrashAppBundle))
+            .help(retentionMessage ?? item.note)
+            .accessibilityHint(retentionMessage ?? item.note)
             .accessibilityIdentifier("uninstall.item.\(item.id)")
         }
     }
@@ -470,16 +482,18 @@ struct UninstallSheet: View {
     }
 
     private func canBulkSelect(_ item: ResidualItem) -> Bool {
+        guard item.canSelect else { return false }
         if item.kind == .mediaLibrary || item.path.contains("/Library/Group Containers/") { return false }
         return item.kind != .appBundle || app.canTrashAppBundle
     }
 
     private func selectAllItems() {
         var updated = items
-        for i in updated.indices where canBulkSelect(updated[i]) {
-            updated[i].isSelected = true
+        for i in updated.indices {
+            if !updated[i].canSelect { updated[i].isSelected = false }
+            else if canBulkSelect(updated[i]) { updated[i].isSelected = true }
         }
-        if updated.contains(where: { $0.isSelected && [.preferences, .containers, .support, .mediaLibrary].contains($0.kind) }) {
+        if updated.contains(where: { $0.canSelect && $0.isSelected && [.preferences, .containers, .support, .mediaLibrary].contains($0.kind) }) {
             // Direct state assignment does not invoke the preset control's binding setter.
             keepUserData = false
         }
@@ -495,6 +509,10 @@ struct UninstallSheet: View {
     private func applyKeepUserData() {
         var updated = items
         for i in updated.indices {
+            guard updated[i].canSelect else {
+                updated[i].isSelected = false
+                continue
+            }
             switch updated[i].kind {
             case .appBundle:
                 // 可卸主程序默认勾；系统 App 列表里通常没有这一项
@@ -518,10 +536,11 @@ struct UninstallSheet: View {
     }
 
     private func runUninstall(forceQuitIfNeeded: Bool = false) async {
+        guard !isWorking, selectedCount > 0 else { return }
         isWorking = true
         errorEntries = []
         phase = .working
-        let snapshot = items
+        let snapshot = items.filter(\.canSelect)
         let r = await SoftwareService.shared.uninstall(
             app: app,
             items: snapshot,

@@ -87,163 +87,72 @@ enum BrowserCleanupCatalog {
     struct Spec {
         let brand: BrowserBrand
         let kind: BrowserDataKind
+        let detail: String
+        let profile: String?
         let paths: [String]
     }
 
     static func specs(home: String, fm: FileManager) -> [Spec] {
         var out: [Spec] = []
-        out.append(contentsOf: safariSpecs(home: home))
-        out.append(contentsOf: chromiumSpecs(
-            brand: .chrome,
-            home: home,
-            fm: fm,
-            cacheRoots: [
-                "\(home)/Library/Caches/Google/Chrome"
-            ],
-            supportRoot: "\(home)/Library/Application Support/Google/Chrome"
-        ))
-        out.append(contentsOf: chromiumSpecs(
-            brand: .edge,
-            home: home,
-            fm: fm,
-            cacheRoots: [
-                "\(home)/Library/Caches/Microsoft Edge",
-                "\(home)/Library/Caches/com.microsoft.edgemac"
-            ],
-            supportRoot: "\(home)/Library/Application Support/Microsoft Edge"
-        ))
-        // Edge alternate support folder on some installs
-        let edgeAlt = "\(home)/Library/Application Support/Microsoft Edge"
-        if !fm.fileExists(atPath: edgeAlt) {
-            out.append(contentsOf: chromiumSpecs(
-                brand: .edge,
-                home: home,
-                fm: fm,
-                cacheRoots: [],
-                supportRoot: "\(home)/Library/Application Support/com.microsoft.edgemac"
-            ))
+        func add(_ brand: BrowserBrand, _ kind: BrowserDataKind, _ detail: String,
+                 _ profile: String? = nil, _ paths: [String]) {
+            out.append(Spec(brand: brand, kind: kind, detail: detail, profile: profile, paths: paths))
         }
-        return out
-    }
-
-    private static func safariSpecs(home: String) -> [Spec] {
-        [
-            Spec(brand: .safari, kind: .cache, paths: [
-                "\(home)/Library/Caches/com.apple.Safari",
-                "\(home)/Library/Caches/CloudKit/com.apple.Safari",
-                "\(home)/Library/WebKit/com.apple.Safari",
-                "\(home)/Library/HTTPStorages/com.apple.Safari"
-            ]),
-            Spec(brand: .safari, kind: .history, paths: [
-                "\(home)/Library/Safari/History.db",
-                "\(home)/Library/Safari/History.db-wal",
-                "\(home)/Library/Safari/History.db-shm",
-                "\(home)/Library/Safari/HistoryIndex.sk",
-                "\(home)/Library/Safari/RecentlyClosedTabs.plist",
-                "\(home)/Library/Safari/TopSites.db",
-                "\(home)/Library/Safari/LastSession.plist"
-            ]),
-            Spec(brand: .safari, kind: .downloads, paths: [
-                "\(home)/Library/Safari/Downloads.plist"
-            ]),
-            // Safari cookies: `~/Library/Cookies/Cookies.binarycookies` 是多 App 共用的系统
-            // Cookie 罐（非 Safari 独占）。作为可清项会登出全机登录态 → 不生成可执行项，
-            // 引导用户到 Safari / 系统设置管理。
-            Spec(brand: .safari, kind: .siteData, paths: [
-                "\(home)/Library/Safari/LocalStorage",
-                "\(home)/Library/Safari/Databases",
-                "\(home)/Library/Safari/IndexedDB"
-            ])
-            // passwords: Safari keychain — no file-level fake “clear passwords”
+        add(.safari, .cache, "webCache", nil, ["\(home)/Library/Caches/com.apple.Safari"])
+        add(.safari, .siteData, "browserStorage", nil, ["\(home)/Library/WebKit/com.apple.Safari"])
+        add(.safari, .siteData, "browserStorage", nil, ["\(home)/Library/HTTPStorages/com.apple.Safari"])
+        add(.safari, .history, "history", nil, ["\(home)/Library/Safari/History.db", "\(home)/Library/Safari/History.db-wal", "\(home)/Library/Safari/History.db-shm"])
+        add(.safari, .history, "historyIndex", nil, ["\(home)/Library/Safari/HistoryIndex.sk"])
+        add(.safari, .history, "recentTabs", nil, ["\(home)/Library/Safari/RecentlyClosedTabs.plist"])
+        add(.safari, .history, "topSites", nil, ["\(home)/Library/Safari/TopSites.db"])
+        add(.safari, .history, "lastSession", nil, ["\(home)/Library/Safari/LastSession.plist"])
+        add(.safari, .downloads, "downloads", nil, ["\(home)/Library/Safari/Downloads.plist"])
+        for leaf in ["LocalStorage", "Databases", "IndexedDB"] {
+            add(.safari, .siteData, "siteStorage", nil, ["\(home)/Library/Safari/\(leaf)"])
+        }
+        let browsers: [(BrowserBrand, String, [String])] = [
+            (.chrome, "\(home)/Library/Application Support/Google/Chrome", ["\(home)/Library/Caches/Google/Chrome"]),
+            (.edge, "\(home)/Library/Application Support/Microsoft Edge", ["\(home)/Library/Caches/Microsoft Edge", "\(home)/Library/Caches/com.microsoft.edgemac"]),
+            (.edge, "\(home)/Library/Application Support/com.microsoft.edgemac", [])
         ]
-    }
-
-    private static func chromiumSpecs(
-        brand: BrowserBrand,
-        home: String,
-        fm: FileManager,
-        cacheRoots: [String],
-        supportRoot: String
-    ) -> [Spec] {
-        var cachePaths = cacheRoots
-        var history: [String] = []
-        var downloads: [String] = []
-        var site: [String] = []
-        var passwords: [String] = []
-
-        let profiles = chromiumProfiles(in: supportRoot, fm: fm)
-        for profile in profiles {
-            cachePaths += [
-                "\(profile)/Cache",
-                "\(profile)/Code Cache",
-                "\(profile)/GPUCache",
-                "\(profile)/DawnCache",
-                "\(profile)/DawnGraphiteCache",
-                "\(profile)/DawnWebGPUCache",
-                "\(profile)/GrShaderCache",
-                "\(profile)/ShaderCache",
-                "\(profile)/Service Worker/CacheStorage"
-            ]
-            history += [
-                "\(profile)/History",
-                "\(profile)/History-journal",
-                "\(profile)/Visited Links",
-                "\(profile)/Top Sites",
-                "\(profile)/Top Sites-journal"
-            ]
-            downloads += [
-                "\(profile)/DownloadMetadata",
-                "\(profile)/Download Service"
-            ]
-            // 产品决策：Cookie 不进入清理列表（PathGate 继续硬拒）；不提供 Cookie 清理功能
-            site += [
-                "\(profile)/Local Storage",
-                "\(profile)/Session Storage",
-                "\(profile)/IndexedDB",
-                "\(profile)/File System",
-                "\(profile)/Service Worker/Database"
-            ]
-            passwords += [
-                "\(profile)/Login Data",
-                "\(profile)/Login Data-journal",
-                "\(profile)/Login Data For Account",
-                "\(profile)/Web Data",
-                "\(profile)/Web Data-journal"
-            ]
-        }
-
-        // Global Chromium shader/component caches next to profiles
-        if fm.fileExists(atPath: supportRoot) {
-            cachePaths += [
-                "\(supportRoot)/ShaderCache",
-                "\(supportRoot)/GrShaderCache",
-                "\(supportRoot)/GraphiteDawnCache",
-                "\(supportRoot)/component_crx_cache",
-                "\(supportRoot)/extensions_crx_cache"
-            ]
-        }
-
-        // Cookie / 密码库：不进清理列表（PathGate 硬拒；产品不提供清理入口）
-        _ = passwords
-        return [
-            Spec(brand: brand, kind: .cache, paths: cachePaths),
-            Spec(brand: brand, kind: .history, paths: history),
-            Spec(brand: brand, kind: .downloads, paths: downloads),
-            Spec(brand: brand, kind: .siteData, paths: site)
-        ]
-    }
-
-    private static func chromiumProfiles(in supportRoot: String, fm: FileManager) -> [String] {
-        guard fm.fileExists(atPath: supportRoot),
-              let names = try? fm.contentsOfDirectory(atPath: supportRoot)
-        else { return [] }
-        return names
-            .filter { $0 == "Default" || $0.hasPrefix("Profile ") || $0 == "Guest Profile" || $0 == "System Profile" }
-            .map { "\(supportRoot)/\($0)" }
-            .filter { path in
-                var isDir: ObjCBool = false
-                return fm.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+        for (brand, supportRoot, cacheRoots) in browsers {
+            let profileNames: (String) -> [String] = { root in
+                (try? fm.contentsOfDirectory(atPath: root))?.filter {
+                    $0 == "Default" || $0.hasPrefix("Profile ") || $0 == "Guest Profile" || $0 == "System Profile"
+                }.sorted() ?? []
             }
+            for root in cacheRoots {
+                for profile in profileNames(root) {
+                    let base = "\(root)/\(profile)"
+                    for (leaf, detail) in [("Cache", "webCache"), ("Code Cache", "codeCache"), ("image_cache", "imageCache"), ("GPUCache", "graphicsCache")] {
+                        add(brand, .cache, detail, profile, ["\(base)/\(leaf)"])
+                    }
+                    add(brand, .siteData, "browserStorage", profile, ["\(base)/Storage"])
+                }
+            }
+            for profile in profileNames(supportRoot) {
+                let base = "\(supportRoot)/\(profile)"
+                for (leaf, detail) in [("Cache", "webCache"), ("Code Cache", "codeCache"), ("GPUCache", "graphicsCache"), ("DawnCache", "graphicsCache"), ("DawnGraphiteCache", "graphicsCache"), ("DawnWebGPUCache", "graphicsCache"), ("GrShaderCache", "graphicsCache"), ("ShaderCache", "graphicsCache")] {
+                    add(brand, .cache, detail, profile, ["\(base)/\(leaf)"])
+                }
+                // CacheStorage contains website/extension offline data, not just disposable HTTP cache.
+                add(brand, .siteData, "serviceWorkerStorage", profile, ["\(base)/Service Worker/CacheStorage"])
+                add(brand, .history, "history", profile, ["\(base)/History", "\(base)/History-journal", "\(base)/History-wal", "\(base)/History-shm"])
+                add(brand, .history, "visitedLinks", profile, ["\(base)/Visited Links"])
+                add(brand, .history, "topSites", profile, ["\(base)/Top Sites", "\(base)/Top Sites-journal", "\(base)/Top Sites-wal", "\(base)/Top Sites-shm"])
+                for leaf in ["DownloadMetadata", "Download Service"] {
+                    add(brand, .downloads, "downloads", profile, ["\(base)/\(leaf)"])
+                }
+                for leaf in ["Local Storage", "Session Storage", "IndexedDB", "File System", "Service Worker/Database"] {
+                    add(brand, .siteData, "siteStorage", profile, ["\(base)/\(leaf)"])
+                }
+            }
+            for leaf in ["ShaderCache", "GrShaderCache", "GraphiteDawnCache", "component_crx_cache", "extensions_crx_cache"] {
+                add(brand, .cache, leaf.contains("cache") ? "componentCache" : "graphicsCache", nil, ["\(supportRoot)/\(leaf)"])
+            }
+        }
+        // Cookie and credential databases never become cleanup candidates.
+        return out
     }
 
     /// Roots claimed by browser scan — exclude from generic userCache listing

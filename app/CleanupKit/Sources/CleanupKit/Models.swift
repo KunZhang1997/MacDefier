@@ -155,6 +155,9 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
     public let risk: CleanupRisk
     /// Additional paths trashed with this item (browser multi-path, etc.)
     public let extraPaths: [String]
+    public let browserKind: BrowserDataKind?
+    public let browserDetail: String?
+    public let browserProfile: String?
     /// Derived only from immutable name/path/category/risk, never from selection.
     /// Calculate once, not on every SwiftUI body or bulk-selection pass.
     public private(set) var isLowRiskBulkEligible: Bool = false
@@ -183,7 +186,10 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
         risk: CleanupRisk? = nil,
         parentPath: String? = nil,
         extraPaths: [String] = [],
-        sizeIsLowerBound: Bool = false
+        sizeIsLowerBound: Bool = false,
+        browserKind: BrowserDataKind? = nil,
+        browserDetail: String? = nil,
+        browserProfile: String? = nil
     ) {
         let explained = ItemExplainer.explain(name: name, path: path, category: category, appName: appName)
         self.id = id
@@ -195,6 +201,9 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
         self.appName = appName
         self.parentPath = parentPath
         self.extraPaths = extraPaths
+        self.browserKind = browserKind
+        self.browserDetail = browserDetail
+        self.browserProfile = browserProfile
         self.displayTitle = displayTitle ?? explained.title
         self.whatIsIt = whatIsIt ?? explained.what
         self.ifCleaned = ifCleaned ?? explained.effect

@@ -198,24 +198,30 @@ struct CleanupView: View {
                     MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
                         title: L10n.t("scan.card.resume"),
                         detail: cleanup.groups.isEmpty ? nil : L10n.t("scan.card.saved"),
-                        compact: !cleanup.groups.isEmpty, action: {
+                        compact: true, action: {
                             cleanup.continueScan {
                                 Task { @MainActor in await CleanupAIScan.enrichIfNeeded(service: cleanup, useAI: aiConfigured) }
                             }
                         }, identifier: "cleanup.resumeScan")
                         .contextMenu { Button(L10n.t("common.rescan")) { runScan() } }
-                        .padding(MDTheme.pagePadding)
+                        .padding(.horizontal, MDTheme.pagePadding)
+                        .padding(.top, MDTheme.pagePadding)
+                        .padding(.bottom, MDTheme.resultCardGap)
                     if !cleanup.groups.isEmpty { previewState }
+                    else { Spacer(minLength: 0) }
                 }
             } else { idleState }
         case .scanning:
             VStack(spacing: 0) {
                 MDScanActivityCard(kind: .cleanup, journey: cleanup.scanJourney, clock: scanAnimation,
                     title: cleanup.scanHint.isEmpty ? L10n.t("common.scanning") : ScanProgressL10n.localize(cleanup.scanHint),
-                    compact: !cleanup.groups.isEmpty, stop: { cleanup.cancelScan() },
+                    compact: true, stop: { cleanup.cancelScan() },
                     identifier: "cleanup.stopScan")
-                    .padding(MDTheme.pagePadding)
+                    .padding(.horizontal, MDTheme.pagePadding)
+                    .padding(.top, MDTheme.pagePadding)
+                    .padding(.bottom, MDTheme.resultCardGap)
                 if !cleanup.groups.isEmpty { previewState }
+                else { Spacer(minLength: 0) }
             }
         case .preview:
             if cleanup.hasStalePreview {
@@ -237,7 +243,7 @@ struct CleanupView: View {
             title: L10n.t("scan.card.start"), detail: L10n.t("scan.card.cleanup_detail"),
             action: { runScan() }, identifier: "cleanup.scanPrimary")
             .padding(MDTheme.pagePadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var rescanState: some View {
@@ -246,7 +252,7 @@ struct CleanupView: View {
             detail: L10n.t(cleanup.preparationFailure == .changedTargets ? "cleanup.rescan.changed_detail" : "cleanup.rescan.expired_detail"),
             action: { runScan() }, identifier: "cleanup.rescan")
             .padding(MDTheme.pagePadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var previewState: some View {
@@ -379,13 +385,6 @@ struct CleanupView: View {
 
     @ViewBuilder
     private var summaryNavigationActions: some View {
-            Button { nav.route = .aiTools } label: {
-                Label(L10n.t("route.aiTools"), systemImage: "sparkles")
-            }
-            .help(L10n.t("route.aiTools"))
-            .accessibilityLabel(L10n.t("route.aiTools"))
-            .accessibilityIdentifier("cleanup.aiTools")
-            .fixedSize()
             if case .preview = cleanup.phase, !cleanup.hasStalePreview {
                 Button { runScan(preservingSelection: true) } label: {
                     Label(L10n.t("cleanup.rescan"), systemImage: "arrow.clockwise")
@@ -633,7 +632,7 @@ struct CleanupView: View {
             Text(item.localizedDisplayTitle)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(MDTheme.label)
-                .lineLimit(1)
+                .lineLimit(item.category == .browsers ? 2 : 1)
             Text(item.homeRelativePath)
                 .font(.system(size: 11))
                 .foregroundStyle(MDTheme.secondary)
@@ -645,10 +644,16 @@ struct CleanupView: View {
                     .foregroundStyle(MDTheme.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if item.category == .browsers && !item.ifCleaned.hasPrefix("cleanup_blocked:") {
+                Text(item.localizedIfCleaned).font(.system(size: 10))
+                    .foregroundStyle(MDTheme.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             let what = item.localizedWhatIsIt
             if !what.isEmpty,
                item.category == .installerPackages
                 || item.category == .largeAppData
+                || item.category == .browsers
                 || item.risk == .caution {
                 Text(what)
                     .font(.system(size: 10))
@@ -688,9 +693,10 @@ struct CleanupView: View {
     private func cleaningState(progress: Double) -> some View {
         VStack(spacing: 10) {
             Spacer()
-            ProgressView(value: progress).frame(width: 240)
-            Text(L10n.t("cleanup.cleaning"))
-                .font(.system(size: 14, weight: .semibold))
+            MDWorkProgressView(value: progress, title: L10n.t("cleanup.cleaning"))
+                .frame(maxWidth: 280)
+                .padding(20)
+                .background(MDTheme.surface, in: RoundedRectangle(cornerRadius: MDTheme.resultCardRadius))
             Spacer()
         }
         .frame(maxWidth: .infinity)

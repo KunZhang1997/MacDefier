@@ -78,7 +78,8 @@ public enum AIToolCleanupExecutor {
                               inTrash.item == resource.boundary.item else { failure = "changed"; break }
                     } catch {
                         let boundary = error as? UninstallFileBoundary.Failure
-                        failure = boundary?.code == "uninstall_manual_required" || boundary?.code == "uninstall_trash_unsafe"
+                        failure = ["uninstall_manual_required", "uninstall_trash_unsafe", "uninstall_permission_denied",
+                                   "uninstall_operation_not_permitted", "uninstall_read_only", "uninstall_cross_volume"].contains(boundary?.code ?? "")
                             ? "manual_required" : "move_failed"
                         break
                     }

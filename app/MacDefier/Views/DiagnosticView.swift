@@ -34,8 +34,6 @@ struct DiagnosticView: View {
                             .font(.headline)
                             .accessibilityIdentifier("diagnostic.liveDetails")
                         Spacer()
-                        Text(L10n.t("workbench.live_monitor_hint"))
-                            .font(.caption).foregroundStyle(MDTheme.secondary)
                     }
                     WorkbenchLiveReadings()
                     overviewAndReasons

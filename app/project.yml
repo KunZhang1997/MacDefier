@@ -10,25 +10,67 @@ packages:
     path: MonitorKit
   CleanupKit:
     path: CleanupKit
+  UninstallHelperKit:
+    path: UninstallHelperKit
   ZIPFoundation:
     path: Vendor/ZIPFoundation
   PetArchiveKit:
     path: PetArchiveKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.4
 settings:
   base:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     DEVELOPMENT_TEAM: ""
 targets:
+  MacDefierUninstallHelper:
+    type: tool
+    platform: macOS
+    sources:
+      - path: UninstallHelper/main.swift
+    settings:
+      base:
+        PRODUCT_NAME: MacDefier-UninstallHelper
+        PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.uninstall-helper
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_DEBUG_DYLIB: NO
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        OTHER_CODE_SIGN_FLAGS: "--identifier $(PRODUCT_BUNDLE_IDENTIFIER)"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.dev.uninstall-helper
+    dependencies:
+      - package: UninstallHelperKit
+        product: UninstallHelperCore
+      - package: UninstallHelperKit
+        product: UninstallHelperIPC
   MacDefier:
     type: application
     platform: macOS
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        SUFeedURL: "https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml"
+        SUPublicEDKey: "R36J2RavRtdGzHefhmsjG9ZrUYcpOw45/bKeLRqg5Iw="
+        SUEnableAutomaticChecks: false
+        SUAutomaticallyUpdate: false
+        SUSendProfileInfo: false
+        SUVerifyUpdateBeforeExtraction: true
+        SURequireSignedFeed: true
     sources:
       - path: MacDefier
         excludes:
           - "**/.DS_Store"
           - "**/Resources/Pet/README.md"
       - path: NOTICE
+        buildPhase: resources
+      - path: Vendor/Sparkle-LICENSE.txt
         buildPhase: resources
     resources:
       - path: MacDefier/Resources
@@ -51,6 +93,7 @@ targets:
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_ENTITLEMENTS: MacDefier/MacDefier.entitlements
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
         ENABLE_HARDENED_RUNTIME: NO
@@ -70,12 +113,26 @@ targets:
           ENABLE_HARDENED_RUNTIME: YES
           # 正式发版由 package-release 注入 Developer ID；本地 Release 仍可 ad-hoc
     dependencies:
+      - target: MacDefierUninstallHelper
+        embed: true
+        link: false
+        codeSign: false
+        copy:
+          destination: executables
+      - package: UninstallHelperKit
+        product: UninstallHelperClient
       - package: MonitorKit
       - package: CleanupKit
       - package: ZIPFoundation
         product: ZIPFoundation
       - package: PetArchiveKit
         product: PetArchiveKit
+      - package: Sparkle
+        product: Sparkle
       - sdk: Collaboration.framework
+    postBuildScripts:
+      - name: Embed uninstall service definition
+        script: 'bash "$SRCROOT/scripts/embed-uninstall-helper-plist.sh"'
+        basedOnDependencyAnalysis: false
     scheme:
       testTargets: []

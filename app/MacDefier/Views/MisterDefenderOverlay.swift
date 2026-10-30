@@ -43,6 +43,20 @@ struct MisterDefenderOverlay: View {
         !aiEnabled || aiModeRaw == AISettings.Mode.off.rawValue
     }
 
+    // A configured local model does not require a cloud API key.
+    private var shouldShowPet: Bool {
+        let settings = vm.settings
+        let hasCloudKey = !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        switch settings.mode {
+        case .localOnly:
+            return settings.isConfiguredForLocal
+        case .localFirst:
+            return settings.isConfiguredForLocal || hasCloudKey
+        case .cloud, .off:
+            return hasCloudKey
+        }
+    }
+
     private var panelIntensityLabel: String {
         switch vm.intensity {
         case .light: return AppLanguage.current.isEnglish ? "Light" : "轻"
@@ -86,6 +100,22 @@ struct MisterDefenderOverlay: View {
     }
 
     var body: some View {
+        Group {
+            if shouldShowPet {
+                petOverlay
+            }
+        }
+        .onAppear { MonitorAIAssist.shared.start(monitor: monitor) }
+        .onReceive(NotificationCenter.default.publisher(for: .macDefierAISettingsDidChange)) { _ in
+            vm.reloadSettings()
+            if !shouldShowPet {
+                isOpen = false
+                pet.stop()
+            }
+        }
+    }
+
+    private var petOverlay: some View {
         GeometryReader { geo in
             let clamped = clampOffset(
                 CGSize(width: savedDragX + liveDrag.width, height: savedDragY + liveDrag.height),
@@ -149,7 +179,6 @@ struct MisterDefenderOverlay: View {
                     pet.setChatOpen(isOpen)
                     pet.setAIOff(aiIsOff)
                     pet.setAISending(vm.isSending)
-                    MonitorAIAssist.shared.start(monitor: monitor)
                 }
                 .onDisappear {
                     pet.stop()

@@ -6,26 +6,38 @@ import CleanupKit
 /// Horizontal workbench: keep existing page services, sheets and navigation state.
 struct ContentView: View {
     @ObservedObject private var nav = AppNavigator.shared
+    @ObservedObject private var guide = UsageGuideState.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
     private let routes: [AppRoute] = [.diagnostic, .cleanup, .aiTools, .diskMap, .software, .monitor, .settings]
 
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
-                titleBar
-                navigationBar
-                detail.frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .background(MDTheme.content)
-            .background(WindowChromeInstaller())
-            .ignoresSafeArea()
-            // Keep one route-independent default dock above persistent page actions.
-            // This is an initial/reset position, not a restriction on user dragging.
-            MisterDefenderOverlay(isOpen: $nav.misterOpen, dockInset: 76)
-                .environmentObject(MonitorService.shared)
-                .padding(.top, 36)
+            ZStack {
+                VStack(spacing: 0) {
+                    titleBar
+                    navigationBar
+                    detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .background(MDTheme.content)
+                .background(WindowChromeInstaller())
                 .ignoresSafeArea()
+                // Keep one route-independent default dock above persistent page actions.
+                // This is an initial/reset position, not a restriction on user dragging.
+                MisterDefenderOverlay(isOpen: $nav.misterOpen, dockInset: 76)
+                    .environmentObject(MonitorService.shared)
+                    .padding(.top, 36)
+                    .ignoresSafeArea()
+            }
+            .disabled(guide.isPresented)
+            .allowsHitTesting(!guide.isPresented)
+            .accessibilityHidden(guide.isPresented)
+            if guide.isPresented {
+                UsageGuideOverlay(guide: guide) {
+                    guide.dismiss()
+                    nav.route = .settings
+                }
+            }
         }
         .environment(\.layoutDirection, .leftToRight)
         .environment(\.locale, L10n.locale)
@@ -52,32 +64,28 @@ struct ContentView: View {
             Text("MacDefier").font(.system(size: 14, weight: .semibold))
                 .padding(.leading, WindowChrome.trafficLightsLeading)
             Spacer()
+            UpdateDownloadControl()
         }
         .padding(.trailing, 20).frame(height: 36)
         .background(MDTheme.content)
     }
 
     private var navigationBar: some View {
-        ViewThatFits(in: .horizontal) {
-            MDGlassTabs(tabs: routes.map { (id: $0, title: $0.title) }, selection: $nav.route)
-            .id(appLanguageRaw)
-            .accessibilityIdentifier("workbench.navigation")
-            .fixedSize(horizontal: true, vertical: false)
-            HStack {
-                Menu {
-                    ForEach(routes) { route in
-                        Button { nav.route = route } label: {
-                            Label(route.title, systemImage: route.systemImage)
-                        }
-                    }
-                } label: {
-                    Label(nav.route.title, systemImage: nav.route.systemImage)
+        GeometryReader { geometry in
+            ScrollViewReader { reader in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    MDGlassTabs(tabs: routes.map { (id: $0, title: $0.title) }, selection: $nav.route)
+                        .id(appLanguageRaw)
+                        .accessibilityIdentifier("workbench.navigation")
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: geometry.size.width, minHeight: 46)
                 }
-                .menuStyle(.borderlessButton).fixedSize()
-                Spacer()
-                Button { nav.misterOpen.toggle() } label: {
-                    Label("Mr. Defier", systemImage: "bubble.left")
-                }.buttonStyle(.borderless)
+                .onChange(of: nav.route) { _, route in
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                        reader.scrollTo(route, anchor: .center)
+                    }
+                }
+                .onAppear { reader.scrollTo(nav.route, anchor: .center) }
             }
         }
         .padding(.horizontal, 20).frame(maxWidth: .infinity).frame(height: 46)

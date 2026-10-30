@@ -3,7 +3,15 @@
 // Size = .app bundle + related data (strict paths — no shared vendor trees).
 
 import AppKit
+import Darwin
 import Foundation
+
+public enum AppSizeState: Sendable, Hashable {
+    case pending
+    case measured
+    case partial
+    case unavailable
+}
 
 public struct InstalledApp: Identifiable, Sendable, Hashable {
     public var id: String { path }
@@ -15,6 +23,7 @@ public struct InstalledApp: Identifiable, Sendable, Hashable {
     public let bytes: UInt64
     /// Related data outside the .app (support / caches / sibling game folders).
     public let relatedBytes: UInt64
+    public let sizeState: AppSizeState
     public let isSystemLocation: Bool
     public let canTrashAppBundle: Bool
 
@@ -26,7 +35,8 @@ public struct InstalledApp: Identifiable, Sendable, Hashable {
         bytes: UInt64,
         relatedBytes: UInt64 = 0,
         isSystemLocation: Bool,
-        canTrashAppBundle: Bool
+        canTrashAppBundle: Bool,
+        sizeState: AppSizeState? = nil
     ) {
         self.name = name
         self.bundleIdentifier = bundleIdentifier
@@ -34,22 +44,26 @@ public struct InstalledApp: Identifiable, Sendable, Hashable {
         self.version = version
         self.bytes = bytes
         self.relatedBytes = relatedBytes
+        self.sizeState = sizeState ?? ((bytes > 0 || relatedBytes > 0) ? .measured : .pending)
         self.isSystemLocation = isSystemLocation
         self.canTrashAppBundle = canTrashAppBundle
     }
 
     /// App package + related data (what user feels as size of the software).
-    public var totalBytes: UInt64 { bytes &+ relatedBytes }
+    public var totalBytes: UInt64 {
+        let sum = bytes.addingReportingOverflow(relatedBytes)
+        return sum.overflow ? UInt64.max : sum.partialValue
+    }
 
     public var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)
+        ByteCountFormatter.string(fromByteCount: Int64(clamping: totalBytes), countStyle: .file)
     }
 
     /// e.g. "应用 12 GB · 数据 90 GB" when related data is significant.
     public var formattedSizeDetail: String? {
         guard relatedBytes >= 50 * 1_048_576 else { return nil } // ≥ 50 MB
-        let app = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-        let data = ByteCountFormatter.string(fromByteCount: Int64(relatedBytes), countStyle: .file)
+        let app = ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)
+        let data = ByteCountFormatter.string(fromByteCount: Int64(clamping: relatedBytes), countStyle: .file)
         return "应用 \(app) · 数据 \(data)"
     }
 
@@ -164,6 +178,26 @@ public enum AppInventory {
     public static func loadApp(
         at url: URL,
         computeSize: Bool = true,
+        sizeTimeLimit: TimeInterval = 8,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) -> InstalledApp? {
+        loadApp(at: url, computeSize: computeSize, sizeTimeLimit: sizeTimeLimit,
+                sizeEnvironment: .init(home: home, sharedRoot: "/Users/Shared"), isCancelled: isCancelled)
+    }
+
+    /// Internal fixture environment: tests never enumerate the real user's data.
+    struct SizeEnvironment {
+        let home: String
+        let sharedRoot: String
+        var nodeLimit: Int = 400_000
+        var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    }
+
+    static func loadApp(
+        at url: URL,
+        computeSize: Bool = true,
+        sizeTimeLimit: TimeInterval = 8,
+        sizeEnvironment: SizeEnvironment,
         isCancelled: @Sendable () -> Bool = { false }
     ) -> InstalledApp? {
         guard url.pathExtension == "app" else { return nil }
@@ -176,10 +210,20 @@ public enum AppInventory {
         let version = (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
             ?? (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
             ?? "—"
-        let appBytes: UInt64 = computeSize ? directorySize(url.path, isCancelled: isCancelled) : 0
-        let related: UInt64 = computeSize
-            ? relatedDataBytes(name: name, bundleID: bundleID, appPath: url.path, isCancelled: isCancelled)
-            : 0
+        var appBytes: UInt64 = 0
+        var related: UInt64 = 0
+        var sizeState: AppSizeState = .pending
+        if computeSize {
+            let budget = SizeBudget(timeLimit: sizeTimeLimit, environment: sizeEnvironment)
+            appBytes = directorySize(url.path, budget: budget, isCancelled: isCancelled)
+            let paths = relatedDataPaths(name: name, bundleID: bundleID, appPath: url.path,
+                                         environment: sizeEnvironment, budget: budget, isCancelled: isCancelled)
+            for path in paths {
+                guard budget.canContinue(isCancelled) else { break }
+                related = budget.add(related, directorySize(path, budget: budget, isCancelled: isCancelled))
+            }
+            sizeState = budget.incomplete ? (budget.hasMeasurement ? .partial : .unavailable) : .measured
+        }
         let isSystemLocation = url.path.hasPrefix("/System")
         return InstalledApp(
             name: name,
@@ -189,32 +233,46 @@ public enum AppInventory {
             bytes: appBytes,
             relatedBytes: related,
             isSystemLocation: isSystemLocation,
-            canTrashAppBundle: !isSystemLocation && !nonRemovableBundleIDs.contains(bundleID) && !bundleID.hasPrefix("com.macdefier.")
+            canTrashAppBundle: !isSystemLocation && !nonRemovableBundleIDs.contains(bundleID) && !bundleID.hasPrefix("com.macdefier."),
+            sizeState: sizeState
         )
     }
 
     // MARK: - Related data (strict)
 
-    private static func relatedDataBytes(
+    private static func relatedDataPaths(
         name: String,
         bundleID: String,
         appPath: String,
-        isCancelled: @Sendable () -> Bool = { false }
-    ) -> UInt64 {
+        environment: SizeEnvironment,
+        budget: SizeBudget,
+        isCancelled: @Sendable () -> Bool
+    ) -> [String] {
         // Chrome Apps (Telegram Web etc.): shell only — do not attach Chrome profile data
         if appPath.contains("Chrome Apps") || bundleID.contains("com.google.Chrome.app.") {
-            return 0
+            return []
         }
 
         var paths: [String] = []
         var seen = Set<String>()
         let baseName = URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
+        let home = environment.home
 
         func add(_ p: String) {
             let n = (p as NSString).standardizingPath
-            guard n != appPath, !n.hasPrefix(appPath + "/") else { return }
+            guard n != appPath, !n.hasPrefix(appPath + "/"), !appPath.hasPrefix(n + "/") else { return }
             guard seen.insert(n).inserted else { return }
-            guard fm.fileExists(atPath: n) else { return }
+            guard budget.consume(isCancelled) else { return }
+            do {
+                let parent = try openSizeDirectory((n as NSString).deletingLastPathComponent, budget: budget, isCancelled: isCancelled)
+                defer { close(parent) }
+                var info = stat()
+                guard fstatat(parent, (n as NSString).lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                    if errno != ENOENT { budget.incomplete = true }
+                    return
+                }
+                guard info.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK) else { return }
+            } catch { budget.noteOptionalRootFailure(error) ; return }
             paths.append(n)
         }
 
@@ -246,18 +304,15 @@ public enum AppInventory {
         // Tight fuzzy: equal strong token / full name — not "contains google"
         let tokens = matchTokens(name: name, baseName: baseName, bundleID: bundleID)
         let supportRoot = "\(home)/Library/Application Support"
-        if let names = try? fm.contentsOfDirectory(atPath: supportRoot) {
-            for entry in names.prefix(800) {
-                if entry.hasPrefix(".") { continue }
-                guard fuzzyFolderAllowed(entry: entry, tokens: tokens, name: name, baseName: baseName) else {
-                    continue
-                }
-                add((supportRoot as NSString).appendingPathComponent(entry))
+        for entry in directoryNames(supportRoot, limit: 800, budget: budget, isCancelled: isCancelled) {
+            if entry.hasPrefix(".") { continue }
+            guard fuzzyFolderAllowed(entry: entry, tokens: tokens, name: name, baseName: baseName) else {
+                continue
             }
+            add((supportRoot as NSString).appendingPathComponent(entry))
         }
-        for root in ["\(home)/Games", "/Users/Shared"] {
-            guard let names = try? fm.contentsOfDirectory(atPath: root) else { continue }
-            for entry in names.prefix(200) {
+        for root in ["\(home)/Games", environment.sharedRoot] {
+            for entry in directoryNames(root, limit: 200, budget: budget, isCancelled: isCancelled) {
                 guard fuzzyFolderAllowed(entry: entry, tokens: tokens, name: name, baseName: baseName) else {
                     continue
                 }
@@ -265,12 +320,13 @@ public enum AppInventory {
             }
         }
 
-        var total: UInt64 = 0
-        for p in paths {
-            if isCancelled() { return total }
-            total &+= directorySize(p, isCancelled: isCancelled)
+        // Parents win over descendants, independent of discovery order. This
+        // prevents channel roots and exact/fuzzy matches counting a tree twice.
+        var roots: [String] = []
+        for path in paths.sorted(by: { $0.count == $1.count ? $0 < $1 : $0.count < $1.count }) {
+            if !roots.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { roots.append(path) }
         }
-        return total
+        return roots
     }
 
     private static func fuzzyFolderAllowed(
@@ -321,45 +377,175 @@ public enum AppInventory {
 
     // MARK: - Size
 
-    private static func directorySize(
-        _ path: String,
-        isCancelled: @Sendable () -> Bool = { false }
-    ) -> UInt64 {
-        let url = URL(fileURLWithPath: path)
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
-        if !isDir.boolValue {
-            let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey])
-            return UInt64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? v?.fileSize ?? 0)
+    private struct SizeFileID: Hashable {
+        let device: dev_t
+        let inode: ino_t
+        init(_ value: stat) { device = value.st_dev; inode = value.st_ino }
+    }
+
+    private enum SizeReadFailure: Error { case stopped, system(Int32) }
+
+    /// One cooperative budget covers package traversal, related-path discovery
+    /// and every related tree. No file contents are opened for size measurement.
+    private final class SizeBudget {
+        let deadline: TimeInterval
+        let nodeLimit: Int
+        let now: () -> TimeInterval
+        var nodes = 0
+        var incomplete = false
+        var stopped = false
+        var hasMeasurement = false
+        var visitedDirectories: Set<SizeFileID> = []
+        var visitedFiles: Set<SizeFileID> = []
+
+        init(timeLimit: TimeInterval, environment: SizeEnvironment) {
+            now = environment.now
+            deadline = environment.now() + min(8, max(0, timeLimit.isFinite ? timeLimit : 0))
+            nodeLimit = min(400_000, max(0, environment.nodeLimit))
         }
 
-        var total: UInt64 = 0
-        guard let en = fm.enumerator(
-            at: url,
-            includingPropertiesForKeys: [
-                .isRegularFileKey,
-                .totalFileAllocatedSizeKey,
-                .fileAllocatedSizeKey,
-                .fileSizeKey
-            ],
-            options: []
-        ) else { return 0 }
+        func canContinue(_ isCancelled: () -> Bool) -> Bool {
+            guard !stopped else { return false }
+            if isCancelled() || Task.isCancelled || now() >= deadline || nodes >= nodeLimit {
+                incomplete = true
+                stopped = true
+                return false
+            }
+            return true
+        }
 
-        var n = 0
-        let hardCap = 400_000
-        for case let file as URL in en {
-            if isCancelled() { break }
-            n += 1
-            if n > hardCap { break }
-            guard let vals = try? file.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .totalFileAllocatedSizeKey,
-                .fileAllocatedSizeKey,
-                .fileSizeKey
-            ]) else { continue }
-            guard vals.isRegularFile == true else { continue }
-            let size = vals.totalFileAllocatedSize ?? vals.fileAllocatedSize ?? vals.fileSize ?? 0
-            total &+= UInt64(size)
+        func consume(_ isCancelled: () -> Bool) -> Bool {
+            guard canContinue(isCancelled) else { return false }
+            nodes += 1
+            return true
+        }
+
+        func add(_ lhs: UInt64, _ rhs: UInt64) -> UInt64 {
+            let sum = lhs.addingReportingOverflow(rhs)
+            if sum.overflow { incomplete = true }
+            return sum.overflow ? UInt64.max : sum.partialValue
+        }
+
+        func allocatedBytes(_ info: stat) -> UInt64 {
+            hasMeasurement = true
+            guard visitedFiles.insert(SizeFileID(info)).inserted else { return 0 }
+            guard info.st_blocks >= 0 else { incomplete = true; return 0 }
+            let bytes = UInt64(info.st_blocks).multipliedReportingOverflow(by: 512)
+            if bytes.overflow { incomplete = true }
+            return bytes.overflow ? UInt64.max : bytes.partialValue
+        }
+
+        func noteOptionalRootFailure(_ error: Error) {
+            // Missing candidates are normal. A symlink component is deliberately
+            // excluded, not followed into another tree. Other failures are visible.
+            if case SizeReadFailure.system(let code) = error, [ENOENT, ENOTDIR, ELOOP].contains(code) { return }
+            incomplete = true
+        }
+    }
+
+    private static func openSizeDirectory(_ path: String, budget: SizeBudget,
+                                          isCancelled: @Sendable () -> Bool) throws -> Int32 {
+        guard path.hasPrefix("/"), !path.utf8.contains(0),
+              !path.split(separator: "/").contains("..") else { throw SizeReadFailure.system(EINVAL) }
+        guard budget.canContinue(isCancelled) else { throw SizeReadFailure.stopped }
+        // Fixed platform aliases only; user-controlled symlink ancestors stay excluded.
+        var traversal = path
+        for alias in ["/var", "/tmp", "/etc"] where path == alias || path.hasPrefix(alias + "/") {
+            traversal = "/private" + path
+        }
+        var fd = open("/", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw SizeReadFailure.system(errno) }
+        for part in traversal.split(separator: "/") {
+            guard budget.canContinue(isCancelled) else { close(fd); throw SizeReadFailure.stopped }
+            let next = openat(fd, String(part), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            let error = errno
+            close(fd)
+            guard next >= 0 else { throw SizeReadFailure.system(error) }
+            fd = next
+        }
+        return fd
+    }
+
+    private static func directoryNames(_ path: String, limit: Int, budget: SizeBudget,
+                                       isCancelled: @Sendable () -> Bool) -> [String] {
+        guard budget.canContinue(isCancelled) else { return [] }
+        let fd: Int32
+        do { fd = try openSizeDirectory(path, budget: budget, isCancelled: isCancelled) }
+        catch { budget.noteOptionalRootFailure(error); return [] }
+        guard let directory = fdopendir(fd) else { close(fd); budget.incomplete = true; return [] }
+        defer { closedir(directory) }
+        var names: [String] = []
+        while budget.canContinue(isCancelled) {
+            errno = 0
+            guard let entry = readdir(directory) else {
+                if errno != 0 { budget.incomplete = true }
+                break
+            }
+            let name = directoryEntryName(entry)
+            if name == "." || name == ".." { continue }
+            guard budget.consume(isCancelled) else { break }
+            guard names.count < limit else { budget.incomplete = true; break }
+            names.append(name)
+        }
+        return names
+    }
+
+    private static func directoryEntryName(_ entry: UnsafeMutablePointer<dirent>) -> String {
+        withUnsafePointer(to: &entry.pointee.d_name) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
+        }
+    }
+
+    private static func directorySize(_ path: String, budget: SizeBudget,
+                                      isCancelled: @Sendable () -> Bool) -> UInt64 {
+        guard budget.consume(isCancelled) else { return 0 }
+        let parent: Int32
+        do { parent = try openSizeDirectory((path as NSString).deletingLastPathComponent, budget: budget, isCancelled: isCancelled) }
+        catch { budget.incomplete = true; return 0 }
+        defer { close(parent) }
+        let name = (path as NSString).lastPathComponent
+        var root = stat()
+        guard fstatat(parent, name, &root, AT_SYMLINK_NOFOLLOW) == 0 else { budget.incomplete = true; return 0 }
+        let rootKind = root.st_mode & mode_t(S_IFMT)
+        if rootKind == mode_t(S_IFREG) { return budget.allocatedBytes(root) }
+        guard rootKind == mode_t(S_IFDIR) else { budget.incomplete = true; return 0 }
+
+        // Iterative descriptor-bound traversal avoids both recursive stack growth
+        // and following a directory replaced with a symlink after its stat.
+        var stack: [UnsafeMutablePointer<DIR>] = []
+        defer { for directory in stack { closedir(directory) } }
+        func enter(_ parentFD: Int32, _ leaf: String, expected: stat) {
+            guard budget.canContinue(isCancelled), !budget.visitedDirectories.contains(SizeFileID(expected)) else { return }
+            let fd = openat(parentFD, leaf, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { budget.incomplete = true; return }
+            var fresh = stat()
+            guard fstat(fd, &fresh) == 0, SizeFileID(fresh) == SizeFileID(expected) else {
+                close(fd); budget.incomplete = true; return
+            }
+            guard let directory = fdopendir(fd) else { close(fd); budget.incomplete = true; return }
+            budget.visitedDirectories.insert(SizeFileID(fresh))
+            stack.append(directory)
+        }
+        enter(parent, name, expected: root)
+        var total: UInt64 = 0
+        while let directory = stack.last, budget.canContinue(isCancelled) {
+            errno = 0
+            guard let entry = readdir(directory) else {
+                if errno == 0 { budget.hasMeasurement = true } else { budget.incomplete = true }
+                closedir(directory)
+                stack.removeLast()
+                continue
+            }
+            let child = directoryEntryName(entry)
+            if child == "." || child == ".." { continue }
+            guard budget.consume(isCancelled) else { break }
+            var info = stat()
+            guard fstatat(dirfd(directory), child, &info, AT_SYMLINK_NOFOLLOW) == 0 else { budget.incomplete = true; continue }
+            switch info.st_mode & mode_t(S_IFMT) {
+            case mode_t(S_IFREG): total = budget.add(total, budget.allocatedBytes(info))
+            case mode_t(S_IFDIR): enter(dirfd(directory), child, expected: info)
+            default: break // Symlinks and special files are never followed/opened.
+            }
         }
         return total
     }

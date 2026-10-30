@@ -5,6 +5,7 @@ import PetArchiveKit
 
 /// 设置：每行底部分隔线（最后一行除外）；云端/本地切换；云端多配置弹窗
 struct SettingsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showMenuBar = UserDefaults.standard.object(forKey: MenuBarController.defaultsKey) as? Bool ?? true
     @AppStorage(MenuBarController.showCPUKey) private var menuBarShowCPU = false
     @AppStorage(MenuBarController.showRAMKey) private var menuBarShowRAM = false
@@ -67,11 +68,14 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
+                settingsNavigation(proxy)
                 settingsGroup(L10n.t("settings.general")) {
                     settingsRow(L10n.t("settings.menubar"), showLine: true) {
                         Toggle("", isOn: $showMenuBar)
+                            .accessibilityLabel(L10n.t("settings.menubar"))
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .onChange(of: showMenuBar) { _, on in
@@ -85,6 +89,7 @@ struct SettingsView: View {
                         }
                         settingsRow(L10n.t("settings.menubar_cpu"), showLine: true) {
                             Toggle("", isOn: $menuBarShowCPU)
+                            .accessibilityLabel(L10n.t("settings.menubar_cpu"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .onChange(of: menuBarShowCPU) { _, _ in
@@ -93,6 +98,7 @@ struct SettingsView: View {
                         }
                         settingsRow(L10n.t("settings.menubar_ram"), showLine: true) {
                             Toggle("", isOn: $menuBarShowRAM)
+                            .accessibilityLabel(L10n.t("settings.menubar_ram"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .onChange(of: menuBarShowRAM) { _, _ in
@@ -103,6 +109,7 @@ struct SettingsView: View {
                     settingsRow(L10n.t("settings.launch_at_login"), showLine: true) {
                         VStack(alignment: .trailing, spacing: 4) {
                             Toggle("", isOn: $launchAtLogin)
+                            .accessibilityLabel(L10n.t("settings.launch_at_login"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .onChange(of: launchAtLogin) { _, on in
@@ -143,6 +150,7 @@ struct SettingsView: View {
                             }
                         }
                         .labelsHidden()
+                        .accessibilityLabel(L10n.t("settings.appearance"))
                         .frame(width: 140)
                         // AppKit-backed pickers retain their menu labels across language changes.
                         .id(appLanguageRaw)
@@ -155,8 +163,15 @@ struct SettingsView: View {
                             }
                         }
                         .labelsHidden()
+                        .accessibilityLabel(L10n.t("settings.language"))
                         .frame(width: 140)
                     }
+                }
+
+                .id("settings.general")
+
+                settingsGroup(L10n.t("uninstall.helper.title")) {
+                    UninstallHelperSettings()
                 }
 
                 settingsGroup(L10n.t("settings.scan_permission")) {
@@ -172,9 +187,12 @@ struct SettingsView: View {
                     }
                 }
 
+                .id("settings.scan_permission")
+
                 settingsGroup(L10n.t("settings.ai_privacy")) {
                     settingsRow(L10n.t("settings.public_ip"), showLine: true) {
                         Toggle("", isOn: $publicIPLookupEnabled)
+                            .accessibilityLabel(L10n.t("settings.public_ip"))
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .onChange(of: publicIPLookupEnabled) { _, on in
@@ -185,6 +203,7 @@ struct SettingsView: View {
 
                     settingsRow(L10n.t("settings.enable_ai"), showLine: true) {
                         Toggle("", isOn: $aiEnabled)
+                            .accessibilityLabel(L10n.t("settings.enable_ai"))
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .onChange(of: aiEnabled) { _, on in
@@ -202,6 +221,7 @@ struct SettingsView: View {
                             Text(L10n.t("settings.mode_local")).tag(false)
                         }
                         .pickerStyle(.segmented)
+                        .accessibilityLabel(L10n.t("settings.mode"))
                         .frame(width: 140)
                         .onChange(of: aiUseCloud) { _, useCloud in
                             localModels.cancel()
@@ -223,6 +243,9 @@ struct SettingsView: View {
                                             .font(.system(size: 12))
                                             .foregroundStyle(MDTheme.secondary)
                                             .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .frame(maxWidth: 220, alignment: .trailing)
+                                            .help(activeCloudSummary)
                                         Image(systemName: "chevron.right")
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(MDTheme.tertiary)
@@ -293,6 +316,7 @@ struct SettingsView: View {
                             }
                         }
                         .labelsHidden()
+                        .accessibilityLabel(L10n.t("settings.intensity"))
                         .frame(width: 100)
                         .id(appLanguageRaw)
                     }
@@ -310,11 +334,14 @@ struct SettingsView: View {
                             if !aiSavedHint.isEmpty {
                                 Text(aiSavedHint)
                                     .font(.system(size: 12))
-                                    .foregroundStyle(MDTheme.success)
+                                    .foregroundStyle(aiSaveHintIsSuccess ? MDTheme.success : MDTheme.warning)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
                 }
+
+                .id("settings.ai_privacy")
 
                 // 说明与隐私：整页只保留一处，整行可点
                 settingsGroup("") {
@@ -379,10 +406,16 @@ struct SettingsView: View {
                             .foregroundStyle(petPackHint.hasPrefix(L10n.t("settings.pet_fail_prefix")) || petPackHint.hasPrefix("Failed") ? MDTheme.danger : MDTheme.accent)
                     }
                 }
+                .id("settings.pet")
                 .onAppear { petPackStore.reload() }
                 .onDisappear { petImportTask?.cancel() }
 
                 settingsGroup(L10n.t("settings.about")) {
+                    settingsRow(L10n.t("guide.settings"), showLine: true) {
+                        Button(L10n.t("guide.show")) { UsageGuideState.shared.replay() }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("settings.usageGuide")
+                    }
                     settingsRow(L10n.t("settings.version"), showLine: true) {
                         Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
                             .font(.system(size: 13).monospacedDigit())
@@ -410,12 +443,14 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings.github")
                     }
                 }
+                .id("settings.about")
             }
             .frame(maxWidth: 820)
             .padding(.horizontal, MDTheme.pagePadding)
             .padding(.top, 16)
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .center)
+        }
         }
         .background(MDTheme.content)
         .onChange(of: appLanguageRaw) { _, _ in
@@ -543,6 +578,36 @@ struct SettingsView: View {
         }
     }
 
+    private func settingsNavigation(_ proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.t("settings.title"))
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(MDTheme.label)
+                    .accessibilityAddTraits(.isHeader)
+                Text(L10n.t("settings.overview"))
+                    .font(.callout)
+                    .foregroundStyle(MDTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(["settings.general", "settings.scan_permission", "settings.ai_privacy", "settings.pet", "settings.about"], id: \.self) { section in
+                        Button(L10n.t(section)) {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                                proxy.scrollTo(section, anchor: .top)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .accessibilityLabel(L10n.t("settings.sections"))
+        }
+        .padding(.bottom, 4)
+    }
+
     // MARK: - 分组 / 行（线画在行底部 overlay，绝不隔行丢线）
 
     /// 菜单栏真实 icon 预览条；无监控时 = Mr. Defier 彩色脸
@@ -594,15 +659,16 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             if !title.isEmpty {
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.tertiary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MDTheme.secondary)
                     .padding(.horizontal, 4)
-                    .textCase(.uppercase)
+                    .accessibilityAddTraits(.isHeader)
             }
             // 不用 MDGroupedList 包 @ViewBuilder control：会 escaping captures non-escaping
             VStack(spacing: 0) {
                 content()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
                     .fill(MDTheme.surface)
@@ -612,7 +678,9 @@ struct SettingsView: View {
                     .stroke(MDTheme.border.opacity(0.5), lineWidth: 0.5)
             )
             .clipShape(RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Full-row tappable link (chevron on the right).
@@ -647,12 +715,11 @@ struct SettingsView: View {
                 Text(title)
                     .font(.system(size: 13))
                     .foregroundStyle(MDTheme.label)
-                    .lineLimit(1)
-                    .layoutPriority(0)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
                 Spacer(minLength: 8)
                 control()
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(alignment: .trailing)
+                    .frame(maxWidth: 340, alignment: .trailing)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
@@ -664,6 +731,10 @@ struct SettingsView: View {
     }
 
     // MARK: - AI / Pet helpers
+
+    private var aiSaveHintIsSuccess: Bool {
+        aiSavedHint == L10n.t("settings.saved") || aiSavedHint == L10n.t("settings.api_delete_key_done")
+    }
 
     private var activeCloudSummary: String {
         if let p = cloudProfiles.first(where: { $0.id == activeCloudProfileId }) ?? cloudProfiles.first {

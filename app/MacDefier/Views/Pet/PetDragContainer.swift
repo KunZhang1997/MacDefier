@@ -40,6 +40,7 @@ struct PetDragContainer<Content: View>: View {
 
 /// Transparent hit target only — never hosts SwiftUI pet content.
 private struct PetDragHitView: NSViewRepresentable {
+    @Environment(\.isEnabled) private var isEnabled
     var onDragChanged: (PetDragMotion) -> Void
     var onDragEnded: (PetDragMotion) -> Void
     var onClick: () -> Void
@@ -54,6 +55,7 @@ private struct PetDragHitView: NSViewRepresentable {
     func makeNSView(context: Context) -> PetDragHitNSView {
         let v = PetDragHitNSView()
         v.coordinator = context.coordinator
+        v.isInputEnabled = isEnabled
         context.coordinator.onDragChanged = onDragChanged
         context.coordinator.onDragEnded = onDragEnded
         context.coordinator.onClick = onClick
@@ -76,6 +78,7 @@ private struct PetDragHitView: NSViewRepresentable {
         context.coordinator.onDoubleClick = onDoubleClick
         context.coordinator.onKeyboardMove = onKeyboardMove
         nsView.coordinator = context.coordinator
+        nsView.isInputEnabled = isEnabled
     }
 
     final class Coordinator {
@@ -89,6 +92,15 @@ private struct PetDragHitView: NSViewRepresentable {
 
     final class PetDragHitNSView: NSView {
         var coordinator: Coordinator?
+        var isInputEnabled = true {
+            didSet {
+                guard !isInputEnabled else { return }
+                coordinator?.clickWorkItem?.cancel()
+                if window?.firstResponder === self { window?.makeFirstResponder(nil) }
+                mouseDownWindowPoint = nil
+                isDragging = false
+            }
+        }
 
         private var mouseDownWindowPoint: CGPoint?
         private var isDragging = false
@@ -98,22 +110,23 @@ private struct PetDragHitView: NSViewRepresentable {
 
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        override var acceptsFirstResponder: Bool { true }
+        override var acceptsFirstResponder: Bool { isInputEnabled }
         override var isOpaque: Bool { false }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             // Fill bounds for hit testing even though we draw nothing.
-            guard !isHidden else { return nil }
+            guard !isHidden, isInputEnabled else { return nil }
             return bounds.contains(convert(point, from: superview)) ? self : nil
         }
 
         override func accessibilityPerformPress() -> Bool {
-            guard let action = coordinator?.onClick else { return false }
+            guard isInputEnabled, let action = coordinator?.onClick else { return false }
             action()
             return true
         }
 
         override func keyDown(with event: NSEvent) {
+            guard isInputEnabled else { super.keyDown(with: event); return }
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 30 : 10
             let delta: CGSize?
             switch event.keyCode {
@@ -129,6 +142,7 @@ private struct PetDragHitView: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
+            guard isInputEnabled else { return }
             coordinator?.clickWorkItem?.cancel()
             window?.makeFirstResponder(self)
             mouseDownWindowPoint = event.locationInWindow
@@ -139,6 +153,7 @@ private struct PetDragHitView: NSViewRepresentable {
         }
 
         override func mouseDragged(with event: NSEvent) {
+            guard isInputEnabled else { return }
             guard let start = mouseDownWindowPoint else { return }
             let p = event.locationInWindow
             let dx = p.x - start.x
@@ -171,6 +186,7 @@ private struct PetDragHitView: NSViewRepresentable {
         }
 
         override func mouseUp(with event: NSEvent) {
+            guard isInputEnabled else { return }
             defer {
                 mouseDownWindowPoint = nil
             }

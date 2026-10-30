@@ -1,6 +1,15 @@
 MacDefier third-party notices
 =============================
 
+## Sparkle (application updates)
+
+Source: https://github.com/sparkle-project/Sparkle
+Pinned: 2.9.4 (Swift Package Manager binary distribution)
+License: MIT, plus the distribution's bundled third-party notices.
+The complete Sparkle and bundled-component terms are included in
+Sparkle-LICENSE.txt beside this NOTICE in the application resources.
+Sparkle verifies signed update feeds and archives before installation.
+
 ## Stats (MonitorKit)
 
 Copyright (c) 2019 Serhiy Mytrovtsiy

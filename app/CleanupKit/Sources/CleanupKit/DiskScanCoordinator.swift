@@ -1,6 +1,6 @@
 import Foundation
 
-/// Serializes the two disk-heavy junk scans (Cleanup and Diagnostic).
+/// Serializes disk-heavy scans (Cleanup, Diagnostic, and each software size measurement).
 /// Callers remain cancellable while waiting for, or holding, the permit.
 public actor DiskScanCoordinator {
     public static let shared = DiskScanCoordinator()

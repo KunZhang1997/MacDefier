@@ -258,13 +258,10 @@ enum SoftwareAIScan {
     @MainActor
     private static func ruleFallback(service: SoftwareService, diskTight: Bool) -> String {
         let n = service.apps.count
-        let sep = AppLanguage.current == .chinese ? "、" : ", "
-        let top = service.apps.prefix(3).map(\.name).joined(separator: sep)
-        let topLine = top.isEmpty ? "" : L10n.t("software.chat.top_line", top)
         let suggest = diskTight
             ? L10n.t("software.chat.suggest_tight")
             : L10n.t("software.chat.suggest_loose")
-        return L10n.t("software.chat.rule_fallback", n, topLine, suggest)
+        return L10n.t("software.chat.rule_fallback", n, suggest)
     }
 
     private static func sanitize(_ raw: String) -> String {

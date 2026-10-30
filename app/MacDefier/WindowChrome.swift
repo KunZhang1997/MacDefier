@@ -11,11 +11,11 @@ enum WindowChrome {
 
     /// 首次打开的默认尺寸；用户可自由拉伸，后续恢复上次大小。
     static let defaultWidth: CGFloat = 960
-    static let defaultHeight: CGFloat = 640
+    static let defaultHeight: CGFloat = 760
     static let minWidth: CGFloat = 640
     static let minHeight: CGFloat = 500
     /// SwiftUI scene sizing excludes the title bar even when its background is hidden.
-    /// Ask AppKit for its height so the default outer window is 640 pt on each OS.
+    /// Ask AppKit for its height so the default outer window matches the requested proportions.
     private static var titlebarHeight: CGFloat {
         let content = NSRect(x: 0, y: 0, width: defaultWidth, height: defaultHeight)
         let frame = NSWindow.frameRect(forContentRect: content, styleMask: [.titled])

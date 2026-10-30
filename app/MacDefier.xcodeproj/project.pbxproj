@@ -13,6 +13,7 @@
 		05FB8F8057C29AC4551111C6 /* SoftwareAIScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */; };
 		0A78BB3011F649B786F0C26D /* CleanupConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */; };
 		0C8C8EA7F1BFD7CB493F27EE /* WindowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D5F1ADD926D626BF63DC0 /* WindowChrome.swift */; };
+		1429CA67251EBCCF989D342E /* UninstallHelperSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B2592208EF2EAA0344D676 /* UninstallHelperSettings.swift */; };
 		1477B3066F3EB58B7692BD01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6F241F1AA68EA4366A4DD815 /* Assets.xcassets */; };
 		1E2FA2E319B5E8315FA30D83 /* CapeClothSim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9403EAEC408CBC434D215C /* CapeClothSim.swift */; };
 		20CE67126F5CCF72AC3668D2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3624DED30FA8ED33847BFCD6 /* SettingsView.swift */; };
@@ -21,22 +22,28 @@
 		2EA14EDE9020C7BD7AC175B7 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C892AD5FACC8F972FBD3DC /* Theme.swift */; };
 		2F57463BA2E1881449ACA602 /* MisterDefenderChatBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E07B62E71F8B5E362297AE /* MisterDefenderChatBody.swift */; };
 		325EED23220F22DB0A21F68A /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */; };
-		3436902280D8BDFB5EF11C28 /* MonitorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18F9162E74F8091F3932F31D /* MonitorKit */; };
+		3436902280D8BDFB5EF11C28 /* UninstallHelperClient in Frameworks */ = {isa = PBXBuildFile; productRef = 3F1537B8B4D967954341B99B /* UninstallHelperClient */; };
+		35158F6F3E12E64C10BD324C /* MacAppIconArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BA3EA2F82FD059BE5199D2C /* MacAppIconArtwork.swift */; };
 		36A966D69F4E960E8D41AB01 /* PetBanter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */; };
-		39AD5FF0B8539C36EDD31B51 /* PetArchiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D804A720609B6536CC22AC8 /* PetArchiveKit */; };
+		39AD5FF0B8539C36EDD31B51 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4B66D561E50C3498D4F5D323 /* ZIPFoundation */; };
 		3B776331DB3E229BBEEE4B65 /* DiagnosticScanEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */; };
 		3EA957E4D14EA573F22F7CDB /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */; };
+		3F1AB91C2E751DFAB92FA2F6 /* Sparkle-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3FABC6EB7455D2E9ABE96A81 /* Sparkle-LICENSE.txt */; };
 		440E2E1F4492434F3ECB93DF /* MDScanActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */; };
 		483ADCF882765BB0B62C87B0 /* AIRequestTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */; };
+		4A9B6F3D5A8D33F8F5A674B2 /* UsageGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDBA94D5927A48FF681AC3BC /* UsageGuideOverlay.swift */; };
 		528A23535FEF747460CDC2A7 /* Collaboration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 26D3B2D9CF0485B10DF9955A /* Collaboration.framework */; };
-		53B2D31DAFBA352A9233BDD6 /* CleanupKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3D9F256BD40F86E4699F9979 /* CleanupKit */; };
+		53B2D31DAFBA352A9233BDD6 /* MonitorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18F9162E74F8091F3932F31D /* MonitorKit */; };
 		5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */; };
-		5E837AEFDED8D4A849E54331 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4B66D561E50C3498D4F5D323 /* ZIPFoundation */; };
+		5E837AEFDED8D4A849E54331 /* CleanupKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3D9F256BD40F86E4699F9979 /* CleanupKit */; };
 		60C13DDE1D590C037FFECC1E /* AIChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */; };
+		655EFAC22D64F90FFE608D0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 2E35D3F9BE13174FD01BB23D /* Sparkle */; };
 		687E340ABC021FAEC9CE5747 /* PetTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */; };
+		689A8D71C5584B8725AB0699 /* UninstallHelperCore in Frameworks */ = {isa = PBXBuildFile; productRef = 15DB6523CA7AAC33AD954CC5 /* UninstallHelperCore */; };
 		6ABCB663C4788E7EC6DB3709 /* MacDefierApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8C8B79FFE60BD9B8835113 /* MacDefierApp.swift */; };
 		6E83644FEF29C2E38F557B9F /* DiagnosticScore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */; };
 		6F95CA181C98E4996A3AAB75 /* NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = D81A855AE8E3495540442F41 /* NOTICE */; };
+		709E35D1ADAA802BE04DC033 /* MacDefierUninstallHelper in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7111FCA7488AB59ECC7EBECA /* ScanReusePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */; };
 		71462F979B0E723E5AB342F7 /* AIToolCleanupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */; };
 		71E179B21F99DB63FDA97A57 /* OllamaRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */; };
@@ -48,14 +55,17 @@
 		884A40BACE1E5324A2A1300B /* PackPetSpriteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD65D0D38693C8C88BF67683 /* PackPetSpriteView.swift */; };
 		8C040654AED9AB23D65D1A6C /* SoftwareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2D9DD81377D370B8667825 /* SoftwareView.swift */; };
 		906CBAEA2AED1E02590047ED /* DiagnosticScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */; };
+		93A59774A8EA25061E880643 /* AppUpdateState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBABC33BD57BAFF97C9065A /* AppUpdateState.swift */; };
 		95575B8DE5C8ADD636711254 /* CleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A786D8E6483C8A3886C2246F /* CleanupView.swift */; };
 		9A3412A709B82EC40449A909 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8747957DBA099F2E4C67497 /* ContentView.swift */; };
+		9D1D229870B547BC39E27395 /* PetArchiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D804A720609B6536CC22AC8 /* PetArchiveKit */; };
 		9F22EB927856CC3A6AC68426 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C573BB3186C301B644A5EFEE /* AppDelegate.swift */; };
 		A35916C3651B79F5754CFB36 /* MDAIResultCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */; };
 		A37132EFDF93DBD353F9F4E4 /* AIToolCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */; };
 		A4A94CAC61FC23792CE35BAE /* UninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */; };
 		A5509A58FB9ECFA4A7E85C04 /* AppNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */; };
 		A55B3263C8026D45E04BD946 /* DiskTreemapLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */; };
+		A8BD976B8E3220B1B8F09EB9 /* UsageGuideState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF26FAA6D1A1D7D0B3D3C090 /* UsageGuideState.swift */; };
 		AD95BA4B6905FCD77E052287 /* AIConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68D48FD8B15226E578D17BB /* AIConversationStore.swift */; };
 		ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */ = {isa = PBXBuildFile; fileRef = 4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */; };
 		AFC1233B5D64724F86AF947D /* AIEndpointPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */; };
@@ -73,10 +83,13 @@
 		D4FE83D37B94685CA93EE575 /* DefierChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */; };
 		DF9C9A898B771E78C768571C /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC510936D911D956A4DC1E9 /* L10n.swift */; };
 		E1812CBF893DA13B3A69AFB5 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 055F7E6C398BB7037816BBA6 /* MenuBarPanelView.swift */; };
+		E426627B7F4D65FDFF46A76D /* AppUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80C9517807081ADC3FF2D169 /* AppUpdateController.swift */; };
+		ECE0B8F2C51AADB83997EE0A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE3B3581C3D9390B373C220 /* main.swift */; };
 		EE188B11F08016F2DDB7037A /* PetLookController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D755F746CC2E0BA08C14DAD5 /* PetLookController.swift */; };
 		EE2CFEE838BAF2965A0C84F6 /* DefierAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B22FDFA5E20898662BB5F8D /* DefierAction.swift */; };
 		F0A5A35C27E7069B7117B373 /* PetPackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */; };
 		F246517B16EE3FCF2F03DB19 /* MonitorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */; };
+		F4A9DB1DF2960C0FE45667F5 /* UninstallHelperIPC in Frameworks */ = {isa = PBXBuildFile; productRef = 8732736199B0BA8F42D93204 /* UninstallHelperIPC */; };
 		F7024625A00558640EC46E3D /* DiagnosticScanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */; };
 		FA8DC5A445A22BA8B7A4C6CA /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC32D4DB5FD8A404C588866 /* AppRoute.swift */; };
 		FBE3E977DD23443A0E02D9B8 /* PetCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */; };
@@ -84,12 +97,37 @@
 		FF86226853AE1B2C4DB6F86A /* LocalizedCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		9AD0FF8FF3F32880FCAB8BC8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FD5DDD2A5AFD7CE04C4063DE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8312E90315F71BE50CB63E1F;
+			remoteInfo = MacDefierUninstallHelper;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0265367F045CEFC7E6C05DB4 /* Embed Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				709E35D1ADAA802BE04DC033 /* MacDefierUninstallHelper in Embed Dependencies */,
+			);
+			name = "Embed Dependencies";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		053FEC222808713A96416F21 /* MonitorHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorHistoryView.swift; sourceTree = "<group>"; };
 		055F7E6C398BB7037816BBA6 /* MenuBarPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelView.swift; sourceTree = "<group>"; };
 		06F105B7EA1E239424D39A16 /* CleanupAIScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupAIScan.swift; sourceTree = "<group>"; };
 		0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetPackStore.swift; sourceTree = "<group>"; };
 		0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDAIResultCard.swift; sourceTree = "<group>"; };
+		0FBABC33BD57BAFF97C9065A /* AppUpdateState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateState.swift; sourceTree = "<group>"; };
 		1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCatalog.swift; sourceTree = "<group>"; };
 		1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressL10n.swift; sourceTree = "<group>"; };
 		207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierChatModels.swift; sourceTree = "<group>"; };
@@ -103,15 +141,19 @@
 		3B2EA652602703E0B0DF0604 /* CleanupKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CleanupKit; path = CleanupKit; sourceTree = SOURCE_ROOT; };
 		3B3A2D70A5C3C46860184429 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
 		3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticView.swift; sourceTree = "<group>"; };
+		3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */ = {isa = PBXFileReference; includeInIndex = 0; path = MacDefierUninstallHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		3FABC6EB7455D2E9ABE96A81 /* Sparkle-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Sparkle-LICENSE.txt"; sourceTree = "<group>"; };
 		41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MisterDefenderOverlay.swift; sourceTree = "<group>"; };
 		4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapLayout.swift; sourceTree = "<group>"; };
 		4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanEngine.swift; sourceTree = "<group>"; };
 		4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "defier-guard-bot.zip"; sourceTree = "<group>"; };
+		5039AED5C6854E48337FCF32 /* UninstallHelperKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UninstallHelperKit; path = UninstallHelperKit; sourceTree = SOURCE_ROOT; };
 		519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupService.swift; sourceTree = "<group>"; };
 		5528A313B066642149F4E6E9 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanService.swift; sourceTree = "<group>"; };
 		5BC510936D911D956A4DC1E9 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		5DD1C85396CB8E004FF168B5 /* MacDefier.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacDefier.entitlements; sourceTree = "<group>"; };
+		65B2592208EF2EAA0344D676 /* UninstallHelperSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallHelperSettings.swift; sourceTree = "<group>"; };
 		678F056418B5C1426EFB696E /* MonitorAIAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorAIAssist.swift; sourceTree = "<group>"; };
 		6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelsPicker.swift; sourceTree = "<group>"; };
 		6F241F1AA68EA4366A4DD815 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -123,11 +165,13 @@
 		78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEndpointPolicy.swift; sourceTree = "<group>"; };
 		7E87D355178B91B417D8A9DF /* ZIPFoundation */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ZIPFoundation; path = Vendor/ZIPFoundation; sourceTree = SOURCE_ROOT; };
 		7FC32D4DB5FD8A404C588866 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
+		80C9517807081ADC3FF2D169 /* AppUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateController.swift; sourceTree = "<group>"; };
 		8285FB4001F4E56DA9611D4F /* IconExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconExport.swift; sourceTree = "<group>"; };
 		933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDScanActivityCard.swift; sourceTree = "<group>"; };
 		9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetCoordinator.swift; sourceTree = "<group>"; };
 		969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliUninstallSheet.swift; sourceTree = "<group>"; };
 		9B22FDFA5E20898662BB5F8D /* DefierAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierAction.swift; sourceTree = "<group>"; };
+		9BA3EA2F82FD059BE5199D2C /* MacAppIconArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppIconArtwork.swift; sourceTree = "<group>"; };
 		9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetTypes.swift; sourceTree = "<group>"; };
 		9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupView.swift; sourceTree = "<group>"; };
 		A68D48FD8B15226E578D17BB /* AIConversationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConversationStore.swift; sourceTree = "<group>"; };
@@ -142,11 +186,13 @@
 		BB2D9DD81377D370B8667825 /* SoftwareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareView.swift; sourceTree = "<group>"; };
 		BD65D0D38693C8C88BF67683 /* PackPetSpriteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackPetSpriteView.swift; sourceTree = "<group>"; };
 		BE9CB496679AE634E0ED6284 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		BEE3B3581C3D9390B373C220 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareAIScan.swift; sourceTree = "<group>"; };
 		C573BB3186C301B644A5EFEE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C7C892AD5FACC8F972FBD3DC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C80FF8BEB892688DFF8F09D7 /* SettingsExplanationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsExplanationsView.swift; sourceTree = "<group>"; };
 		CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScore.swift; sourceTree = "<group>"; };
+		CDBA94D5927A48FF681AC3BC /* UsageGuideOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageGuideOverlay.swift; sourceTree = "<group>"; };
 		D116DBAB752ED37912A60185 /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
 		D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNavigator.swift; sourceTree = "<group>"; };
 		D755F746CC2E0BA08C14DAD5 /* PetLookController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetLookController.swift; sourceTree = "<group>"; };
@@ -163,6 +209,7 @@
 		F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBanter.swift; sourceTree = "<group>"; };
 		F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
 		FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanStore.swift; sourceTree = "<group>"; };
+		FF26FAA6D1A1D7D0B3D3C090 /* UsageGuideState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageGuideState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,11 +217,22 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3436902280D8BDFB5EF11C28 /* MonitorKit in Frameworks */,
-				53B2D31DAFBA352A9233BDD6 /* CleanupKit in Frameworks */,
-				5E837AEFDED8D4A849E54331 /* ZIPFoundation in Frameworks */,
-				39AD5FF0B8539C36EDD31B51 /* PetArchiveKit in Frameworks */,
+				3436902280D8BDFB5EF11C28 /* UninstallHelperClient in Frameworks */,
+				53B2D31DAFBA352A9233BDD6 /* MonitorKit in Frameworks */,
+				5E837AEFDED8D4A849E54331 /* CleanupKit in Frameworks */,
+				39AD5FF0B8539C36EDD31B51 /* ZIPFoundation in Frameworks */,
+				9D1D229870B547BC39E27395 /* PetArchiveKit in Frameworks */,
+				655EFAC22D64F90FFE608D0D /* Sparkle in Frameworks */,
 				528A23535FEF747460CDC2A7 /* Collaboration.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BE92E1FD5FC55EB8B10B0CC4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				689A8D71C5584B8725AB0699 /* UninstallHelperCore in Frameworks */,
+				F4A9DB1DF2960C0FE45667F5 /* UninstallHelperIPC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,6 +261,7 @@
 				3B2EA652602703E0B0DF0604 /* CleanupKit */,
 				341FF49AC1510175F1CA1415 /* MonitorKit */,
 				DC15799A308BEBEA3992E304 /* PetArchiveKit */,
+				5039AED5C6854E48337FCF32 /* UninstallHelperKit */,
 				7E87D355178B91B417D8A9DF /* ZIPFoundation */,
 			);
 			name = Packages;
@@ -212,6 +271,7 @@
 			isa = PBXGroup;
 			children = (
 				7373C2B82AF7FF46979A349D /* MacDefier.app */,
+				3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -240,6 +300,7 @@
 				3624DED30FA8ED33847BFCD6 /* SettingsView.swift */,
 				C1EB0E362B901D2A4B50A1F0 /* SoftwareAIScan.swift */,
 				BB2D9DD81377D370B8667825 /* SoftwareView.swift */,
+				CDBA94D5927A48FF681AC3BC /* UsageGuideOverlay.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -263,6 +324,14 @@
 			path = AI;
 			sourceTree = "<group>";
 		};
+		3377B17DA60FA7DDCB203EBD /* UninstallHelper */ = {
+			isa = PBXGroup;
+			children = (
+				BEE3B3581C3D9390B373C220 /* main.swift */,
+			);
+			path = UninstallHelper;
+			sourceTree = "<group>";
+		};
 		7A8E0E56B962BF7F4E746486 /* MacDefier */ = {
 			isa = PBXGroup;
 			children = (
@@ -274,6 +343,8 @@
 				7182B093F87430724F25D938 /* AppLanguage.swift */,
 				D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */,
 				7FC32D4DB5FD8A404C588866 /* AppRoute.swift */,
+				80C9517807081ADC3FF2D169 /* AppUpdateController.swift */,
+				0FBABC33BD57BAFF97C9065A /* AppUpdateState.swift */,
 				6F241F1AA68EA4366A4DD815 /* Assets.xcassets */,
 				B8747957DBA099F2E4C67497 /* ContentView.swift */,
 				D116DBAB752ED37912A60185 /* Format.swift */,
@@ -281,12 +352,14 @@
 				5BC510936D911D956A4DC1E9 /* L10n.swift */,
 				2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */,
 				1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */,
+				9BA3EA2F82FD059BE5199D2C /* MacAppIconArtwork.swift */,
 				5DD1C85396CB8E004FF168B5 /* MacDefier.entitlements */,
 				DF8C8B79FFE60BD9B8835113 /* MacDefierApp.swift */,
 				D93ECBF1AAFF4F4785672E28 /* MenuBarController.swift */,
 				1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */,
 				72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */,
 				C7C892AD5FACC8F972FBD3DC /* Theme.swift */,
+				FF26FAA6D1A1D7D0B3D3C090 /* UsageGuideState.swift */,
 				DC5D5F1ADD926D626BF63DC0 /* WindowChrome.swift */,
 			);
 			path = MacDefier;
@@ -302,6 +375,14 @@
 			path = Monitor;
 			sourceTree = "<group>";
 		};
+		997DDF7644799FD093F27907 /* Vendor */ = {
+			isa = PBXGroup;
+			children = (
+				3FABC6EB7455D2E9ABE96A81 /* Sparkle-LICENSE.txt */,
+			);
+			path = Vendor;
+			sourceTree = "<group>";
+		};
 		B5333FFB4DE4C3060333E1BB /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -315,6 +396,7 @@
 			children = (
 				969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */,
 				DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */,
+				65B2592208EF2EAA0344D676 /* UninstallHelperSettings.swift */,
 				E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */,
 			);
 			path = Software;
@@ -362,6 +444,8 @@
 			children = (
 				7A8E0E56B962BF7F4E746486 /* MacDefier */,
 				0E2C39432BFC689A1D91E7F7 /* Packages */,
+				3377B17DA60FA7DDCB203EBD /* UninstallHelper */,
+				997DDF7644799FD093F27907 /* Vendor */,
 				D81A855AE8E3495540442F41 /* NOTICE */,
 				B5333FFB4DE4C3060333E1BB /* Frameworks */,
 				0E616C27A5A8FC40809E1249 /* Products */,
@@ -378,21 +462,46 @@
 				F58EF33E3ADB99EEE07131BE /* Sources */,
 				CE98AA270470E427229AD26D /* Resources */,
 				5B0C1C3A28B9B2525A9DC5A0 /* Frameworks */,
+				0265367F045CEFC7E6C05DB4 /* Embed Dependencies */,
+				D58080377CA110E297AF449C /* Embed uninstall service definition */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BB7FDA4AB31972106645A92F /* PBXTargetDependency */,
+			);
+			name = MacDefier;
+			packageProductDependencies = (
+				3F1537B8B4D967954341B99B /* UninstallHelperClient */,
+				18F9162E74F8091F3932F31D /* MonitorKit */,
+				3D9F256BD40F86E4699F9979 /* CleanupKit */,
+				4B66D561E50C3498D4F5D323 /* ZIPFoundation */,
+				1D804A720609B6536CC22AC8 /* PetArchiveKit */,
+				2E35D3F9BE13174FD01BB23D /* Sparkle */,
+			);
+			productName = MacDefier;
+			productReference = 7373C2B82AF7FF46979A349D /* MacDefier.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8312E90315F71BE50CB63E1F /* MacDefierUninstallHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00B57FDE1ED4202CBB25E16 /* Build configuration list for PBXNativeTarget "MacDefierUninstallHelper" */;
+			buildPhases = (
+				E52B4C4276917C26EA1B1A3D /* Sources */,
+				BE92E1FD5FC55EB8B10B0CC4 /* Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = MacDefier;
+			name = MacDefierUninstallHelper;
 			packageProductDependencies = (
-				18F9162E74F8091F3932F31D /* MonitorKit */,
-				3D9F256BD40F86E4699F9979 /* CleanupKit */,
-				4B66D561E50C3498D4F5D323 /* ZIPFoundation */,
-				1D804A720609B6536CC22AC8 /* PetArchiveKit */,
+				15DB6523CA7AAC33AD954CC5 /* UninstallHelperCore */,
+				8732736199B0BA8F42D93204 /* UninstallHelperIPC */,
 			);
-			productName = MacDefier;
-			productReference = 7373C2B82AF7FF46979A349D /* MacDefier.app */;
-			productType = "com.apple.product-type.application";
+			productName = MacDefierUninstallHelper;
+			productReference = 3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */;
+			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
@@ -404,6 +513,9 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					540609D7BF8538EAA661BB06 = {
+						DevelopmentTeam = "";
+					};
+					8312E90315F71BE50CB63E1F = {
 						DevelopmentTeam = "";
 					};
 				};
@@ -419,9 +531,11 @@
 			mainGroup = F99EB1B23949E02FB6D5E12B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A8E220E5FFFEA7292C0D8D5E /* XCRemoteSwiftPackageReference "Sparkle" */,
 				46D91AE6C74F4AA899F46E91 /* XCLocalSwiftPackageReference "CleanupKit" */,
 				7161392524326F7C39F290C5 /* XCLocalSwiftPackageReference "MonitorKit" */,
 				57C315326C9E5B524DFDBE92 /* XCLocalSwiftPackageReference "PetArchiveKit" */,
+				03560CD847E42D4D5EC5F806 /* XCLocalSwiftPackageReference "UninstallHelperKit" */,
 				AA7C68E3D8AD87F441D3B874 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -430,6 +544,7 @@
 			projectRoot = "";
 			targets = (
 				540609D7BF8538EAA661BB06 /* MacDefier */,
+				8312E90315F71BE50CB63E1F /* MacDefierUninstallHelper */,
 			);
 		};
 /* End PBXProject section */
@@ -442,6 +557,7 @@
 				1477B3066F3EB58B7692BD01 /* Assets.xcassets in Resources */,
 				7A9A5CCAC29A6C07CA61016E /* Localizable.strings in Resources */,
 				6F95CA181C98E4996A3AAB75 /* NOTICE in Resources */,
+				3F1AB91C2E751DFAB92FA2F6 /* Sparkle-LICENSE.txt in Resources */,
 				FCDE61464D70EF09D4179AB0 /* defier-guard-bot.pet.json in Resources */,
 				ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */,
 			);
@@ -449,7 +565,37 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D58080377CA110E297AF449C /* Embed uninstall service definition */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed uninstall service definition";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"$SRCROOT/scripts/embed-uninstall-helper-plist.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
+		E52B4C4276917C26EA1B1A3D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECE0B8F2C51AADB83997EE0A /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F58EF33E3ADB99EEE07131BE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -466,6 +612,8 @@
 				B752614D08B2BC844BBE832F /* AppLanguage.swift in Sources */,
 				A5509A58FB9ECFA4A7E85C04 /* AppNavigator.swift in Sources */,
 				FA8DC5A445A22BA8B7A4C6CA /* AppRoute.swift in Sources */,
+				E426627B7F4D65FDFF46A76D /* AppUpdateController.swift in Sources */,
+				93A59774A8EA25061E880643 /* AppUpdateState.swift in Sources */,
 				1E2FA2E319B5E8315FA30D83 /* CapeClothSim.swift in Sources */,
 				D236F3622994931DDA148584 /* ChatIntentRouter.swift in Sources */,
 				03F8E7C54FA05AB5A69C4489 /* CleanupAIScan.swift in Sources */,
@@ -492,6 +640,7 @@
 				FF86226853AE1B2C4DB6F86A /* LocalizedCatalog.swift in Sources */,
 				A35916C3651B79F5754CFB36 /* MDAIResultCard.swift in Sources */,
 				440E2E1F4492434F3ECB93DF /* MDScanActivityCard.swift in Sources */,
+				35158F6F3E12E64C10BD324C /* MacAppIconArtwork.swift in Sources */,
 				6ABCB663C4788E7EC6DB3709 /* MacDefierApp.swift in Sources */,
 				B10186CBE68DE33D397CFBEB /* MenuBarController.swift in Sources */,
 				E1812CBF893DA13B3A69AFB5 /* MenuBarPanelView.swift in Sources */,
@@ -517,12 +666,23 @@
 				8C040654AED9AB23D65D1A6C /* SoftwareView.swift in Sources */,
 				2EA14EDE9020C7BD7AC175B7 /* Theme.swift in Sources */,
 				C0457B0035DB662A7D2C1773 /* UninstallErrorText.swift in Sources */,
+				1429CA67251EBCCF989D342E /* UninstallHelperSettings.swift in Sources */,
 				A4A94CAC61FC23792CE35BAE /* UninstallSheet.swift in Sources */,
+				4A9B6F3D5A8D33F8F5A674B2 /* UsageGuideOverlay.swift in Sources */,
+				A8BD976B8E3220B1B8F09EB9 /* UsageGuideState.swift in Sources */,
 				0C8C8EA7F1BFD7CB493F27EE /* WindowChrome.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BB7FDA4AB31972106645A92F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8312E90315F71BE50CB63E1F /* MacDefierUninstallHelper */;
+			targetProxy = 9AD0FF8FF3F32880FCAB8BC8 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		26EAD9B173E9C78BE522B217 /* Localizable.strings */ = {
@@ -543,11 +703,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = MacDefier/MacDefier.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = MacDefier;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
@@ -559,6 +721,26 @@
 				PRODUCT_NAME = MacDefier;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
+			};
+			name = Release;
+		};
+		35F07E050EA1779D06F32BD5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.macdefier.app.uninstall-helper";
+				PRODUCT_NAME = "MacDefier-UninstallHelper";
+				SDKROOT = macosx;
 			};
 			name = Release;
 		};
@@ -626,6 +808,26 @@
 			};
 			name = Debug;
 		};
+		54BA0E66D63ADD806370D441 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.macdefier.app.dev.uninstall-helper";
+				PRODUCT_NAME = "MacDefier-UninstallHelper";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		787D968A3122CCFCD1135E89 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -689,11 +891,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = MacDefier/MacDefier.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "MacDefier Dev";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
@@ -720,6 +924,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		A00B57FDE1ED4202CBB25E16 /* Build configuration list for PBXNativeTarget "MacDefierUninstallHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				54BA0E66D63ADD806370D441 /* Debug */,
+				35F07E050EA1779D06F32BD5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		F7EE3A480074D6E9585A45AA /* Build configuration list for PBXNativeTarget "MacDefier" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -732,6 +945,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		03560CD847E42D4D5EC5F806 /* XCLocalSwiftPackageReference "UninstallHelperKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = UninstallHelperKit;
+		};
 		46D91AE6C74F4AA899F46E91 /* XCLocalSwiftPackageReference "CleanupKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = CleanupKit;
@@ -750,7 +967,22 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		A8E220E5FFFEA7292C0D8D5E /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		15DB6523CA7AAC33AD954CC5 /* UninstallHelperCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UninstallHelperCore;
+		};
 		18F9162E74F8091F3932F31D /* MonitorKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MonitorKit;
@@ -759,13 +991,26 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = PetArchiveKit;
 		};
+		2E35D3F9BE13174FD01BB23D /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8E220E5FFFEA7292C0D8D5E /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		3D9F256BD40F86E4699F9979 /* CleanupKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CleanupKit;
 		};
+		3F1537B8B4D967954341B99B /* UninstallHelperClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UninstallHelperClient;
+		};
 		4B66D561E50C3498D4F5D323 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ZIPFoundation;
+		};
+		8732736199B0BA8F42D93204 /* UninstallHelperIPC */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UninstallHelperIPC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

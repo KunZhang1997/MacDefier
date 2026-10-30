@@ -530,11 +530,7 @@ public enum PathGate {
         // Containers / Group Containers / Application Support / Application Scripts：
         // 直接子项必须与目标 App 有可解释归属（bid 组件边界或唯一规范名），禁止「整树可卸」。
         if isContainerPath(pathN) {
-            guard target.verifiedResidualPaths.contains(pathN),
-                  let inspected = freshContainerOwnership(pathN),
-                  inspected.confidence == .verifiedOrphan,
-                  inspected.bundleID?.caseInsensitiveCompare(target.bundleID) == .orderedSame
-            else { return false }
+            guard uninstallContainerRetentionReason(pathN, target: target) == nil else { return false }
         } else if !residualLeafBelongsToApp(pathN: pathN, target: target) {
             return false
         }
@@ -582,6 +578,13 @@ public enum PathGate {
         let containers = normalize(home + "/Library/Containers")
         let groups = normalize(home + "/Library/Group Containers")
         return path.hasPrefix(containers + "/") || path.hasPrefix(groups + "/")
+    }
+
+    static func uninstallContainerRetentionReason(_ path: String, target: UninstallTargetIdentity) -> String? {
+        let normalized = normalize(path)
+        guard isContainerPath(normalized) else { return nil }
+        guard let ownership = freshContainerOwnership(normalized) else { return "container_unverified" }
+        return target.containerRetentionReason(ownership)
     }
 
     private static func freshContainerOwnership(_ path: String) -> ContainerOwnership? {

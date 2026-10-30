@@ -77,7 +77,7 @@ public enum CleanupRiskPolicy {
             if lowerName.contains("cookie") || lowerName.contains("history") || lowerName.contains("site") {
                 return .caution
             }
-            if lowerName.contains("cache") {
+            if lowerName.contains("cache") || lowerName.contains("缓存") {
                 return .rebuild
             }
             return .caution

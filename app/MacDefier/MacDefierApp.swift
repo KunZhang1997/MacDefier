@@ -6,6 +6,7 @@ import AppKit
 struct MacDefierApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var monitor = MonitorService.shared
+    @ObservedObject private var guide = UsageGuideState.shared
     @Environment(\.openWindow) private var openWindow
     @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.chinese.rawValue
@@ -44,12 +45,16 @@ struct MacDefierApp: App {
                         }
                         MenuBarController.shared.restoreFromDefaults()
                         MonitorAIAssist.shared.start(monitor: monitor)
+                        AppUpdateController.shared.checkForUpdateIfNeeded()
                         // Tag the key window as main shell for reopen routing
                         DispatchQueue.main.async {
                             if let w = NSApp.keyWindow {
                                 w.identifier = NSUserInterfaceItemIdentifier(AppDelegate.mainWindowID)
                             }
                         }
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                        AppUpdateController.shared.checkForUpdateIfNeeded()
                     }
                     .onChange(of: appearanceRaw) { _, value in
                         AppAppearance.apply(rawValue: value)
@@ -71,7 +76,15 @@ struct MacDefierApp: App {
                 ForEach(Array([AppRoute.diagnostic, .cleanup, .aiTools, .diskMap, .software, .monitor, .settings].enumerated()), id: \.element.id) { index, route in
                     Button(route.title) { AppNavigator.shared.route = route }
                         .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                        .disabled(guide.isPresented)
                 }
+            }
+            CommandGroup(replacing: .help) {
+                Button(L10n.t("guide.menu")) {
+                    MainWindowRouter.openMainWindow()
+                    guide.replay()
+                }
+                .disabled(isIconExport)
             }
         }
     }

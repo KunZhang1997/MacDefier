@@ -12,6 +12,8 @@ struct DefierPetView: View {
     var showsOnlineDot: Bool = false
     /// Track mouse for iris + slight head turn (off for tiny headers).
     var tracksLook: Bool = true
+    /// Static illustrations can reuse the selected character without another live timeline.
+    var animates: Bool = true
     /// When false, ignore imported pack and draw built-in skin (settings cards).
     var preferCustomPack: Bool = true
     /// AI 关：灰色但**不闭眼**（与 sleep 情绪解耦）。
@@ -28,7 +30,7 @@ struct DefierPetView: View {
     @State private var appActive = true
     @State private var hostWindowVisible = true
 
-    private var animationActive: Bool { appActive && hostWindowVisible }
+    private var animationActive: Bool { animates && appActive && hostWindowVisible }
     private var lookEnabled: Bool { tracksLook && size >= 48 && !dimmed && animationActive }
 
     /// 不可见跟眼宿主：仅在真正需要跟眼时挂载（关掉时连 NSView 都不挂）

@@ -62,7 +62,7 @@ public enum CliUninstallExecutor {
     struct Execution: Sendable {
         let program: @Sendable (CliTool) async -> ProgramStep
         let footprintGone: @Sendable (CliTool) -> Bool
-        let trash: @Sendable (String, UInt64) -> TrashStep
+        let trash: @Sendable (String, UInt64) async -> TrashStep
     }
 
     public static func uninstall(tool: CliTool, options: CliUninstallOptions) async -> CliUninstallResult {
@@ -74,7 +74,7 @@ public enum CliUninstallExecutor {
         let result = await execute(tool: tool, options: options, execution: Execution(
             program: { await uninstallProgram($0) },
             footprintGone: { programFootprintGone($0) },
-            trash: { trashPath($0, bytesHint: $1) }
+            trash: { await trashPath($0, bytesHint: $1) }
         ))
         if result.programUninstalled || result.agentsStopped > 0 || !result.trashedPaths.isEmpty {
             CleanupResourceEvents.publish(paths: paths)
@@ -101,6 +101,7 @@ public enum CliUninstallExecutor {
                 result.errors.append(contentsOf: r.errors)
                 result.trashedPaths.append(contentsOf: r.trashed)
                 if r.stopped { result.agentsStopped += 1 }
+                if requiresStopping(r.errors) { return result }
             }
             guard result.errors.isEmpty else { return result }
         }
@@ -144,11 +145,12 @@ public enum CliUninstallExecutor {
             }
             for path in paths {
                 guard !Task.isCancelled else { result.errors.append("cancelled"); return result }
-                let r = execution.trash(path, tool.dataDirs.first(where: { $0.path == path })?.bytes ?? 0)
+                let r = await execution.trash(path, tool.dataDirs.first(where: { $0.path == path })?.bytes ?? 0)
                 result.steps.append(contentsOf: r.steps)
                 result.errors.append(contentsOf: r.errors)
                 result.trashedPaths.append(contentsOf: r.trashed)
                 result.movedToTrashBytes &+= r.freed
+                if requiresStopping(r.errors) { return result }
             }
         }
 
@@ -196,12 +198,8 @@ public enum CliUninstallExecutor {
                     steps.append("launchctl unload \(agent.label)")
                     stopped = true
                 } else {
-                    let err = cmd1.stderr.isEmpty ? cmd2.stderr : cmd1.stderr
-                    if !err.isEmpty {
-                        steps.append("launchctl try \(agent.label): \(err.prefix(120))")
-                    }
                     // A stale inventory 'running=false' cannot authorize removing a live service.
-                    return (steps, ["cli_agent_stop_failed:\(agent.plistPath)"], [], false)
+                    return (steps, [cmd3.stderr, "cli_agent_stop_failed:\(agent.plistPath)"].filter { !$0.isEmpty }, [], false)
                 }
             }
         }
@@ -210,7 +208,7 @@ public enum CliUninstallExecutor {
             return (steps, ["cli_agent_owner_changed:\(agent.plistPath)"], [], stopped)
         }
         // Ownership was re-read after launchctl; move exactly the validated inode.
-        let tr = trashPath(agent.plistPath, bytesHint: 0, snapshot: source)
+        let tr = await trashPath(agent.plistPath, bytesHint: 0, snapshot: source)
         steps.append(contentsOf: tr.steps)
         errors.append(contentsOf: tr.errors)
         trashed.append(contentsOf: tr.trashed)
@@ -236,7 +234,7 @@ public enum CliUninstallExecutor {
         case .uv:
             return await uninstallUv(tool)
         case .manual, .unknown:
-            return uninstallManualProgram(tool)
+            return await uninstallManualProgram(tool)
         }
     }
 
@@ -260,8 +258,9 @@ public enum CliUninstallExecutor {
         if r2.code == 0 {
             return ([step + " (zsh)"], [], true)
         }
-        let err = r.stderr.isEmpty ? r2.stderr : r.stderr
-        return ([step], [err.isEmpty ? "npm_failed" : String(err.prefix(200))], false)
+        // Report the final attempt's reason, not stale output from the first try.
+        let err = r2.stderr.isEmpty ? r.stderr : r2.stderr
+        return ([step], [err.isEmpty ? "npm_failed" : err], false)
     }
 
     /// Resolve `npm` without pinning a single Homebrew node major (e.g. node@22).
@@ -307,7 +306,7 @@ public enum CliUninstallExecutor {
         if r.code == 0 {
             return ([step], [], true)
         }
-        return ([step], [r.stderr.isEmpty ? "brew_failed" : String(r.stderr.prefix(200))], false)
+        return ([step], [r.stderr.isEmpty ? "brew_failed" : r.stderr], false)
     }
 
     private static func uninstallUv(_ tool: CliTool) async -> (steps: [String], errors: [String], ok: Bool) {
@@ -316,17 +315,17 @@ public enum CliUninstallExecutor {
         if r.code == 0 {
             return ([step], [], true)
         }
-        return ([step], [r.stderr.isEmpty ? "uv_failed" : String(r.stderr.prefix(200))], false)
+        return ([step], [r.stderr.isEmpty ? "uv_failed" : r.stderr], false)
     }
 
     /// Only explicit program paths and symlinks freshly bound to those paths are eligible.
     static func uninstallManualProgram(
         _ tool: CliTool,
         home: String = NSHomeDirectory(),
-        trash: (UninstallFileBoundary.Snapshot) -> TrashStep = { source in
-            trashPath(source.path, bytesHint: 0, snapshot: source)
+        trash: (UninstallFileBoundary.Snapshot) async -> TrashStep = { source in
+            await trashPath(source.path, bytesHint: 0, snapshot: source)
         }
-    ) -> ProgramStep {
+    ) async -> ProgramStep {
         if tool.programPaths.isEmpty {
             return (["no program package"], [], true)
         }
@@ -340,9 +339,10 @@ public enum CliUninstallExecutor {
             if let evidence = tool.manualEntryEvidence[source.path], !evidence.stillMatches {
                 return (steps, errors + ["cli_manual_owner_changed:\(source.path)"], false)
             }
-            let r = trash(source)
+            let r = await trash(source)
             steps.append(contentsOf: r.steps)
             errors.append(contentsOf: r.errors)
+            if requiresStopping(r.errors) { return (steps, errors, false) }
         }
 
         if steps.isEmpty && errors.isEmpty {
@@ -359,8 +359,18 @@ public enum CliUninstallExecutor {
             guard !shimRoots.contains(lexical) else {
                 throw UninstallFileBoundary.Failure(code: "cli_manual_shared_root", path: path)
             }
-            if let evidence = tool.manualEntryEvidence[lexical], !evidence.stillMatches {
-                throw UninstallFileBoundary.Failure(code: "cli_manual_owner_changed", path: path)
+            if let evidence = tool.manualEntryEvidence[lexical] {
+                // Preserve a fresh POSIX refusal instead of mislabelling a denied
+                // metadata read as replacement of the previewed command.
+                do {
+                    _ = try UninstallFileBoundary.snapshot(path)
+                } catch {
+                    if UninstallFileBoundary.isMissing(path) { continue }
+                    throw error
+                }
+                if !evidence.stillMatches {
+                    throw UninstallFileBoundary.Failure(code: "cli_manual_owner_changed", path: path)
+                }
             }
         }
         for bin in tool.bins {
@@ -369,17 +379,23 @@ public enum CliUninstallExecutor {
             }
             for base in shimRoots {
                 let path = (base as NSString).appendingPathComponent(bin)
-                if (try? UninstallFileBoundary.snapshot(path)) != nil { paths.append(path) }
+                do {
+                    _ = try UninstallFileBoundary.snapshot(path)
+                    paths.append(path)
+                } catch {
+                    if !UninstallFileBoundary.isMissing(path) { throw error }
+                }
             }
         }
         var seen = Set<String>()
         var plan: [UninstallFileBoundary.Snapshot] = []
         for path in paths where seen.insert((path as NSString).standardizingPath).inserted {
-            guard let source = try? UninstallFileBoundary.snapshot(path) else {
-                if !UninstallFileBoundary.isMissing(path) {
-                    throw UninstallFileBoundary.Failure(code: "cli_manual_owner_changed", path: path)
-                }
-                continue
+            let source: UninstallFileBoundary.Snapshot
+            do {
+                source = try UninstallFileBoundary.snapshot(path)
+            } catch {
+                if UninstallFileBoundary.isMissing(path) { continue }
+                throw error
             }
             let lexical = (path as NSString).standardizingPath
             if shimRoots.contains(where: { lexical.hasPrefix($0 + "/") }) {
@@ -422,7 +438,7 @@ public enum CliUninstallExecutor {
     /// Align with `UninstallExecutor.trashUserLevel`: PathGate/existence on **resolved** target,
     /// `trashItem` on the **original** path URL so symlinks are moved (not their out-of-tree targets).
     static func trashPath(_ path: String, bytesHint: UInt64,
-                          snapshot: UninstallFileBoundary.Snapshot? = nil) -> (steps: [String], errors: [String], trashed: [String], freed: UInt64) {
+                          snapshot: UninstallFileBoundary.Snapshot? = nil) async -> (steps: [String], errors: [String], trashed: [String], freed: UInt64) {
         let resolved = PathGate.normalize(path)
         // Only ENOENT proves absence; permission errors are not "already removed".
         if UninstallFileBoundary.isMissing(path) {
@@ -444,7 +460,7 @@ public enum CliUninstallExecutor {
             if let reason = AIToolCleanupGuard.live.blockingReasonForExplicitRemoval(source, home: fm.homeDirectoryForCurrentUser.path) {
                 return ([], ["ai_cleanup_\(reason):\(path)"], [], 0)
             }
-            _ = try UninstallFileBoundary.move(source)
+            _ = try await UninstallSystemTrash.move(source)
             return (["trash \(path)"], [], [path], bytesHint)
         } catch {
             return ([], [error.localizedDescription], [], 0)
@@ -452,6 +468,13 @@ public enum CliUninstallExecutor {
     }
 
     // MARK: - Shell
+
+    private static func requiresStopping(_ errors: [String]) -> Bool {
+        errors.contains { error in
+            let code = error.split(separator: ":", maxSplits: 1).first.map(String.init)
+            return code == "uninstall_authorization_cancelled" || code == "uninstall_system_result_unknown"
+        }
+    }
 
     private static func which(_ cmd: String) async -> String? {
         let r = await runCapture(["/usr/bin/which", cmd], timeout: 3)
@@ -467,6 +490,7 @@ public enum CliUninstallExecutor {
     private struct ProcOut {
         var code: Int32
         var stdout: String
+        /// A stable reason code, never raw stderr.
         var stderr: String
     }
 
@@ -476,9 +500,10 @@ public enum CliUninstallExecutor {
             let run = try await ProcessRunner.run(args, timeout: timeout)
             let code: Int32 = run.succeeded ? 0 : (run.exitCode == 0 ? -1 : run.exitCode)
             let message = run.timedOut ? "timeout" : (run.wasCancelled ? "cancelled" : (run.outputLimitExceeded ? "output_limit" : run.stderrString))
-            return ProcOut(code: code, stdout: run.stdoutString, stderr: message)
+            return ProcOut(code: code, stdout: run.stdoutString,
+                           stderr: run.succeeded ? "" : UninstallCommandFailure.code(stderr: message, exitCode: code))
         } catch {
-            return ProcOut(code: -1, stdout: "", stderr: "launch_failed")
+            return ProcOut(code: -1, stdout: "", stderr: "command_launch_failed")
         }
     }
 }

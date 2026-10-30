@@ -48,3 +48,8 @@ DerivedData/
 
 # iCloud 产生的重复工具链接
 /app/tools/PetSnapshot/Sources/PetSnapshot/* [0-9]*.swift
+
+# Python 与本机测试缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/

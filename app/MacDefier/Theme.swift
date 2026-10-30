@@ -169,34 +169,59 @@ struct MDSelectionActionBar<Status: View>: View {
     @ViewBuilder var status: () -> Status
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selectedCount == 0 ? L10n.t("cleanup.none_selected")
-                     : L10n.t("cleanup.selected_line", selectedCount, selectedBytes))
-                    .font(.callout.weight(.medium)).foregroundStyle(MDTheme.label)
-                    .fixedSize(horizontal: false, vertical: true)
-                status()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedCount == 0 ? L10n.t("cleanup.none_selected")
+                         : L10n.t("cleanup.selected_line", selectedCount, selectedBytes))
+                        .font(.callout.weight(.medium)).foregroundStyle(MDTheme.label)
+                        .fixedSize(horizontal: false, vertical: true)
+                    status()
+                }
+                Spacer(minLength: 8)
+                Button(action: action) {
+                    Label(L10n.t("cleanup.clean_selected"), systemImage: "trash")
+                        .font(.callout.weight(.semibold))
+                        .frame(minWidth: 128)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .tint(MDTheme.accent).disabled(!canClean || progress != nil)
+                .accessibilityIdentifier(buttonIdentifier).help(actionHelp)
             }
-            Spacer(minLength: 8)
             if let progress {
-                ProgressView(value: progress).frame(width: 72)
-                    .accessibilityLabel(L10n.t("aitools.moving"))
+                MDWorkProgressView(value: progress, title: L10n.t("aitools.moving"))
             }
-            Button(action: action) {
-                Label(L10n.t("cleanup.clean_selected"), systemImage: "trash")
-                    .font(.callout.weight(.semibold))
-                    .frame(minWidth: 128, minHeight: 34)
-                    .padding(.horizontal, 12)
-                    .foregroundStyle(canClean ? Color.white : MDTheme.secondary)
-                    .background(canClean ? MDTheme.accent : MDTheme.surfaceInset,
-                                in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain).disabled(!canClean)
-            .accessibilityIdentifier(buttonIdentifier).help(actionHelp)
         }
         .padding(.horizontal, MDTheme.pagePadding).padding(.vertical, 10)
         .frame(maxWidth: .infinity).background(MDTheme.surface)
         .overlay(alignment: .top) { Divider() }
+    }
+}
+
+/// Compact, determinate progress shared by cleanup flows.
+struct MDWorkProgressView: View {
+    let value: Double
+    let title: String
+
+    private var fraction: Double { value.isFinite ? min(1, max(0, value)) : 0 }
+    private var percentage: String { "\(Int(fraction * 100))%" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(title).lineLimit(1)
+                Spacer(minLength: 0)
+                Text(percentage).monospacedDigit()
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(MDTheme.label)
+            ProgressView(value: fraction)
+                .tint(MDTheme.accent)
+                .labelsHidden()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(percentage)
     }
 }
 
@@ -211,6 +236,11 @@ extension View {
 struct MDGlassTabs<Tab: Hashable>: View {
     let tabs: [(id: Tab, title: String)]
     @Binding var selection: Tab
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @FocusState private var focusedTab: Tab?
+    @State private var hoveredTab: Tab?
 
     var body: some View {
         buttons
@@ -226,14 +256,49 @@ struct MDGlassTabs<Tab: Hashable>: View {
                         .font(.system(size: 13, weight: selection == tab.id ? .semibold : .regular))
                         .foregroundStyle(selection == tab.id ? MDTheme.label : MDTheme.secondary)
                         .padding(.horizontal, 13).frame(minHeight: 32)
-                        .background(selection == tab.id ? MDTheme.surface : Color.clear, in: Capsule())
+                        .background {
+                            if selection == tab.id {
+                                selectionSurface
+                            } else if hoveredTab == tab.id {
+                                Capsule().fill(MDTheme.label.opacity(0.06))
+                            }
+                        }
+                        .overlay {
+                            if focusedTab == tab.id {
+                                Capsule().strokeBorder(MDTheme.accent, lineWidth: 2)
+                            }
+                        }
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .focused($focusedTab, equals: tab.id)
+                .onHover { hoveredTab = $0 ? tab.id : (hoveredTab == tab.id ? nil : hoveredTab) }
+                .id(tab.id)
                 .accessibilityAddTraits(selection == tab.id ? [.isSelected] : [])
             }
         }.padding(4)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredTab)
+        .onMoveCommand { direction in
+            guard let focusedTab, let index = tabs.firstIndex(where: { $0.id == focusedTab }) else { return }
+            let next: Int
+            switch direction {
+            case .left: next = max(0, index - 1)
+            case .right: next = min(tabs.count - 1, index + 1)
+            default: return
+            }
+            selection = tabs[next].id
+            self.focusedTab = tabs[next].id
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var selectionSurface: some View {
+        if #available(macOS 26.0, *), !reduceTransparency, contrast != .increased {
+            Capsule().fill(.clear).glassEffect(.regular, in: Capsule())
+        } else {
+            Capsule().fill(MDTheme.surface)
+                .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+        }
     }
 }
 

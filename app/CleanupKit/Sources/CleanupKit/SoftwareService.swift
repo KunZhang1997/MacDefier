@@ -95,13 +95,14 @@ public final class SoftwareService: ObservableObject {
     @Published public private(set) var apps: [InstalledApp] = []
     @Published public private(set) var cliTools: [CliTool] = []
     @Published public private(set) var isLoading = false
+    @Published public private(set) var isSizingApps = false
     @Published public private(set) var isCLILoading = false
     @Published public private(set) var loadError: String?
     @Published public private(set) var cliLoadError: String?
     @Published public private(set) var appScanJourney = ScanJourney()
     @Published public private(set) var cliScanJourney = ScanJourney()
     /// Generation that currently owns `isLoading=true` for app inventory refresh.
-    /// Used so stale MainActor callbacks (after loadSize/cancel bump) can clear the spinner
+    /// Used so stale MainActor callbacks after cancellation can clear the spinner
     /// without clobbering a newer refresh that already re-took ownership.
     private var inventoryLoadingGen: Int = 0
     @Published public var query: String = ""
@@ -143,7 +144,10 @@ public final class SoftwareService: ObservableObject {
         }
         switch sort {
         case .sizeDesc:
-            return list.sorted { $0.totalBytes > $1.totalBytes }
+            return list.sorted {
+                if $0.totalBytes != $1.totalBytes { return $0.totalBytes > $1.totalBytes }
+                return $0.path.localizedStandardCompare($1.path) == .orderedAscending
+            }
         case .nameAsc:
             return list.sorted {
                 $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
@@ -177,7 +181,7 @@ public final class SoftwareService: ObservableObject {
     public var tierGroups: [SoftwareTierGroup] {
         let list = filtered
         var buckets: [SoftwareSizeTier: [InstalledApp]] = [:]
-        for app in list {
+        for app in list where app.sizeState == .measured || app.sizeState == .partial {
             let t = SoftwareSizeTier.tier(for: app.totalBytes)
             buckets[t, default: []].append(app)
         }
@@ -191,6 +195,13 @@ public final class SoftwareService: ObservableObject {
         apps.sorted { $0.totalBytes > $1.totalBytes }
     }
 
+    public var unmeasuredApps: [InstalledApp] {
+        filtered.filter { $0.sizeState == .pending || $0.sizeState == .unavailable }
+    }
+
+    /// Attempted items include explicit partial/unavailable results, never just nonzero sizes.
+    public var completedSizeCount: Int { apps.filter { $0.sizeState != .pending }.count }
+
     /// When last inventory finished.
     @Published public private(set) var lastInventoryAt: Date?
     @Published public private(set) var lastCLIInventoryAt: Date?
@@ -202,6 +213,12 @@ public final class SoftwareService: ObservableObject {
     private var pendingCLIRefreshCompletions: [() -> Void] = []
     private var inventoryTask: Task<Void, Never>?
     private var cliInventoryTask: Task<Void, Never>?
+    private var sizeTask: Task<Void, Never>?
+    private var sizeGeneration = 0
+
+    // In-memory test seams keep queue tests away from the user's installed apps and history.
+    var testInventoryHandler: (@Sendable () async -> [InstalledApp])?
+    var testSizeHandler: (@Sendable (InstalledApp) async -> InstalledApp?)?
 
     /// 15 分钟内有列表可复用。
     public var hasFreshInventory: Bool {
@@ -218,6 +235,7 @@ public final class SoftwareService: ObservableObject {
     /// App 列表与 CLI 列表任务分离：本方法只扫 .app，不触发 CLI / 清理。
     public func refresh(force: Bool = true, completion: (() -> Void)? = nil) {
         if !force, hasFreshInventory {
+            resumeSizeCalculation()
             completion?()
             return
         }
@@ -228,10 +246,11 @@ public final class SoftwareService: ObservableObject {
         }
         inventoryGeneration += 1
         inventoryTask?.cancel()
+        cancelSizeCalculation()
         let gen = inventoryGeneration
         inventoryLoadingGen = gen
         isLoading = true
-        appScanJourney.begin(["scan.stage.apps", "scan.stage.verify"])
+        appScanJourney.begin(["scan.stage.apps", "scan.stage.app_sizes", "scan.stage.verify"])
         appScanJourney.start("scan.stage.apps")
         loadError = nil
         aiNarrative = nil
@@ -241,10 +260,15 @@ public final class SoftwareService: ObservableObject {
         aiPreviewActions = []
         lastInventoryAt = nil
 
+        let inventoryHandler = testInventoryHandler
         inventoryTask = Task.detached(priority: .userInitiated) {
             // Return the app list quickly; expensive related-data sizes are filled by
             // a bounded, cancellable pass rather than blocking first paint.
-            let list = AppInventory.fetchInstalledApps(
+            let list: [InstalledApp]
+            if let inventoryHandler {
+                list = await inventoryHandler()
+            } else {
+                list = AppInventory.fetchInstalledApps(
                 includeSystemApps: true,
                 computeSize: false,
                 onBatch: { list in
@@ -254,10 +278,11 @@ public final class SoftwareService: ObservableObject {
                     }
                 },
                 isCancelled: { Task.isCancelled }
-            )
+                )
+            }
             await MainActor.run {
                 guard self.inventoryGeneration == gen else {
-                    // Stale after loadSize/cancel bumped gen: clear spinner only if we still own it
+                    // Stale after cancellation: clear spinner only if we still own it
                     // (a newer refresh would have inventoryLoadingGen == current gen).
                     if self.inventoryLoadingGen == gen {
                         self.isLoading = false
@@ -267,54 +292,97 @@ public final class SoftwareService: ObservableObject {
                 }
                 self.apps = list
                 self.appScanJourney.complete("scan.stage.apps", count: list.count)
-                self.appScanJourney.start("scan.stage.verify")
-                self.appScanJourney.complete("scan.stage.verify", count: list.count)
-                self.appScanJourney.finish()
                 self.isLoading = false
                 self.lastInventoryAt = Date()
-                SoftwareScanStore.save(
-                    apps: list,
-                    sort: self.sort,
-                    aiNarrative: nil,
-                    usedAI: false,
-                    aiError: nil,
-                    previewActions: []
-                )
+                self.resumeSizeCalculation()
                 self.flushRefreshWaiters(extra: completion)
             }
         }
     }
 
-    /// Size one visible/selected app on demand. There is deliberately no silent all-app walk.
+    /// Compatibility entry point: requesting one size must not cancel the inventory or queue.
     public func loadSize(for app: InstalledApp) {
-        inventoryTask?.cancel()
-        inventoryGeneration += 1
-        // Cancelling an in-flight refresh must not leave isLoading stuck true forever.
-        // Stale refresh MainActor callback will also clear when inventoryLoadingGen matches,
-        // but clear immediately so a subsequent refresh(force:) can start without waiting.
-        if isLoading, inventoryLoadingGen != inventoryGeneration {
-            appScanJourney.stop()
-            isLoading = false
-            flushRefreshWaiters(extra: nil)
+        resumeSizeCalculation()
+    }
+
+    /// Metadata appears first. One utility-priority worker then measures every pending app.
+    public func resumeSizeCalculation() {
+        guard !isLoading, !isSizingApps else { return }
+        let pending = apps.filter { $0.sizeState == .pending }
+        guard !pending.isEmpty else {
+            finishSizeCalculation()
+            return
         }
-        let gen = inventoryGeneration
-        inventoryTask = Task.detached(priority: .userInitiated) {
-            let sized = AppInventory.loadApp(
-                at: URL(fileURLWithPath: app.path),
-                computeSize: true,
-                isCancelled: { Task.isCancelled }
-            )
-            guard let sized, !Task.isCancelled else { return }
+        sizeGeneration += 1
+        let gen = sizeGeneration
+        let previousTask = sizeTask
+        let sizeHandler = testSizeHandler
+        isSizingApps = true
+        appScanJourney.begin(["scan.stage.apps", "scan.stage.app_sizes", "scan.stage.verify"])
+        appScanJourney.complete("scan.stage.apps", count: apps.count)
+        appScanJourney.start("scan.stage.app_sizes")
+        sizeTask = Task.detached(priority: .utility) {
+            // A cancelled filesystem call may still be returning. Do not overlap its successor.
+            await previousTask?.value
+            for app in pending {
+                guard !Task.isCancelled else { return }
+                let result = await DiskScanCoordinator.shared.withPermit {
+                    if let sizeHandler { return await sizeHandler(app) }
+                    return AppInventory.loadApp(
+                        at: URL(fileURLWithPath: app.path), computeSize: true,
+                        isCancelled: { Task.isCancelled }
+                    )
+                }
+                guard !Task.isCancelled else { return }
+                let sized = result ?? nil
+                // Do not attach measurements from an app replaced while we were traversing it.
+                let valid = sized.map {
+                    $0.path == app.path && $0.bundleIdentifier == app.bundleIdentifier
+                        && $0.version == app.version && $0.sizeState != .pending
+                } ?? false
+                let updated = valid ? sized! : InstalledApp(
+                    name: app.name, bundleIdentifier: app.bundleIdentifier, path: app.path,
+                    version: app.version, bytes: 0, isSystemLocation: app.isSystemLocation,
+                    canTrashAppBundle: app.canTrashAppBundle, sizeState: .unavailable
+                )
+                await MainActor.run {
+                    guard self.sizeGeneration == gen,
+                          let index = self.apps.firstIndex(where: { $0.path == app.path })
+                    else { return }
+                    self.apps[index] = updated
+                }
+                // Bound UI re-sorts and give other disk scans a chance to acquire the permit.
+                do { try await Task.sleep(nanoseconds: 100_000_000) }
+                catch { return }
+            }
             await MainActor.run {
-                guard self.inventoryGeneration == gen,
-                      let index = self.apps.firstIndex(where: { $0.path == app.path })
-                else { return }
-                self.apps[index] = sized
+                guard self.sizeGeneration == gen else { return }
+                self.finishSizeCalculation()
             }
         }
     }
 
+    private func finishSizeCalculation() {
+        isSizingApps = false
+        let incomplete = apps.contains { $0.sizeState != .measured }
+        appScanJourney.complete("scan.stage.app_sizes", count: completedSizeCount, partial: incomplete)
+        appScanJourney.start("scan.stage.verify")
+        appScanJourney.complete("scan.stage.verify", count: apps.count)
+        appScanJourney.finish(partial: incomplete)
+        if testInventoryHandler == nil {
+            SoftwareScanStore.save(apps: apps, sort: sort, aiNarrative: aiNarrative,
+                                   usedAI: usedAI, aiError: lastAIError, previewActions: aiPreviewActions)
+        }
+    }
+
+    private func cancelSizeCalculation() {
+        sizeGeneration += 1
+        sizeTask?.cancel()
+        isSizingApps = false
+    }
+
     public func cancelInventoryWork() {
+        cancelSizeCalculation()
         appScanJourney.stop()
         cliScanJourney.stop()
         inventoryGeneration += 1
@@ -429,22 +497,23 @@ public final class SoftwareService: ObservableObject {
         lines.append("磁盘是否偏紧：\(diskTight ? "是" : "否")；可用约 \(freeDiskLabel)")
         lines.append("规则：大体积≠故障；磁盘不紧时不要催卸游戏/常用软件。不要编造路径；卸载须用户到软件页预览确认。")
         var tierCounts: [SoftwareSizeTier: Int] = [:]
-        for a in apps {
+        for a in apps where a.sizeState == .measured || a.sizeState == .partial {
             let t = SoftwareSizeTier.tier(for: a.totalBytes)
             tierCounts[t, default: 0] += 1
         }
         let tierLine = SoftwareSizeTier.allCases.map { t in
             "\(t.title)=\(tierCounts[t, default: 0])"
         }.joined(separator: " · ")
-        let sizesKnown = apps.contains { $0.totalBytes > 0 || $0.bytes > 0 }
+        let sizesKnown = apps.contains { $0.sizeState == .measured || $0.sizeState == .partial }
+        lines.append("体积计算进度：\(completedSizeCount)/\(apps.count)；部分测量仅为下限，未测量或无法读取不等于 0 B。")
         if sizesKnown {
             lines.append("体积分档：\(tierLine)（≥10GB 重大 / 1–10GB 较大 / 100MB–1GB 一般 / <100MB 轻量）")
             // 隐私：不发完整安装路径；有实测体积才发字节（禁止未知编码为 0）
             lines.append("Top 体积（name | bundle | totalBytes | relatedBytes | system）：")
-            for a in topBySize.prefix(20) where a.totalBytes > 0 || a.bytes > 0 {
+            for a in topBySize.prefix(20) where a.sizeState == .measured || a.sizeState == .partial {
                 let tier = SoftwareSizeTier.tier(for: a.totalBytes).title
                 lines.append(
-                    "- [\(tier)] \(a.name) | \(a.bundleIdentifier) | \(a.totalBytes) | \(a.relatedBytes) | \(a.isSystemLocation)"
+                    "- [\(tier)] \(a.name) | \(a.bundleIdentifier) | \(a.sizeState == .partial ? ">=" : "")\(a.totalBytes) | \(a.relatedBytes) | \(a.isSystemLocation)"
                 )
             }
         } else {
@@ -468,11 +537,11 @@ public final class SoftwareService: ObservableObject {
     ) async -> CleanupResult {
         // Freeze target identity and the exact preflight paths before the first .app
         // move; PathGate must not re-open an app bundle after it no longer exists.
-        let targetIdentity = UninstallTargetIdentity(
-            app: app,
-            residualPaths: items.filter(\.isSelected).map(\.path)
-        )
-        let mapped: [CleanableItem] = items.filter(\.isSelected).map { r in
+        let selectedItems = items.filter { $0.isSelected && $0.canSelect }
+        let targetIdentity = await Task.detached(priority: .userInitiated) {
+            UninstallTargetIdentity(app: app, residualPaths: selectedItems.map(\.path))
+        }.value
+        let mapped: [CleanableItem] = selectedItems.map { r in
             var item = CleanableItem(
                 name: r.name,
                 path: r.path,

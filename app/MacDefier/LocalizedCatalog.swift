@@ -39,6 +39,10 @@ extension CleanableItem {
     /// List title in current app language (not kit Chinese).
     /// Large files: keep path identity (last 1–2 path components) so many "Downloads" stay distinguishable.
     var localizedDisplayTitle: String {
+        if let kind = browserKind, let detail = browserDetail {
+            let parts = [appName ?? "Browser", L10n.t("cleanup.browser.kind." + kind.rawValue), browserProfile, L10n.t("cleanup.browser.detail." + detail)].compactMap { $0 }
+            return parts.joined(separator: " · ")
+        }
         if category == .largeAppData || category == .installerPackages {
             return largeFileDisplayTitle
         }
@@ -56,6 +60,7 @@ extension CleanableItem {
     }
 
     var localizedWhatIsIt: String {
+        if let kind = browserKind { return L10n.t("cleanup.browser.what." + kind.rawValue) }
         if category == .installerPackages {
             return category.localizedWhatIsIt
         }
@@ -74,6 +79,7 @@ extension CleanableItem {
         if ifCleaned.hasPrefix("cleanup_blocked:") {
             return L10n.t("cleanup.reason." + ifCleaned.dropFirst("cleanup_blocked:".count))
         }
+        if let kind = browserKind { return L10n.t("cleanup.browser.effect." + kind.rawValue) }
         if ifCleaned.hasPrefix("ai_cleanup:") {
             return L10n.t("aitools.reason." + ifCleaned.dropFirst("ai_cleanup:".count))
         }

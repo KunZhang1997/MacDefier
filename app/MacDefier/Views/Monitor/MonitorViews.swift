@@ -25,7 +25,9 @@ struct MonitorCenterView: View {
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         detailPicker
-                        if selectedTab != .history { intervalPicker }
+                        if selectedTab != .history {
+                            HStack(spacing: 12) { historyButton; intervalPicker }
+                        }
                     }
                 }
             }
@@ -138,12 +140,12 @@ struct MonitorNetworkPane: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: monitorAI.ipTipUsedAI ? "sparkles" : "network")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(MDTheme.accent)
+                .foregroundStyle(MDTheme.secondary)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(monitorAI.ipTipUsedAI ? L10n.t("monitor.ip.tip_ai") : L10n.t("monitor.ip.tip_change"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.accent)
+                    .foregroundStyle(MDTheme.secondary)
                 MDAIClampedText(tip, maxHeight: 72)
                     .font(.system(size: 12.5))
                     .foregroundStyle(MDTheme.label)
@@ -161,7 +163,7 @@ struct MonitorNetworkPane: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MDTheme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(MDTheme.surfaceInset, in: RoundedRectangle(cornerRadius: MDTheme.resultCardRadius, style: .continuous))
     }
 
     private var overviewCard: some View {
@@ -778,10 +780,10 @@ struct MonitorDashboardPane: View {
             HStack(spacing: 6) {
                 Image(systemName: monitorAI.dashUsedAI ? "sparkles" : "gauge.with.dots.needle.67percent")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.accent)
+                    .foregroundStyle(MDTheme.secondary)
                 Text(monitorAI.dashUsedAI ? L10n.t("monitor.ai_review") : L10n.t("monitor.live"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.accent)
+                    .foregroundStyle(MDTheme.secondary)
                 if monitorAI.isDashLoading {
                     ProgressView().controlSize(.mini)
                 }
@@ -812,7 +814,7 @@ struct MonitorDashboardPane: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MDTheme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(MDTheme.surfaceInset, in: RoundedRectangle(cornerRadius: MDTheme.resultCardRadius, style: .continuous))
     }
 
     // MARK: KPI helpers

@@ -5,17 +5,45 @@
 #   ./scripts/package-release.sh 0.1.1
 # 前置：
 #   xcrun notarytool store-credentials "macdefier-notary" ...
+#   MACDEFIER_SPARKLE_TOOLS_DIR=/path/to/pinned/Sparkle/bin
+#   generate_keys --account com.macdefier.app.sparkle  # one-time explicit setup
 # 工程在 iCloud Desktop 时，在本地缓存目录构建，避免 xcodebuild 卡死。
 set -euo pipefail
 
 VER="${1:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIFECYCLE="$ROOT/app/scripts/single_app_build.py"
+if [[ "${SINGLE_APP_PRODUCT:-}" != MacDefier ]]; then
+  exec python3 "$LIFECYCLE" run /bin/bash "$0" "$@"
+fi
 VAULT_APP="$ROOT/app"
 DIST="$ROOT/dist"
 CACHE="${MACDEFIER_BUILD_CACHE:-$HOME/Library/Caches/MacDefier-build}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-macdefier-notary}"
 SIGN_ID="${SIGN_ID:?Set SIGN_ID to your Developer ID Application identity}"
-TEAM_ID="${TEAM_ID:?Set TEAM_ID to your Apple Developer team ID}"
+TEAM_ID="${TEAM_ID:?Set TEAM_ID to your Apple Developer Team ID}"
+
+# Resign every nested code container inside-out, preserving Sparkle helper entitlements.
+# Signing only their Mach-O files leaves framework/XPC/app resource seals stale.
+sign_nested_code() {
+  local staged_app="$1" identity="$2" bin bundle
+  while IFS= read -r -d '' bin; do
+    [[ "$bin" != "$staged_app/Contents/MacOS/MacDefier" ]] || continue
+    [[ "$(file -b "$bin")" == *Mach-O* ]] || continue
+    if [[ "$bin" == "$staged_app/Contents/MacOS/MacDefier-UninstallHelper" ]]; then
+      codesign --force --options runtime --timestamp --identifier com.macdefier.app.uninstall-helper \
+        --sign "$identity" "$bin"
+      continue
+    fi
+    codesign --force --options runtime --timestamp --preserve-metadata=entitlements \
+      --sign "$identity" "$bin"
+  done < <(find "$staged_app/Contents" -type f \( -perm -111 -o -name '*.dylib' \) -print0)
+  while IFS= read -r -d '' bundle; do
+    codesign --force --options runtime --timestamp --preserve-metadata=entitlements \
+      --sign "$identity" "$bundle"
+  done < <(find "$staged_app/Contents" -depth -type d \
+    \( -name '*.framework' -o -name '*.xpc' -o -name '*.app' -o -name '*.appex' \) -print0)
+}
 
 assert_safe_scratch() {
   local requested="$1" label="$2" marker="$3"
@@ -56,12 +84,14 @@ assert_safe_scratch() {
 }
 
 CACHE="$(assert_safe_scratch "$CACHE" "build cache" build-cache)"
+python3 "$LIFECYCLE" track "$CACHE"
 
 PRODUCT_REL="DerivedData/Build/Products/Release/MacDefier.app"
 APP_IN_CACHE="$CACHE/$PRODUCT_REL"
 ENTITLEMENTS_REL="MacDefier/MacDefier.entitlements"
 
 echo "==> [0/8] preflight"
+"$VAULT_APP/scripts/generate-update-feed.sh" --check-signing
 command -v xcodegen >/dev/null
 command -v xcodebuild >/dev/null
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null
@@ -107,8 +137,8 @@ xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Release
 test -d "$APP_IN_CACHE" || { echo "missing product: $APP_IN_CACHE"; exit 1; }
 
 # 签名/公证全程在非 iCloud 本地目录做，避免 Desktop/iCloud 的 FinderInfo xattr 导致 codesign 失败
-STAGE_ROOT="${MACDEFIER_RELEASE_STAGE:-$HOME/Library/Caches/MacDefier-release}"
-STAGE_ROOT="$(assert_safe_scratch "$STAGE_ROOT" "release stage" release-stage)"
+STAGE_ROOT="$SINGLE_APP_WORK/release"
+mkdir -p "$STAGE_ROOT"
 STAGE_APP="$STAGE_ROOT/MacDefier.app"
 echo "==> [4/8] stage (local cache) + deep sign verify"
 find "$STAGE_ROOT" -mindepth 1 -maxdepth 1 ! -name '.macdefier-release-stage' -exec rm -rf -- {} +
@@ -135,18 +165,7 @@ fi
 xattr -cr "$STAGE_APP" 2>/dev/null || true
 find "$STAGE_APP" -print0 | xargs -0 xattr -c 2>/dev/null || true
 
-# 内嵌可执行文件先签，再签主 bundle（--deep 对某些 layout 不够稳）
-while IFS= read -r -d '' bin; do
-  # Skip the main app binary here; signed with entitlements below
-  if [[ "$(basename "$bin")" == "MacDefier" ]] && [[ "$bin" == *"/MacOS/MacDefier" ]]; then
-    continue
-  fi
-  if ! codesign --force --options runtime --timestamp \
-    --sign "$SIGN_ID" "$bin"; then
-    echo "ERROR: codesign failed for embedded binary: $bin" >&2
-    exit 1
-  fi
-done < <(find "$STAGE_APP/Contents" -type f -perm -111 -print0 2>/dev/null)
+sign_nested_code "$STAGE_APP" "$SIGN_ID"
 
 codesign --force --options runtime --timestamp \
   --entitlements "$CACHE/$ENTITLEMENTS_REL" \
@@ -154,6 +173,7 @@ codesign --force --options runtime --timestamp \
   "$STAGE_APP"
 
 codesign --verify --deep --strict --verbose=2 "$STAGE_APP"
+bash "$VAULT_APP/scripts/validate-uninstall-helper.sh" "$STAGE_APP"
 spctl -a -vv -t exec "$STAGE_APP" 2>&1 || true
 codesign -dv --verbose=4 "$STAGE_APP" 2>&1 | head -40
 
@@ -235,9 +255,11 @@ spctl -a -vv -t open --context context:primary-signature "$DMG_OUT_LOCAL"
 )
 
 # dist/release: dmg/zip/sha only — no loose .app
-rm -rf "$DIST/MacDefier.app"
+
 ditto "$DMG_OUT_LOCAL" "$DMG_OUT"
 ditto "$ZIP_OUT_LOCAL" "$ZIP_OUT"
+# Sign the final stapled/copied DMG, never an intermediate archive or its tag name.
+"$VAULT_APP/scripts/generate-update-feed.sh" "$DMG_OUT" "$VER" "$DIST_REL"
 rm -rf "$DMG_STAGE" "$ZIP_FOR_NOTARY"
 
 echo "==> [8/8] checksums"
@@ -249,5 +271,6 @@ echo ""
 echo "OK 正式包："
 echo "  DMG: $DMG_OUT"
 echo "  ZIP: $ZIP_OUT"
+echo "  Sparkle feed: $DIST_REL/appcast.xml"
 echo "发给别人：优先发 DMG。对方拖到 Applications 即可，无需右键仍要打开。"
-echo "本地已公证 app 缓存：$STAGE_APP"
+echo "临时应用构建将在退出时自动清理；已公证安装包保留。"
