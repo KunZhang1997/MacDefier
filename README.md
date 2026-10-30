@@ -4,7 +4,7 @@ MacDefier 是一个用 SwiftUI 构建的开源 macOS 工具，用于诊断卡顿
 
 An open-source macOS utility for system diagnostics, cleanup, app and AI-tool management, and resource monitoring. Built with SwiftUI. AI assistance is optional.
 
-**[下载安装包 · Download DMG](https://github.com/KunZhang1997/MacDefier/releases/download/v0.14/MacDefier-0.14.dmg)** · [从源码构建](#从源码构建)
+**[下载安装包 · Download DMG](https://github.com/KunZhang1997/MacDefier/releases/download/v0.19/MacDefier-0.19.dmg)** · [从源码构建](#从源码构建)
 
 ## 功能
 
@@ -20,17 +20,17 @@ An open-source macOS utility for system diagnostics, cleanup, app and AI-tool ma
 
 ## 安装包安装
 
-**[下载 MacDefier 0.14 安装包（DMG）](https://github.com/KunZhang1997/MacDefier/releases/download/v0.14/MacDefier-0.14.dmg)** · [版本说明与校验文件](https://github.com/KunZhang1997/MacDefier/releases/latest)
+**[下载 MacDefier 0.19 安装包（DMG）](https://github.com/KunZhang1997/MacDefier/releases/download/v0.19/MacDefier-0.19.dmg)** · [版本说明与校验文件](https://github.com/KunZhang1997/MacDefier/releases/latest)
 
 需要 **macOS 14.0 或更新版本**，支持 **Apple Silicon 和 Intel Mac**。安装包已使用 Developer ID 签名并通过 Apple 公证，无需安装 Xcode 或其他开发工具。
 
-1. 下载并打开 `MacDefier-0.14.dmg`。
+1. 下载并打开 `MacDefier-0.19.dmg`。
 2. 将 `MacDefier.app` 拖入 `Applications`（应用程序）。
 3. 从「应用程序」打开 MacDefier，按需要授予相应权限。
 
 清理部分受保护目录时，需要在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 MacDefier。AI 顾问为可选功能，可在设置中配置。
 
-**English:** [Download the DMG](https://github.com/KunZhang1997/MacDefier/releases/download/v0.14/MacDefier-0.14.dmg), open it, drag `MacDefier.app` into `Applications`, and launch it from there. Requires macOS 14.0 or later; supports Apple Silicon and Intel. Developer ID signed and Apple notarized. No developer tools required.
+**English:** [Download the DMG](https://github.com/KunZhang1997/MacDefier/releases/download/v0.19/MacDefier-0.19.dmg), open it, drag `MacDefier.app` into `Applications`, and launch it from there. Requires macOS 14.0 or later; supports Apple Silicon and Intel. Developer ID signed and Apple notarized. No developer tools required.
 
 ## 从源码构建
 
