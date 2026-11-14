@@ -226,7 +226,7 @@ public enum AIOllamaInventory {
                 let name = withUnsafePointer(to: &item.pointee.d_name) {
                     $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
                 }
-                if name == "." || name == ".." { continue }
+                if name == "." || name == ".." || name == ".DS_Store" || name.hasPrefix("._") { continue }
                 entries += 1
                 guard !overBudget() else { graph.fail(); break }
                 let child = path + "/" + name
@@ -341,7 +341,7 @@ public enum AIOllamaInventory {
         var info = stat()
         guard physical(path) == path, lstat(path, &info) == 0,
               info.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR), info.st_uid == getuid(),
-              info.st_mode & 0o022 == 0 else { return nil }
+              info.st_mode & 0o002 == 0 else { return nil }
         return signature(info)
     }
 
@@ -349,7 +349,7 @@ public enum AIOllamaInventory {
         var info = stat()
         guard physical(path) == path, lstat(path, &info) == 0,
               info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG), info.st_uid == getuid(),
-              info.st_mode & 0o022 == 0, info.st_size >= 0,
+              info.st_mode & 0o002 == 0, info.st_size >= 0,
               let resource = try? AIResource.capture(path: path, bytes: UInt64(max(0, info.st_blocks)) * 512),
               resource.boundary.item == UninstallFileBoundary.Identity(info), resource.stillMatches() else { return nil }
         return Proof(signature: signature(info), bytes: resource.bytes, logicalBytes: UInt64(info.st_size),

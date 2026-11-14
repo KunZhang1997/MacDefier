@@ -106,16 +106,114 @@ final class ProcessOutputTests: XCTestCase {
     }
 
     func testRAMProcessSamplerPublishesActualProcessOutput() {
-        let published = expectation(description: "top output")
+        let published = expectation(description: "in-process RAM footprint output")
         let sampler = RAMProcessSampler(limit: 3, interval: 60) { processes in
             guard let processes, !processes.isEmpty else { return }
             XCTAssertLessThanOrEqual(processes.count, 3)
+            XCTAssertGreaterThan(processes[0].usage, 0)
+            if processes.count >= 2 {
+                XCTAssertGreaterThanOrEqual(processes[0].usage, processes[1].usage)
+            }
             published.fulfill()
         }
         defer { sampler.stop() }
 
         sampler.start()
         wait(for: [published], timeout: 6)
+    }
+
+    func testRAMProcessSamplerFindsCurrentProcessFootprintInProcess() {
+        let selfPID = Int(getpid())
+        let published = expectation(description: "current process RAM footprint")
+        let sampler = RAMProcessSampler(limit: 1_000, interval: 60) { processes in
+            guard let processes, let mine = processes.first(where: { $0.pid == selfPID }) else { return }
+            // XCTest runner footprint is at least multiple MBs.
+            XCTAssertGreaterThan(mine.usage, 1_000_000)
+            XCTAssertNotNil(mine.identity)
+            published.fulfill()
+        }
+        defer { sampler.stop() }
+
+        sampler.start()
+        wait(for: [published], timeout: 5)
+    }
+
+    func testCPUProcessSamplerSteadyStateDeltaReflectsActiveBurn() {
+        let selfPID = Int(getpid())
+        let firstSample = expectation(description: "cold-start CPU sample")
+        let secondSample = expectation(description: "steady-state delta CPU sample")
+        let logicalCores = max(1, ProcessInfo.processInfo.activeProcessorCount)
+
+        final class BurnFlag: @unchecked Sendable {
+            let lock = NSLock()
+            var active = true
+            var sampleCount = 0
+        }
+        let flag = BurnFlag()
+
+        // Spin one background worker thread so current process burns ~1 core during delta window.
+        DispatchQueue.global(qos: .userInitiated).async {
+            var acc: UInt64 = 1
+            while true {
+                flag.lock.lock()
+                let keepGoing = flag.active
+                flag.lock.unlock()
+                if !keepGoing { break }
+                for i in 1...10_000 {
+                    acc = acc &* 2862933555777941757 &+ UInt64(i)
+                }
+                withExtendedLifetime(acc) {}
+            }
+        }
+        defer {
+            flag.lock.lock()
+            flag.active = false
+            flag.lock.unlock()
+        }
+
+        var samplerRef: CPUProcessSampler?
+        let sampler = CPUProcessSampler(limit: 1_000, interval: 60) { processes in
+            guard let processes, !processes.isEmpty else { return }
+            flag.lock.lock()
+            flag.sampleCount += 1
+            let count = flag.sampleCount
+            flag.lock.unlock()
+
+            if count == 1 {
+                firstSample.fulfill()
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.15) {
+                    samplerRef?.requestRead()
+                }
+            } else if count == 2 {
+                if let mine = processes.first(where: { $0.pid == selfPID }) {
+                    XCTAssertGreaterThan(mine.usage, 15.0, "Active burn must register non-trivial CPU% via mach_timebase_info")
+                    XCTAssertLessThanOrEqual(mine.usage, Double(logicalCores) * 120.0, "CPU% must stay within core-count scale")
+                } else {
+                    XCTFail("Expected current process in steady-state CPU sample")
+                }
+                secondSample.fulfill()
+            }
+        }
+        samplerRef = sampler
+        defer { sampler.stop() }
+
+        sampler.start()
+        wait(for: [firstSample, secondSample], timeout: 5)
+    }
+
+    func testHostSummaryStorageLabelUsesDecimalBytes() {
+        let disk = DiskVolume(
+            name: "Macintosh HD",
+            path: "/",
+            bsdName: "disk3s1s1",
+            total: 500_000_000_000,
+            free: 200_000_000_000,
+            removable: false,
+            kind: .system
+        )
+        let summary = HostSummary.read(disks: [disk])
+        let expected = ByteCountFormatter.string(fromByteCount: 500_000_000_000, countStyle: .file)
+        XCTAssertEqual(summary.storageLabel, expected)
     }
 
     private func launch(_ executable: String, _ arguments: [String] = []) throws -> (Process, Pipe) {

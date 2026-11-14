@@ -206,6 +206,32 @@ final class AIOllamaInventoryTests: XCTestCase {
         XCTAssertFalse(AIOllamaInventory.validateModel(second, home: fixture.home, excludingMovedPaths: [first.path]),
                        "A completed model must account for every original exclusive resource")
     }
+
+    func testDSStoreInManifestsIgnoredAndIdleOllamaDaemonDoesNotBlockUnloadedModel() throws {
+        let fixture = try StoreFixture(); defer { fixture.remove() }
+        let a = try fixture.blob("a")
+        try fixture.model("registry.ollama.ai/library/qwen2.5/0.5b", layers: [a])
+        try Data("finder".utf8).write(to: URL(fileURLWithPath: fixture.root + "/manifests/.DS_Store"))
+        try Data("appledouble".utf8).write(to: URL(fileURLWithPath: fixture.root + "/manifests/registry.ollama.ai/library/qwen2.5/._0.5b"))
+
+        let scanned = fixture.scan()
+        XCTAssertFalse(scanned.issues.contains("modelGraphIncomplete"))
+        let model = try XCTUnwrap(scanned.candidates.first)
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertTrue(model.canSelect)
+
+        let idleDaemonGuard = AIToolCleanupGuard(
+            processState: { tool in tool == .ollama ? .inUse : .idle },
+            openFileState: { _ in .idle }
+        )
+        XCTAssertNil(idleDaemonGuard.blockingReason(model, home: fixture.home))
+
+        let openBlobGuard = AIToolCleanupGuard(
+            processState: { tool in tool == .ollama ? .inUse : .idle },
+            openFileState: { path in path.contains("/blobs/") ? .inUse : .idle }
+        )
+        XCTAssertEqual(openBlobGuard.blockingReason(model, home: fixture.home), "open_files")
+    }
 }
 
 private final class StoreFixture {

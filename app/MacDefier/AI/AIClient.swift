@@ -200,18 +200,23 @@ public enum AIClient {
     }
 
     public static func chatURL(from baseRaw: String) throws -> URL {
-        var base = baseRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var base = AIEndpointPolicy.normalizedBaseURLString(baseRaw),
+              AIEndpointPolicy.classify(base).isRequestAllowed else {
+            throw AIClientError.badURL
+        }
         while base.hasSuffix("/") { base.removeLast() }
+        let full: String
         if base.contains("/chat/completions") {
-            guard let u = URL(string: base) else { throw AIClientError.badURL }
-            return u
+            full = base
+        } else if base.hasSuffix("/v1") {
+            full = base + "/chat/completions"
+        } else {
+            // OpenAI-style root without /v1
+            full = base + "/v1/chat/completions"
         }
-        if base.hasSuffix("/v1") {
-            guard let u = URL(string: base + "/chat/completions") else { throw AIClientError.badURL }
-            return u
+        guard let u = URL(string: full), let host = u.host, !host.isEmpty else {
+            throw AIClientError.badURL
         }
-        // OpenAI-style root without /v1
-        guard let u = URL(string: base + "/v1/chat/completions") else { throw AIClientError.badURL }
         return u
     }
 
@@ -575,31 +580,5 @@ public enum AIClient {
                 : "\n\n【当前本机摘要 — 只能据此给 path/bundleID/pid】\n" + extra
         }
         return s
-    }
-
-    @MainActor
-    public static func monitorSnapshotText(_ monitor: MonitorService) -> String {
-        let s = monitor.snapshot
-        var lines: [String] = []
-        if let c = s.cpu {
-            lines.append(String(format: "CPU 占用约 %.0f%%（系统 %.0f%% / 用户 %.0f%%）", c.totalUsage * 100, c.systemLoad * 100, c.userLoad * 100))
-        }
-        if let r = s.ram {
-            lines.append(String(format: "内存使用约 %.0f%%，压力 \(r.pressure.value.rawValue)", r.usage * 100))
-        }
-        for d in s.disks.prefix(8) {
-            lines.append(String(
-                format: "磁盘 · %@（%@）已用约 %.0f%%，可用 %@",
-                d.name,
-                d.kindLabel,
-                d.usage * 100,
-                ByteCountFormatter.string(fromByteCount: Int64(d.free), countStyle: .file)
-            ))
-        }
-        if !s.topCPU.isEmpty {
-            let top = s.topCPU.prefix(5).map { "\($0.name) \(String(format: "%.1f", $0.usage))%" }.joined(separator: "；")
-            lines.append("Top CPU：\(top)")
-        }
-        return lines.isEmpty ? "（监控数据尚未就绪）" : lines.joined(separator: "\n")
     }
 }

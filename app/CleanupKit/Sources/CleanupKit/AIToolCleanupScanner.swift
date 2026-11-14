@@ -48,11 +48,12 @@ public enum AIToolCleanupScanner {
                             section: AIDataSection? = nil,
                             cleanupGuard: AIToolCleanupGuard = .live,
                             isCancelled: @Sendable () -> Bool = { Task.isCancelled }) -> AICleanupInventory {
+        let scopedGuard = cleanupGuard.boundToProcessSnapshotIfLive()
         var result = AICleanupInventory(scannedAt: now)
         var states: [AITool: AIToolCleanupActivity] = [:]
         func activity(_ tool: AITool) -> AIToolCleanupActivity {
             if let state = states[tool] { return state }
-            let state = cleanupGuard.state(for: tool); states[tool] = state; return state
+            let state = scopedGuard.state(for: tool); states[tool] = state; return state
         }
         func activity(_ tool: AITool, path: String) -> AIToolCleanupActivity {
             let values = Set([tool] + AIToolCleanupGuard.affectedTools(path: path, home: home)).map { activity($0) }
@@ -190,17 +191,109 @@ public enum AIToolCleanupScanner {
     /// Metadata only; no prompt/session contents. Any incomplete walk is not executable.
     static func measure(_ path: String, isCancelled: @Sendable () -> Bool = { Task.isCancelled }) -> Measurement? {
         guard isPhysical(path) else { return nil }
-        let scan = DiskUsageScanner.scan(root: URL(fileURLWithPath: path),
-            budget: DiskScanBudget(maxEntries: 5_000, maxSeconds: 0.5), isCancelled: isCancelled)
-        guard let root = scan.root else { return nil }
-        var hasher = SHA256(), complete = root.isComplete
-        for key in scan.nodes.keys.sorted() {
-            var info = stat()
-            guard lstat(key, &info) == 0 else { complete = false; continue }
-            let record = "\(key)|\(info.st_dev)|\(info.st_ino)|\(info.st_mode)|\(info.st_uid)|\(info.st_size)|\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)|\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)\n"
-            hasher.update(data: Data(record.utf8))
+        let stdPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let budget = DiskScanBudget(maxEntries: 5_000, maxSeconds: 0.5)
+        let byteSummary = DiskUsageScanner.sumAllocatedBytes(
+            root: URL(fileURLWithPath: stdPath),
+            budget: budget,
+            isCancelled: isCancelled
+        )
+
+        var rootInfo = stat()
+        guard lstat(stdPath, &rootInfo) == 0 else { return nil }
+        let started = ContinuousClock.now
+        var entriesVisited = 0
+        var complete = byteSummary.isComplete
+        var stopped = false
+        var records: [(path: String, line: String)] = []
+
+        func makeRecord(for itemPath: String, _ info: stat) -> String {
+            "\(itemPath)|\(info.st_dev)|\(info.st_ino)|\(info.st_mode)|\(info.st_uid)|\(info.st_size)|\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)|\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)\n"
         }
-        return Measurement(bytes: root.allocatedBytes,
-            signature: hasher.finalize().map { String(format: "%02x", $0) }.joined(), complete: complete)
+
+        func walkRecords(_ fd: Int32, dirPath: String, depth: Int, device: dev_t) {
+            guard let directory = fdopendir(fd) else {
+                close(fd)
+                complete = false
+                return
+            }
+            defer { closedir(directory) }
+            let parentFD = dirfd(directory)
+            while true {
+                if stopped || isCancelled() || started.duration(to: .now) >= .seconds(budget.maxSeconds) || entriesVisited >= budget.maxEntries {
+                    stopped = true
+                    complete = false
+                    break
+                }
+                errno = 0
+                guard let entry = readdir(directory) else {
+                    if errno != 0 { complete = false }
+                    break
+                }
+                let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) {
+                        String(cString: $0)
+                    }
+                }
+                if name == "." || name == ".." { continue }
+                entriesVisited += 1
+                let childPath = dirPath == "/" ? "/\(name)" : "\(dirPath)/\(name)"
+                var info = stat()
+                guard fstatat(parentFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                    complete = false
+                    continue
+                }
+                records.append((childPath, makeRecord(for: childPath, info)))
+                if info.st_dev != device || (info.st_flags & UInt32(SF_DATALESS) != 0) {
+                    complete = false
+                } else if (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR) {
+                    if depth >= budget.maxDepth {
+                        complete = false
+                    } else {
+                        let childFD = openat(parentFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                        if childFD < 0 {
+                            complete = false
+                        } else {
+                            var opened = stat()
+                            if fstat(childFD, &opened) != 0 || opened.st_dev != info.st_dev || opened.st_ino != info.st_ino {
+                                close(childFD)
+                                complete = false
+                            } else {
+                                walkRecords(childFD, dirPath: childPath, depth: depth + 1, device: device)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        records.append((stdPath, makeRecord(for: stdPath, rootInfo)))
+        if rootInfo.st_flags & UInt32(SF_DATALESS) != 0 {
+            complete = false
+        } else if (rootInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR) {
+            let fd = open(stdPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            if fd < 0 {
+                complete = false
+            } else {
+                var opened = stat()
+                if fstat(fd, &opened) != 0 || opened.st_dev != rootInfo.st_dev || opened.st_ino != rootInfo.st_ino {
+                    close(fd)
+                    complete = false
+                } else {
+                    walkRecords(fd, dirPath: stdPath, depth: 0, device: rootInfo.st_dev)
+                }
+            }
+        }
+
+        records.sort { $0.path < $1.path }
+        var hasher = SHA256()
+        for item in records {
+            hasher.update(data: Data(item.line.utf8))
+        }
+        return Measurement(
+            bytes: byteSummary.allocatedBytes,
+            signature: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
+            complete: complete
+        )
     }
 }

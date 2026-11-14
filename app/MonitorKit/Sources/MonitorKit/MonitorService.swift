@@ -311,10 +311,6 @@ public final class MonitorService: ObservableObject {
         setMonitorPageVisible(false)
     }
 
-    public func setApplicationActive(_ active: Bool) {
-        // Full sampling follows main-window visibility, not focus. Kept for source compatibility.
-    }
-
     public func setMainWindowVisible(_ visible: Bool) {
         guard demand.mainWindowVisible != visible else { return }
         demand.mainWindowVisible = visible

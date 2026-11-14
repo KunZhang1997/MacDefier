@@ -147,11 +147,4 @@ enum DiagnosticScanStore {
             try? raw.write(to: targetDirectory.appendingPathComponent(rawAIName), atomically: true, encoding: .utf8)
         }
     }
-
-    static func loadText() -> String? {
-        guard let data = try? Data(contentsOf: textURL),
-              let s = String(data: data, encoding: .utf8), !s.isEmpty
-        else { return nil }
-        return s
-    }
 }

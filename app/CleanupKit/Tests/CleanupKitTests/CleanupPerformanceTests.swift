@@ -117,7 +117,7 @@ final class CleanupPerformanceTests: XCTestCase {
         service.clearAllSelection()
         service.selectLowRiskOnly()
         service.selectLowRiskOnly()
-        service.setCategorySelected(.userLogs, selected: true)
+        service.setAllSelected(true, in: .userLogs)
         XCTAssertEqual(changes, 1)
         service.clearAllSelection()
         XCTAssertEqual(changes, 2)

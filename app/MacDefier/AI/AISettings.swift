@@ -328,28 +328,39 @@ public enum AISettingsStore {
         let budget = suite.integer(forKey: keyBudget)
         if budget > 0 { s.historyCharBudget = budget }
 
-        // 档案元数据（无 key）先解码，再一次性灌 key
-        var profileIDs: [String] = []
-        if let data = suite.data(forKey: keyProfiles),
-           var profiles = try? JSONDecoder().decode([AICloudProfile].self, from: data),
-           !profiles.isEmpty {
-            profileIDs = profiles.map(\.id)
-            let keys = loadAPIKeys(profileIDs)
-            for i in profiles.indices {
-                let id = profiles[i].id
-                profiles[i].apiKey = keys[id] ?? ""
-                if profiles[i].name == "默认" {
-                    profiles[i].name = "Default"
+        // 档案元数据（无 key）先解码，再一次性灌 key。
+        // 严格区分「从未迁移过（偏好中根本不存在 keyProfiles）」与「已存在 keyProfiles 但解码失败或为空」：
+        // 后者严禁回退读取 keys["_legacy"]，防止损坏档案把旧端点 A 的凭据串绑给当前端点 B。
+        if suite.object(forKey: keyProfiles) != nil {
+            if let data = suite.data(forKey: keyProfiles),
+               var profiles = try? JSONDecoder().decode([AICloudProfile].self, from: data),
+               !profiles.isEmpty {
+                let profileIDs = profiles.map(\.id)
+                let keys = loadAPIKeys(profileIDs)
+                for i in profiles.indices {
+                    let id = profiles[i].id
+                    profiles[i].apiKey = keys[id] ?? ""
+                    if profiles[i].name == "默认" {
+                        profiles[i].name = "Default"
+                    }
                 }
+                s.cloudProfiles = profiles
+                s.activeCloudProfileId = suite.string(forKey: keyActiveProfile)
+            } else {
+                let p = AICloudProfile(
+                    name: "Default",
+                    baseURL: s.baseURL,
+                    model: s.cloudModel,
+                    apiKey: ""
+                )
+                s.cloudProfiles = [p]
+                s.activeCloudProfileId = p.id
+                s.apiKey = ""
             }
-            // Existing profiles can only use their own credential. The legacy
-            // single key is migrated only when no profile metadata exists.
-            s.cloudProfiles = profiles
-            s.activeCloudProfileId = suite.string(forKey: keyActiveProfile)
         } else {
             let keys = loadAPIKeys([])
             let legacyKey = keys["_legacy"] ?? ""
-            var p = AICloudProfile(
+            let p = AICloudProfile(
                 name: "Default",
                 baseURL: s.baseURL,
                 model: s.cloudModel,
@@ -386,6 +397,17 @@ public enum AISettingsStore {
     @discardableResult
     public static func save(_ s: AISettings) -> Bool {
         var s = s
+        if let norm = AIEndpointPolicy.normalizedBaseURLString(s.baseURL) {
+            s.baseURL = norm
+        }
+        if let norm = AIEndpointPolicy.normalizedBaseURLString(s.localEndpoint) {
+            s.localEndpoint = norm
+        }
+        for i in s.cloudProfiles.indices {
+            if let norm = AIEndpointPolicy.normalizedBaseURLString(s.cloudProfiles[i].baseURL) {
+                s.cloudProfiles[i].baseURL = norm
+            }
+        }
         let persistedProfiles: [AICloudProfile] = {
             guard let data = suite.data(forKey: keyProfiles) else { return [] }
             return (try? JSONDecoder().decode([AICloudProfile].self, from: data)) ?? []

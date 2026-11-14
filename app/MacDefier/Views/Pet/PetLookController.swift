@@ -50,6 +50,12 @@ final class PetLookController: ObservableObject {
     }
 
     func setTracksLook(_ on: Bool) {
+        if on, enabled, active, let task = trackTask, !task.isCancelled {
+            return
+        }
+        if !on, !enabled, trackTask == nil {
+            return
+        }
         enabled = on
         if on, active {
             startTrackingLoop()
@@ -80,18 +86,6 @@ final class PetLookController: ObservableObject {
         if enabled { startTrackingLoop() }
     }
 
-    /// Called from tracking NSView with window coordinates (both Cocoa, y-up).
-    func updateLook(mouseInWindow: CGPoint, petCenterInWindow: CGPoint, petSize: CGFloat) {
-        guard enabled else { return }
-        self.petCenterInWindow = petCenterInWindow
-        self.petSize = petSize
-        if !mouseInsideWindow {
-            mouseInsideWindow = true
-            stopIdlePlay(resetLook: false)
-        }
-        applyTrackedLook(mouseInWindow: mouseInWindow, petCenterInWindow: petCenterInWindow, petSize: petSize)
-    }
-
     private func applyTrackedLook(mouseInWindow: CGPoint, petCenterInWindow: CGPoint, petSize: CGFloat) {
         let dx = mouseInWindow.x - petCenterInWindow.x
         let dy = mouseInWindow.y - petCenterInWindow.y
@@ -120,7 +114,12 @@ final class PetLookController: ObservableObject {
     /// 不依赖 mouseMoved 事件（滚动区/部分控件会吞掉 moved，导致只剩点击才更新）。
     private func startTrackingLoop() {
         guard active else { return }
-        trackTask?.cancel()
+        if let task = trackTask, !task.isCancelled {
+            if let w = hostWindow ?? NSApp.keyWindow {
+                w.acceptsMouseMovedEvents = true
+            }
+            return
+        }
         // 先确保窗口接收 moved（备用）
         if let w = hostWindow ?? NSApp.keyWindow {
             w.acceptsMouseMovedEvents = true
@@ -308,6 +307,8 @@ struct PetLookTrackingHost: NSViewRepresentable {
             controller.hostWindow = nsView.window
             controller.petSize = petSize
             controller.setTracksLook(true)
+        } else {
+            controller.setTracksLook(false)
         }
     }
 

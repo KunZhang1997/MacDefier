@@ -77,9 +77,8 @@ public struct HostSummary: Sendable, Equatable {
 
         let storageLabel: String = {
             if let d = disks.primary ?? disks.physical.first {
-                let gb = d.total / 1_073_741_824
-                if gb >= 1000 { return String(format: "%.1f TB", gb / 1000) }
-                return String(format: "%.0f GB", gb)
+                let bytes = Int64(min(Double(Int64.max), max(0, d.total)))
+                return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
             }
             return "—"
         }()
@@ -150,8 +149,6 @@ public enum MacHardwareIdentity {
     private static let lock = NSLock()
     private static var cache: Result?
     private static var backgroundRefreshStarted = false
-    private static var backgroundRefreshFinished = false
-    private static var warmUpWaiters: [CheckedContinuation<Void, Never>] = []
     private static let persistKey = "monitor.macHardwareIdentity.v2"
     /// 后台刷新完成后回调（主线程安全由调用方保证）
     public static var onIdentityUpdated: (() -> Void)?
@@ -168,7 +165,7 @@ public enum MacHardwareIdentity {
         }
         lock.unlock()
 
-        // 读磁盘/IO 在锁外，避免与 warmUp 写缓存互锁
+        // 读磁盘/IO 在锁外，避免与后台刷新写缓存互锁
         if let disk = loadPersisted() {
             lock.lock()
             if cache == nil { cache = disk }
@@ -186,26 +183,6 @@ public enum MacHardwareIdentity {
         persist(hit) // 锁外
         scheduleBackgroundRefreshIfNeeded()
         return hit
-    }
-
-    /// 供 MonitorService 启动后 await：确保至少跑完一轮 profiler（若尚未缓存完整市面名）。
-    public static func warmUpAsync() async {
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if backgroundRefreshFinished {
-                lock.unlock()
-                cont.resume()
-                return
-            }
-            warmUpWaiters.append(cont)
-            if backgroundRefreshStarted {
-                lock.unlock()
-                return
-            }
-            backgroundRefreshStarted = true
-            lock.unlock()
-            runBackgroundRefresh()
-        }
     }
 
     // MARK: - Fast / full resolve
@@ -284,12 +261,6 @@ public enum MacHardwareIdentity {
             lock.unlock()
 
             let full = resolveFullAndStore()
-            lock.lock()
-            backgroundRefreshFinished = true
-            let waiters = warmUpWaiters
-            warmUpWaiters.removeAll()
-            lock.unlock()
-            waiters.forEach { $0.resume() }
             if before != full {
                 DispatchQueue.main.async {
                     onIdentityUpdated?()
@@ -470,11 +441,15 @@ public enum MacHardwareIdentity {
         let out = Pipe()
         p.standardOutput = out
         p.standardError = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in exited.signal() }
         do {
             try p.run()
         } catch {
+            p.terminationHandler = nil
             return nil
         }
+        defer { p.terminationHandler = nil }
 
         let output = HostProcessOutput()
         let drain = DispatchGroup()
@@ -487,17 +462,12 @@ public enum MacHardwareIdentity {
             drain.leave()
         }
 
-        let deadline = Date().addingTimeInterval(8)
-        while p.isRunning, Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        if p.isRunning {
+        if exited.wait(timeout: .now() + 8) == .timedOut, p.isRunning {
             p.terminate()
-            let terminateDeadline = Date().addingTimeInterval(0.5)
-            while p.isRunning, Date() < terminateDeadline {
-                Thread.sleep(forTimeInterval: 0.02)
+            if exited.wait(timeout: .now() + 0.5) == .timedOut, p.isRunning {
+                kill(p.processIdentifier, SIGKILL)
+                _ = exited.wait(timeout: .now() + 0.2)
             }
-            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
             _ = drain.wait(timeout: .now() + 1)
             return nil
         }
@@ -550,26 +520,5 @@ public enum MacHardwareIdentity {
             if id.hasSuffix(",3") || id.hasSuffix(",4") { return "M1 Max" }
         }
         return nil
-    }
-}
-
-/// 旧名兼容（设置/别处若引用）
-public enum MacModelNames {
-    public static func marketingName(for identifier: String) -> String {
-        MacHardwareIdentity.marketingName(for: identifier)
-    }
-
-    public static func simpleModelLine(for identifier: String) -> String {
-        MacHardwareIdentity.marketingName(for: identifier)
-    }
-
-    public static func chipHint(for identifier: String) -> String? {
-        let r = MacHardwareIdentity.resolve()
-        if r.modelID == identifier { return r.displayChip }
-        return nil
-    }
-
-    public static func shortChip(_ raw: String) -> String {
-        MacHardwareIdentity.shortChip(raw)
     }
 }

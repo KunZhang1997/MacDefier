@@ -27,13 +27,17 @@
 		36A966D69F4E960E8D41AB01 /* PetBanter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */; };
 		39AD5FF0B8539C36EDD31B51 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 4B66D561E50C3498D4F5D323 /* ZIPFoundation */; };
 		3B776331DB3E229BBEEE4B65 /* DiagnosticScanEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */; };
+		3D362DC25D492E27E67E2B4E /* UsageGuideStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0388FA9D5BB4C4F11672252 /* UsageGuideStateTests.swift */; };
 		3EA957E4D14EA573F22F7CDB /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */; };
 		3F1AB91C2E751DFAB92FA2F6 /* Sparkle-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3FABC6EB7455D2E9ABE96A81 /* Sparkle-LICENSE.txt */; };
 		440E2E1F4492434F3ECB93DF /* MDScanActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */; };
 		483ADCF882765BB0B62C87B0 /* AIRequestTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */; };
 		4A9B6F3D5A8D33F8F5A674B2 /* UsageGuideOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDBA94D5927A48FF681AC3BC /* UsageGuideOverlay.swift */; };
+		4C4BD8A6DE3BFCEEF2F223F5 /* DiskTreemapLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181298D9998B05588D48CEC3 /* DiskTreemapLayoutTests.swift */; };
 		528A23535FEF747460CDC2A7 /* Collaboration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 26D3B2D9CF0485B10DF9955A /* Collaboration.framework */; };
 		53B2D31DAFBA352A9233BDD6 /* MonitorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18F9162E74F8091F3932F31D /* MonitorKit */; };
+		53C3B47D2F131125E94F6EFA /* OllamaModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D54572303B67E458D300E83 /* OllamaModelTests.swift */; };
+		5457A59BAC95E95F5575DC26 /* AIProfileIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F022794796957D5234F0BFE9 /* AIProfileIsolationTests.swift */; };
 		5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */; };
 		5E837AEFDED8D4A849E54331 /* CleanupKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3D9F256BD40F86E4699F9979 /* CleanupKit */; };
 		60C13DDE1D590C037FFECC1E /* AIChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */; };
@@ -47,6 +51,8 @@
 		7111FCA7488AB59ECC7EBECA /* ScanReusePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A2DB3354E8BAA2187E515D /* ScanReusePolicy.swift */; };
 		71462F979B0E723E5AB342F7 /* AIToolCleanupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */; };
 		71E179B21F99DB63FDA97A57 /* OllamaRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */; };
+		764326E7E84A4EB6A6AE629D /* AIRequestTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9641E59898FCD6BB9A6ECC67 /* AIRequestTransportTests.swift */; };
+		78C0E7D8E27DF39A8DF3B644 /* AppUpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5752ACF5532E257996C139F0 /* AppUpdateControllerTests.swift */; };
 		7A9A5CCAC29A6C07CA61016E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 26EAD9B173E9C78BE522B217 /* Localizable.strings */; };
 		7C476AA9FE28E0ACEF0B66FE /* MisterDefenderOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */; };
 		7D0C030D344865FB8AD61F1A /* MonitorHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 053FEC222808713A96416F21 /* MonitorHistoryView.swift */; };
@@ -66,16 +72,19 @@
 		A5509A58FB9ECFA4A7E85C04 /* AppNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C2B95241C22BAC2DBA68D1 /* AppNavigator.swift */; };
 		A55B3263C8026D45E04BD946 /* DiskTreemapLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */; };
 		A8BD976B8E3220B1B8F09EB9 /* UsageGuideState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF26FAA6D1A1D7D0B3D3C090 /* UsageGuideState.swift */; };
+		AC0E760F16D9AAA2E93AE4A6 /* AppUpdateStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65AD66A0DCBC335E90BC8420 /* AppUpdateStateTests.swift */; };
 		AD95BA4B6905FCD77E052287 /* AIConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68D48FD8B15226E578D17BB /* AIConversationStore.swift */; };
-		ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */ = {isa = PBXBuildFile; fileRef = 4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */; };
 		AFC1233B5D64724F86AF947D /* AIEndpointPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */; };
+		B0EB3FE505218D26216ABC50 /* AIEndpointPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E96EDE57FFF4C0DFB3ECEE /* AIEndpointPolicyTests.swift */; };
 		B10186CBE68DE33D397CFBEB /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93ECBF1AAFF4F4785672E28 /* MenuBarController.swift */; };
+		B73E5AE8FE3965862BA6592B /* DiagnosticMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC25A3FA442BE1E3A2DD174 /* DiagnosticMemoryTests.swift */; };
 		B752614D08B2BC844BBE832F /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7182B093F87430724F25D938 /* AppLanguage.swift */; };
 		BB66670CC81FFB405806154A /* AIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3A2D70A5C3C46860184429 /* AIClient.swift */; };
 		C0457B0035DB662A7D2C1773 /* UninstallErrorText.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */; };
 		C33631F7BCF181973D432182 /* DiagnosticView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */; };
 		C6759238298836A96AB1F6B1 /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = D116DBAB752ED37912A60185 /* Format.swift */; };
 		C72706622971D716166FD2C0 /* LocalModelsPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */; };
+		C842998C0DB49FE7D1EC6657 /* HealthThresholds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B89081C5F275A907A30ED9E /* HealthThresholds.swift */; };
 		C8BC1343F300CD620E42E18F /* DiskMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6DB6BD7CD4F96E90B8B22DF /* DiskMapView.swift */; };
 		CAF83A01DD0F77AA2E247A98 /* DefierPetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B468F826569366D53AC74D47 /* DefierPetView.swift */; };
 		CCBF5C8E876C9F5A0BBE9118 /* SettingsExplanationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80FF8BEB892688DFF8F09D7 /* SettingsExplanationsView.swift */; };
@@ -90,14 +99,24 @@
 		F0A5A35C27E7069B7117B373 /* PetPackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0866D488B7A5BBE0DCB57034 /* PetPackStore.swift */; };
 		F246517B16EE3FCF2F03DB19 /* MonitorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */; };
 		F4A9DB1DF2960C0FE45667F5 /* UninstallHelperIPC in Frameworks */ = {isa = PBXBuildFile; productRef = 8732736199B0BA8F42D93204 /* UninstallHelperIPC */; };
+		F58251B2740BF7DA55BFB486 /* UninstallErrorTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2394E53B6C5389B0EA76AB /* UninstallErrorTextTests.swift */; };
 		F7024625A00558640EC46E3D /* DiagnosticScanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */; };
+		F7077760074FA9124E03F7C3 /* PetOverlayGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FE0794A7E59E7980DCD5E26 /* PetOverlayGeometryTests.swift */; };
 		FA8DC5A445A22BA8B7A4C6CA /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC32D4DB5FD8A404C588866 /* AppRoute.swift */; };
+		FA9EB927B457AF2B1B1EEFD6 /* LocalizationAndFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C96EB98F8D99771FE9DFE0D /* LocalizationAndFormatTests.swift */; };
 		FBE3E977DD23443A0E02D9B8 /* PetCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */; };
 		FCDE61464D70EF09D4179AB0 /* defier-guard-bot.pet.json in Resources */ = {isa = PBXBuildFile; fileRef = D979C43F2C6D314492EAFF2C /* defier-guard-bot.pet.json */; };
 		FF86226853AE1B2C4DB6F86A /* LocalizedCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		213E49202438070E25A5EC2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FD5DDD2A5AFD7CE04C4063DE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 540609D7BF8538EAA661BB06;
+			remoteInfo = MacDefier;
+		};
 		9AD0FF8FF3F32880FCAB8BC8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = FD5DDD2A5AFD7CE04C4063DE /* Project object */;
@@ -129,12 +148,14 @@
 		0CC256CCADE0AC4314EA4109 /* MDAIResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDAIResultCard.swift; sourceTree = "<group>"; };
 		0FBABC33BD57BAFF97C9065A /* AppUpdateState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateState.swift; sourceTree = "<group>"; };
 		1642EEB4478C94ECE63D7E39 /* LocalizedCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCatalog.swift; sourceTree = "<group>"; };
+		181298D9998B05588D48CEC3 /* DiskTreemapLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapLayoutTests.swift; sourceTree = "<group>"; };
 		1B4056DAE976D3CB3E653908 /* ScanProgressL10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressL10n.swift; sourceTree = "<group>"; };
 		207411542FD4ECE588DEB9C5 /* DefierChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierChatModels.swift; sourceTree = "<group>"; };
 		26D3B2D9CF0485B10DF9955A /* Collaboration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Collaboration.framework; path = System/Library/Frameworks/Collaboration.framework; sourceTree = SDKROOT; };
 		26E07B62E71F8B5E362297AE /* MisterDefenderChatBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MisterDefenderChatBody.swift; sourceTree = "<group>"; };
 		2A9403EAEC408CBC434D215C /* CapeClothSim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapeClothSim.swift; sourceTree = "<group>"; };
 		2E82ACCD4DAB7C1338A5FFD3 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		2FE0794A7E59E7980DCD5E26 /* PetOverlayGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetOverlayGeometryTests.swift; sourceTree = "<group>"; };
 		341FF49AC1510175F1CA1415 /* MonitorKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MonitorKit; path = MonitorKit; sourceTree = SOURCE_ROOT; };
 		3624DED30FA8ED33847BFCD6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		366766C2122E7F19AF88F40E /* PetDragContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDragContainer.swift; sourceTree = "<group>"; };
@@ -146,13 +167,15 @@
 		41E5326E467143A8CB43EA9F /* MisterDefenderOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MisterDefenderOverlay.swift; sourceTree = "<group>"; };
 		4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapLayout.swift; sourceTree = "<group>"; };
 		4CFFA1EC544002092DBC1E94 /* DiagnosticScanEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanEngine.swift; sourceTree = "<group>"; };
-		4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "defier-guard-bot.zip"; sourceTree = "<group>"; };
 		5039AED5C6854E48337FCF32 /* UninstallHelperKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UninstallHelperKit; path = UninstallHelperKit; sourceTree = SOURCE_ROOT; };
 		519028FE4511993B2B910DD1 /* AIToolCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupService.swift; sourceTree = "<group>"; };
 		5528A313B066642149F4E6E9 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		5752ACF5532E257996C139F0 /* AppUpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateControllerTests.swift; sourceTree = "<group>"; };
 		58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanService.swift; sourceTree = "<group>"; };
 		5BC510936D911D956A4DC1E9 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		5D54572303B67E458D300E83 /* OllamaModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelTests.swift; sourceTree = "<group>"; };
 		5DD1C85396CB8E004FF168B5 /* MacDefier.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacDefier.entitlements; sourceTree = "<group>"; };
+		65AD66A0DCBC335E90BC8420 /* AppUpdateStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateStateTests.swift; sourceTree = "<group>"; };
 		65B2592208EF2EAA0344D676 /* UninstallHelperSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallHelperSettings.swift; sourceTree = "<group>"; };
 		678F056418B5C1426EFB696E /* MonitorAIAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorAIAssist.swift; sourceTree = "<group>"; };
 		6D4F2435781326BF9A2A1BA7 /* LocalModelsPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelsPicker.swift; sourceTree = "<group>"; };
@@ -163,15 +186,20 @@
 		7373C2B82AF7FF46979A349D /* MacDefier.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacDefier.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		73839C617C8261DABD77A058 /* DiskTreemapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskTreemapView.swift; sourceTree = "<group>"; };
 		78A9E44AF33440D4F9358EB9 /* AIEndpointPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEndpointPolicy.swift; sourceTree = "<group>"; };
+		7B2394E53B6C5389B0EA76AB /* UninstallErrorTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallErrorTextTests.swift; sourceTree = "<group>"; };
+		7B89081C5F275A907A30ED9E /* HealthThresholds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthThresholds.swift; sourceTree = "<group>"; };
 		7E87D355178B91B417D8A9DF /* ZIPFoundation */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ZIPFoundation; path = Vendor/ZIPFoundation; sourceTree = SOURCE_ROOT; };
 		7FC32D4DB5FD8A404C588866 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
 		80C9517807081ADC3FF2D169 /* AppUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateController.swift; sourceTree = "<group>"; };
 		8285FB4001F4E56DA9611D4F /* IconExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconExport.swift; sourceTree = "<group>"; };
+		82DFE6D2B86DE1AE8F5C5D77 /* MacDefierTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacDefierTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		933FA23ECD46912DABF4B0E9 /* MDScanActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDScanActivityCard.swift; sourceTree = "<group>"; };
 		9399A07D86F2430D9BF976B7 /* PetCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetCoordinator.swift; sourceTree = "<group>"; };
+		9641E59898FCD6BB9A6ECC67 /* AIRequestTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRequestTransportTests.swift; sourceTree = "<group>"; };
 		969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliUninstallSheet.swift; sourceTree = "<group>"; };
 		9B22FDFA5E20898662BB5F8D /* DefierAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierAction.swift; sourceTree = "<group>"; };
 		9BA3EA2F82FD059BE5199D2C /* MacAppIconArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppIconArtwork.swift; sourceTree = "<group>"; };
+		9C96EB98F8D99771FE9DFE0D /* LocalizationAndFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationAndFormatTests.swift; sourceTree = "<group>"; };
 		9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetTypes.swift; sourceTree = "<group>"; };
 		9E559FE8CA7BE9A34BEBA8DD /* AIToolCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolCleanupView.swift; sourceTree = "<group>"; };
 		A68D48FD8B15226E578D17BB /* AIConversationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConversationStore.swift; sourceTree = "<group>"; };
@@ -179,6 +207,7 @@
 		A786D8E6483C8A3886C2246F /* CleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupView.swift; sourceTree = "<group>"; };
 		AC0F72951EF1E8F58C4BFC21 /* MonitorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorViews.swift; sourceTree = "<group>"; };
 		ACB521B1F3EC286586D65049 /* OllamaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelManager.swift; sourceTree = "<group>"; };
+		B0388FA9D5BB4C4F11672252 /* UsageGuideStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageGuideStateTests.swift; sourceTree = "<group>"; };
 		B468F826569366D53AC74D47 /* DefierPetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefierPetView.swift; sourceTree = "<group>"; };
 		B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupConfirmSheet.swift; sourceTree = "<group>"; };
 		B8747957DBA099F2E4C67497 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -205,9 +234,12 @@
 		DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallErrorText.swift; sourceTree = "<group>"; };
 		E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSheet.swift; sourceTree = "<group>"; };
 		E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRequestTransport.swift; sourceTree = "<group>"; };
+		EEC25A3FA442BE1E3A2DD174 /* DiagnosticMemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticMemoryTests.swift; sourceTree = "<group>"; };
+		F022794796957D5234F0BFE9 /* AIProfileIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProfileIsolationTests.swift; sourceTree = "<group>"; };
 		F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaRuntime.swift; sourceTree = "<group>"; };
 		F4E49EB4FDE78743BB26DCF7 /* PetBanter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBanter.swift; sourceTree = "<group>"; };
 		F584F8AD5E697D4DD6EC48A9 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
+		F6E96EDE57FFF4C0DFB3ECEE /* AIEndpointPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEndpointPolicyTests.swift; sourceTree = "<group>"; };
 		FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticScanStore.swift; sourceTree = "<group>"; };
 		FF26FAA6D1A1D7D0B3D3C090 /* UsageGuideState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageGuideState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -271,6 +303,7 @@
 			isa = PBXGroup;
 			children = (
 				7373C2B82AF7FF46979A349D /* MacDefier.app */,
+				82DFE6D2B86DE1AE8F5C5D77 /* MacDefierTests.xctest */,
 				3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */,
 			);
 			name = Products;
@@ -391,6 +424,25 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		BF15F4E9659C16F5F8E1E48D /* MacDefierTests */ = {
+			isa = PBXGroup;
+			children = (
+				F6E96EDE57FFF4C0DFB3ECEE /* AIEndpointPolicyTests.swift */,
+				F022794796957D5234F0BFE9 /* AIProfileIsolationTests.swift */,
+				9641E59898FCD6BB9A6ECC67 /* AIRequestTransportTests.swift */,
+				5752ACF5532E257996C139F0 /* AppUpdateControllerTests.swift */,
+				65AD66A0DCBC335E90BC8420 /* AppUpdateStateTests.swift */,
+				EEC25A3FA442BE1E3A2DD174 /* DiagnosticMemoryTests.swift */,
+				181298D9998B05588D48CEC3 /* DiskTreemapLayoutTests.swift */,
+				9C96EB98F8D99771FE9DFE0D /* LocalizationAndFormatTests.swift */,
+				5D54572303B67E458D300E83 /* OllamaModelTests.swift */,
+				2FE0794A7E59E7980DCD5E26 /* PetOverlayGeometryTests.swift */,
+				7B2394E53B6C5389B0EA76AB /* UninstallErrorTextTests.swift */,
+				B0388FA9D5BB4C4F11672252 /* UsageGuideStateTests.swift */,
+			);
+			path = MacDefierTests;
+			sourceTree = "<group>";
+		};
 		C4B2923ED321E1BE5BEAEED9 /* Software */ = {
 			isa = PBXGroup;
 			children = (
@@ -409,6 +461,7 @@
 				58F6643476D13D5FCB860BA5 /* DiagnosticScanService.swift */,
 				FEB091F76A3F6FBDA08DAAB4 /* DiagnosticScanStore.swift */,
 				CC3C6D0808B321D50B92630E /* DiagnosticScore.swift */,
+				7B89081C5F275A907A30ED9E /* HealthThresholds.swift */,
 			);
 			path = Diagnostic;
 			sourceTree = "<group>";
@@ -434,7 +487,6 @@
 			isa = PBXGroup;
 			children = (
 				D979C43F2C6D314492EAFF2C /* defier-guard-bot.pet.json */,
-				4FCD42386F1DC95733FD3457 /* defier-guard-bot.zip */,
 			);
 			path = Samples;
 			sourceTree = "<group>";
@@ -443,6 +495,7 @@
 			isa = PBXGroup;
 			children = (
 				7A8E0E56B962BF7F4E746486 /* MacDefier */,
+				BF15F4E9659C16F5F8E1E48D /* MacDefierTests */,
 				0E2C39432BFC689A1D91E7F7 /* Packages */,
 				3377B17DA60FA7DDCB203EBD /* UninstallHelper */,
 				997DDF7644799FD093F27907 /* Vendor */,
@@ -503,6 +556,24 @@
 			productReference = 3C19B199987AB225A0B6DA19 /* MacDefierUninstallHelper */;
 			productType = "com.apple.product-type.tool";
 		};
+		EC6C94967590502E936434D0 /* MacDefierTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A34A849DE675CA60B996802A /* Build configuration list for PBXNativeTarget "MacDefierTests" */;
+			buildPhases = (
+				7CC62A2D0CD2713082AB604D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8F2B5AED97B6BE7BCBD53209 /* PBXTargetDependency */,
+			);
+			name = MacDefierTests;
+			packageProductDependencies = (
+			);
+			productName = MacDefierTests;
+			productReference = 82DFE6D2B86DE1AE8F5C5D77 /* MacDefierTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -516,6 +587,9 @@
 						DevelopmentTeam = "";
 					};
 					8312E90315F71BE50CB63E1F = {
+						DevelopmentTeam = "";
+					};
+					EC6C94967590502E936434D0 = {
 						DevelopmentTeam = "";
 					};
 				};
@@ -544,6 +618,7 @@
 			projectRoot = "";
 			targets = (
 				540609D7BF8538EAA661BB06 /* MacDefier */,
+				EC6C94967590502E936434D0 /* MacDefierTests */,
 				8312E90315F71BE50CB63E1F /* MacDefierUninstallHelper */,
 			);
 		};
@@ -559,7 +634,6 @@
 				6F95CA181C98E4996A3AAB75 /* NOTICE in Resources */,
 				3F1AB91C2E751DFAB92FA2F6 /* Sparkle-LICENSE.txt in Resources */,
 				FCDE61464D70EF09D4179AB0 /* defier-guard-bot.pet.json in Resources */,
-				ADCCCD9E04074131BB8D7BF1 /* defier-guard-bot.zip in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -588,6 +662,25 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		7CC62A2D0CD2713082AB604D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0EB3FE505218D26216ABC50 /* AIEndpointPolicyTests.swift in Sources */,
+				5457A59BAC95E95F5575DC26 /* AIProfileIsolationTests.swift in Sources */,
+				764326E7E84A4EB6A6AE629D /* AIRequestTransportTests.swift in Sources */,
+				78C0E7D8E27DF39A8DF3B644 /* AppUpdateControllerTests.swift in Sources */,
+				AC0E760F16D9AAA2E93AE4A6 /* AppUpdateStateTests.swift in Sources */,
+				B73E5AE8FE3965862BA6592B /* DiagnosticMemoryTests.swift in Sources */,
+				4C4BD8A6DE3BFCEEF2F223F5 /* DiskTreemapLayoutTests.swift in Sources */,
+				FA9EB927B457AF2B1B1EEFD6 /* LocalizationAndFormatTests.swift in Sources */,
+				53C3B47D2F131125E94F6EFA /* OllamaModelTests.swift in Sources */,
+				F7077760074FA9124E03F7C3 /* PetOverlayGeometryTests.swift in Sources */,
+				F58251B2740BF7DA55BFB486 /* UninstallErrorTextTests.swift in Sources */,
+				3D362DC25D492E27E67E2B4E /* UsageGuideStateTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E52B4C4276917C26EA1B1A3D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -633,6 +726,7 @@
 				A55B3263C8026D45E04BD946 /* DiskTreemapLayout.swift in Sources */,
 				25372A1CF66064B3A28ACB95 /* DiskTreemapView.swift in Sources */,
 				C6759238298836A96AB1F6B1 /* Format.swift in Sources */,
+				C842998C0DB49FE7D1EC6657 /* HealthThresholds.swift in Sources */,
 				01752930F4604C2C24E6ED6D /* IconExport.swift in Sources */,
 				DF9C9A898B771E78C768571C /* L10n.swift in Sources */,
 				325EED23220F22DB0A21F68A /* LaunchAtLogin.swift in Sources */,
@@ -677,6 +771,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		8F2B5AED97B6BE7BCBD53209 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 540609D7BF8538EAA661BB06 /* MacDefier */;
+			targetProxy = 213E49202438070E25A5EC2A /* PBXContainerItemProxy */;
+		};
 		BB7FDA4AB31972106645A92F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 8312E90315F71BE50CB63E1F /* MacDefierUninstallHelper */;
@@ -697,6 +796,44 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		0301F3DE1C7E27B76DF6EC48 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR) $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				OTHER_LDFLAGS = "$(inherited) -framework Sparkle";
+				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app.dev.tests;
+				PRODUCT_NAME = MacDefierTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacDefier-Dev.app/Contents/MacOS/MacDefier-Dev";
+			};
+			name = Debug;
+		};
+		186D3358AAEBF65206273C61 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR) $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				OTHER_LDFLAGS = "$(inherited) -framework Sparkle";
+				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app.tests;
+				PRODUCT_NAME = MacDefierTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacDefier.app/Contents/MacOS/MacDefier";
+			};
+			name = Release;
+		};
 		1C4F3DE5758612328528B27A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -718,6 +855,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app;
+				PRODUCT_MODULE_NAME = MacDefier;
 				PRODUCT_NAME = MacDefier;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -896,6 +1034,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "MacDefier Dev";
@@ -906,6 +1045,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app.dev;
+				PRODUCT_MODULE_NAME = MacDefier;
 				PRODUCT_NAME = "MacDefier-Dev";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
@@ -929,6 +1069,15 @@
 			buildConfigurations = (
 				54BA0E66D63ADD806370D441 /* Debug */,
 				35F07E050EA1779D06F32BD5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A34A849DE675CA60B996802A /* Build configuration list for PBXNativeTarget "MacDefierTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0301F3DE1C7E27B76DF6EC48 /* Debug */,
+				186D3358AAEBF65206273C61 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -35,13 +35,13 @@ enum MinimalSMC {
     // A fixed, bounded catalogue from Stats values.swift, selected by chip family.
     // A key can change roles across generations. Never probe another generation's
     // table or claim a specific core number/type from the key spelling alone.
-    static var temperatureKeys: [(key: String, name: String, group: String)] {
+    private static let temperatureKeys: [(key: String, name: String, group: String)] = {
         #if arch(arm64)
         return temperatureKeys(forChip: Sysctl.string("machdep.cpu.brand_string"))
         #else
         return legacyTemperatureKeys
         #endif
-    }
+    }()
 
     static func temperatureKeys(forChip chip: String?) -> [(key: String, name: String, group: String)] {
         let tokens = Set((chip ?? "").lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
@@ -75,10 +75,6 @@ enum MinimalSMC {
     struct Sample {
         let readings: [SensorReading]
         let isAvailable: Bool
-    }
-
-    static func readTemperatures() -> [SensorReading] {
-        sample().readings.filter { $0.unit == "°C" }
     }
 
     static func sample() -> Sample {

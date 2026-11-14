@@ -260,7 +260,7 @@ final class SoftwareSizeQueueTests: XCTestCase {
         }
         service.refresh { metadataReady.fulfill() }
         await fulfillment(of: [metadataStarted], timeout: 3)
-        service.loadSize(for: app)
+        service.resumeSizeCalculation()
         XCTAssertTrue(service.isLoading)
         XCTAssertTrue(recorder.snapshot.paths.isEmpty)
         gate.open()
@@ -291,8 +291,7 @@ final class SoftwareSizeQueueTests: XCTestCase {
         }
         service.refresh()
         await fulfillment(of: [firstStarted], timeout: 3)
-        service.loadSize(for: apps[1])
-        service.loadSize(for: apps[0])
+        service.resumeSizeCalculation()
         service.resumeSizeCalculation()
         XCTAssertEqual(recorder.snapshot.paths, [apps[0].path])
         gate.open()

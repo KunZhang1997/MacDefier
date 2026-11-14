@@ -107,16 +107,4 @@ enum AppDataMatchers {
         }
         return out.sorted { $0.bytes > $1.bytes }
     }
-
-    /// Drop parent if any selected child path is under it (for display list, keep children).
-    static func preferChildrenOverParents(_ items: [CleanableItem]) -> [CleanableItem] {
-        let paths = Set(items.map { normalize($0.path) })
-        return items.filter { item in
-            let p = normalize(item.path)
-            let hasChild = paths.contains { other in
-                other != p && other.hasPrefix(p + "/")
-            }
-            return !hasChild
-        }.sorted { $0.bytes > $1.bytes }
-    }
 }

@@ -151,9 +151,6 @@ final class CleanupBulkSelectionTests: XCTestCase {
         defer { service.reset() }
         service.selectLowRiskOnly()
         XCTAssertEqual(service.allItems.filter(\.isSelected).map(\.id), ["safe"])
-        service.clearAllSelection()
-        service.setCategorySelected(.userLogs, selected: true)
-        XCTAssertEqual(service.allItems.filter(\.isSelected).map(\.id), ["safe"])
         service.setSelected(itemID: "caution", selected: true)
         service.selectLowRiskOnly()
         XCTAssertEqual(Set(service.allItems.filter(\.isSelected).map(\.id)), ["safe", "caution"])

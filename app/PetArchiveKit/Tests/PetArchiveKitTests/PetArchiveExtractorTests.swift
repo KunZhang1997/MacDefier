@@ -225,4 +225,82 @@ final class PetArchiveExtractorTests: XCTestCase {
             XCTAssertEqual(error as? PetPackError, .imageTooLarge)
         }
     }
+
+    // MARK: - F3 CRC32 integrity verification
+
+    func testTamperedUncompressedJSONRejectedAndCleansUpPartialFiles() throws {
+        let firstEntry = Data("valid-readme-before-corruption".utf8)
+        let jsonPayload = Data(#"{"id":"mr-defier","name":"Mister Defier","fps":12}"#.utf8)
+        let zip = try makeZip(named: "tampered-uncompressed.zip") { archive in
+            try archive.addEntry(with: "frames/", type: .directory, uncompressedSize: Int64(0), provider: { _, _ in Data() })
+            try addFile(archive, path: "frames/readme.txt", data: firstEntry)
+            try addFile(archive, path: "pet.json", data: jsonPayload)
+        }
+
+        // Flip one byte inside the uncompressed JSON payload without updating ZIP CRC32 headers.
+        var archiveBytes = try Data(contentsOf: zip)
+        let needle = Data("Mister Defier".utf8)
+        let range = try XCTUnwrap(archiveBytes.range(of: needle))
+        archiveBytes[range.lowerBound] ^= 0x01
+        try archiveBytes.write(to: zip)
+
+        let dest = try emptyDest()
+        XCTAssertThrowsError(try PetArchiveExtractor.extract(zipURL: zip, to: dest)) { error in
+            XCTAssertEqual(error as? PetPackError, .corruptedArchive)
+            XCTAssertEqual((error as? PetPackError)?.localizationKey, "pet.error.unzip_failed")
+        }
+        // Previously extracted directory and file entries must be cleaned up on corruption failure.
+        XCTAssertEqual((try? fm.contentsOfDirectory(atPath: dest.path)) ?? [], [])
+    }
+
+    func testTamperedDeflateCompressedJSONRejectedAndCleansUpPartialFiles() throws {
+        let firstEntry = Data("valid-sprite-placeholder".utf8)
+        let repeatedJSON = #"{"id":"mr-defier","frames":["idle_0","idle_1","idle_2","idle_3","walk_0","walk_1"]}"#
+        let jsonData = Data(String(repeating: repeatedJSON, count: 8).utf8)
+        let zip = try makeZip(named: "tampered-deflate.zip") { archive in
+            try addFile(archive, path: "first.txt", data: firstEntry)
+            try archive.addEntry(
+                with: "pet.json",
+                type: .file,
+                uncompressedSize: Int64(jsonData.count),
+                compressionMethod: .deflate,
+                provider: { position, size in
+                    let start = Int(position)
+                    let end = min(start + size, jsonData.count)
+                    guard start < end else { return Data() }
+                    return jsonData.subdata(in: start..<end)
+                }
+            )
+        }
+
+        // Locate local file header (PK\x03\x04) for "pet.json" and flip a compressed payload byte.
+        var archiveBytes = try Data(contentsOf: zip)
+        let localSig = Data([0x50, 0x4B, 0x03, 0x04])
+        var searchStart = archiveBytes.startIndex
+        var payloadOffset: Int?
+        while let sigRange = archiveBytes.range(of: localSig, options: [], in: searchStart..<archiveBytes.endIndex) {
+            let h = sigRange.lowerBound
+            guard h + 30 <= archiveBytes.count else { break }
+            let nameLen = Int(archiveBytes[h + 26]) | (Int(archiveBytes[h + 27]) << 8)
+            let extraLen = Int(archiveBytes[h + 28]) | (Int(archiveBytes[h + 29]) << 8)
+            let nameStart = h + 30
+            let nameEnd = nameStart + nameLen
+            guard nameEnd + extraLen < archiveBytes.count else { break }
+            let name = String(data: archiveBytes.subdata(in: nameStart..<nameEnd), encoding: .utf8)
+            if name == "pet.json" {
+                payloadOffset = nameEnd + extraLen + 2
+                break
+            }
+            searchStart = nameEnd + extraLen
+        }
+        let targetByteIndex = try XCTUnwrap(payloadOffset)
+        archiveBytes[targetByteIndex] ^= 0xFF
+        try archiveBytes.write(to: zip)
+
+        let dest = try emptyDest()
+        XCTAssertThrowsError(try PetArchiveExtractor.extract(zipURL: zip, to: dest)) { error in
+            XCTAssertEqual(error as? PetPackError, .corruptedArchive)
+        }
+        XCTAssertEqual((try? fm.contentsOfDirectory(atPath: dest.path)) ?? [], [])
+    }
 }

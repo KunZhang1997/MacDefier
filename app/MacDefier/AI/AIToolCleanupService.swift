@@ -22,7 +22,10 @@ final class AIToolCleanupService: ObservableObject {
     @Published private(set) var phase = Phase.idle
     @Published private(set) var groups: [AIToolCleanupGroup] = []
     @Published private(set) var selectedIDs = Set<String>()
-    @Published private(set) var ages: [AITool: AIConversationAge] = [:]
+    @Published private(set) var cleanedIDs = Set<String>()
+    @Published private(set) var ages: [AITool: AIConversationAge] = Dictionary(
+        uniqueKeysWithValues: AITool.allCases.map { ($0, .all) }
+    )
     @Published private(set) var scanHint = "aitools.stage.tools"
     @Published private(set) var scanJourney = ScanJourney()
     @Published private(set) var issues: [String] = []
@@ -33,6 +36,7 @@ final class AIToolCleanupService: ObservableObject {
     @Published private(set) var lastResult: CleanupResult?
     @Published private(set) var requiresRescan = false
     private var candidates: [AICleanupCandidate] = []
+    private var ownMutationPaths = Set<String>()
     private var scanDate: Date?
     private var generation = 0
     private var task: Task<Void, Never>?
@@ -44,8 +48,21 @@ final class AIToolCleanupService: ObservableObject {
     init() {
         resourceObserver = NotificationCenter.default.publisher(for: CleanupResourceEvents.didChange)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] note in
                 guard let self, self.phase != .cleaning else { return }
+                let rawPaths = (note.userInfo?["paths"] as? [String]) ?? []
+                let normPaths = Set(rawPaths.map(PathGate.normalize))
+                if !normPaths.isEmpty, normPaths.isSubset(of: self.ownMutationPaths) {
+                    self.ownMutationPaths.subtract(normPaths)
+                    return
+                }
+                let candidatePaths = self.candidates
+                    .filter { !self.cleanedIDs.contains($0.id) }
+                    .flatMap { $0.resources.map { PathGate.normalize($0.path) } + [PathGate.normalize($0.path)] }
+                let touchesInventory = normPaths.isEmpty || candidatePaths.contains { cp in
+                    normPaths.contains { ResourceMutationCoordinator.overlaps(cp, $0) }
+                }
+                guard touchesInventory else { return }
                 self.cancelScan()
                 self.scanJourney = ScanJourney()
                 self.requiresRescan = true
@@ -60,16 +77,32 @@ final class AIToolCleanupService: ObservableObject {
     var canClean: Bool { phase == .preview && !requiresRescan && previewIsFresh && selectedCount > 0 }
     var measuredCount: Int { candidates.count }
     var hasPreview: Bool { scanDate != nil || !candidates.isEmpty }
+    var lowRiskCount: Int {
+        visibleCandidates.filter { $0.canSelect && ($0.kind == .cache || $0.kind == .oldVersion) }.count
+    }
+
+    func isCleaned(_ item: AICleanupCandidate) -> Bool {
+        cleanedIDs.contains(item.id)
+    }
+
+    func markCLIToolCleaned(_ tool: CliTool) {
+        let id = "cli:" + tool.id
+        cleanedIDs.insert(id)
+        if let idx = candidates.firstIndex(where: { $0.id == id }) {
+            candidates[idx].reason = "cleaned"
+            rebuildGroups()
+        }
+    }
 
     func setAge(_ value: AIConversationAge, for tool: AITool) {
         guard phase != .cleaning else { return }
         ages[tool] = value
         rebuildGroups()
     }
-    func age(for tool: AITool) -> AIConversationAge { ages[tool] ?? .dontList }
+    func age(for tool: AITool) -> AIConversationAge { ages[tool] ?? .all }
 
     func toggle(_ item: AICleanupCandidate) {
-        guard phase == .preview, !requiresRescan, item.canSelect else { return }
+        guard phase == .preview, !requiresRescan, item.canSelect, !cleanedIDs.contains(item.id) else { return }
         if !selectedIDs.insert(item.id).inserted { selectedIDs.remove(item.id) }
         refreshSelection()
     }
@@ -81,9 +114,18 @@ final class AIToolCleanupService: ObservableObject {
         refreshSelection()
     }
     func clearSelection() { selectedIDs.removeAll(); refreshSelection() }
+    func selectLowRiskOnly() {
+        guard phase == .preview, !requiresRescan else { return }
+        selectedIDs = Set(
+            visibleCandidates
+                .filter { $0.canSelect && !cleanedIDs.contains($0.id) && ($0.kind == .cache || $0.kind == .oldVersion) }
+                .map(\.id)
+        )
+        refreshSelection()
+    }
     func selectAllEligible() {
         guard phase == .preview, !requiresRescan else { return }
-        selectedIDs = Set(visibleCandidates.filter(\.canSelect).map(\.id))
+        selectedIDs = Set(visibleCandidates.filter { $0.canSelect && !cleanedIDs.contains($0.id) }.map(\.id))
         refreshSelection()
     }
     var selectedCandidates: [AICleanupCandidate] { AICleanupSelection.approved(selectedIDs, candidates: visibleCandidates) }
@@ -100,7 +142,7 @@ final class AIToolCleanupService: ObservableObject {
         cancelScan()
         generation += 1
         let token = generation
-        if !resume { candidates = []; groups = []; issues = []; scanDate = nil }
+        if !resume { candidates = []; groups = []; issues = []; scanDate = nil; cleanedIDs.removeAll() }
         phase = .scanning
         requiresRescan = true
         lastResult = nil
@@ -121,8 +163,23 @@ final class AIToolCleanupService: ObservableObject {
                     let checked = await Task.detached(priority: .utility) {
                         var all = current
                         var activities: [AITool: AIToolCleanupActivity] = [:]
+                        let openPaths = AIToolCleanupGuard.captureOpenFilePaths()
                         for index in all.indices where all[index].state == .ready {
-                            let tool = all[index].tool
+                            let item = all[index]
+                            if item.kind == .model && item.tool == .ollama {
+                                let states = item.resources.map {
+                                    AIToolCleanupGuard.openFileActivity(for: $0.path, in: openPaths)
+                                }
+                                if states.contains(.inUse) {
+                                    all[index].state = .inUse
+                                    all[index].reason = "open_files"
+                                } else if states.contains(.unknown) {
+                                    all[index].state = .unknown
+                                    all[index].reason = "probe_unknown"
+                                }
+                                continue
+                            }
+                            let tool = item.tool
                             let state = activities[tool] ?? AIToolCleanupGuard.live.state(for: tool)
                             activities[tool] = state
                             switch state {
@@ -218,29 +275,56 @@ final class AIToolCleanupService: ObservableObject {
         phase = .cleaning
         progress = 0
         let home = self.home
+        ownMutationPaths.formUnion(frozen.flatMap { $0.resources.map { PathGate.normalize($0.path) } })
+        let cleanedAnyModel = frozen.contains { $0.kind == .model }
         task = Task { @MainActor [weak self] in
             let worker = Task.detached(priority: .userInitiated) {
-                await AIToolCleanupExecutor.execute(candidates: frozen, home: home) { value in
+                let execResult = await AIToolCleanupExecutor.execute(candidates: frozen, home: home) { value in
                     Task { @MainActor [weak self] in
                         guard let self, self.generation == token, self.phase == .cleaning else { return }
                         self.progress = value
                     }
                 }
+                var refreshedModels: [String: AICleanupCandidate] = [:]
+                if cleanedAnyModel, execResult.cleanedCount > 0 {
+                    let freshScan = AIOllamaInventory.scan(home: home)
+                    let openPaths = AIToolCleanupGuard.captureOpenFilePaths()
+                    for var m in freshScan.candidates {
+                        if m.state == .ready {
+                            let states = m.resources.map { AIToolCleanupGuard.openFileActivity(for: $0.path, in: openPaths) }
+                            if states.contains(.inUse) { m.state = .inUse; m.reason = "open_files" }
+                            else if states.contains(.unknown) { m.state = .unknown; m.reason = "probe_unknown" }
+                        }
+                        refreshedModels[m.id] = m
+                    }
+                }
+                return (execResult, refreshedModels)
             }
-            let result = await worker.value
+            let (result, refreshedModels) = await worker.value
             guard let self, self.generation == token else { return }
             self.lastResult = result
             let moved = Set(result.succeededPaths)
-            self.candidates = self.candidates.compactMap { candidate in
-                if !candidate.resources.isEmpty, candidate.resources.allSatisfy({ moved.contains($0.path) }) { return nil }
+            var newlyCleaned = Set<String>()
+            self.candidates = self.candidates.map { candidate in
+                if !candidate.resources.isEmpty, candidate.resources.allSatisfy({ moved.contains($0.path) }) {
+                    newlyCleaned.insert(candidate.id)
+                    var done = candidate
+                    done.state = .retained
+                    done.reason = "cleaned"
+                    return done
+                }
+                if candidate.kind == .model, let updated = refreshedModels[candidate.id] {
+                    return updated
+                }
                 if candidate.resources.contains(where: { moved.contains($0.path) }) {
                     var changed = candidate; changed.state = .unknown; changed.reason = "changed"; return changed
                 }
                 return candidate
             }
+            self.cleanedIDs.formUnion(newlyCleaned)
             self.selectedIDs.removeAll()
-            self.requiresRescan = true
-            self.scanDate = nil
+            let stillFresh = self.scanDate.map { Date().timeIntervalSince($0) <= Self.ttl } ?? false
+            self.requiresRescan = !stillFresh
             self.phase = .preview
             self.task = nil
             self.rebuildGroups()

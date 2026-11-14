@@ -36,12 +36,12 @@ DerivedData/
 # 本机项目资料不随公开源码提交
 /AGENTS.md
 /CLAUDE.md
+/deliverables/
 /research/
 /workspace/
 /reports/
 /docs/
 /design-qa.md
-/revised_chapter2_round1.md
 
 # 退役的重复 Xcode 工程
 /app/MacDefier [0-9]*.xcodeproj/

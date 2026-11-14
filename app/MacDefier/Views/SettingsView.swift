@@ -888,9 +888,16 @@ struct SettingsView: View {
     }
 
     private func currentAISettings() -> AISettings {
+        let normalizedCloudBase = AIEndpointPolicy.normalizedBaseURLString(baseURL) ?? baseURL
+        let normalizedLocalBase = AIEndpointPolicy.normalizedBaseURLString(localEndpoint) ?? localEndpoint
         var profiles = cloudProfiles
+        for i in profiles.indices {
+            if let norm = AIEndpointPolicy.normalizedBaseURLString(profiles[i].baseURL) {
+                profiles[i].baseURL = norm
+            }
+        }
         if let id = activeCloudProfileId, let idx = profiles.firstIndex(where: { $0.id == id }) {
-            profiles[idx].baseURL = baseURL
+            profiles[idx].baseURL = normalizedCloudBase
             profiles[idx].model = cloudModel
             profiles[idx].apiKey = apiKey
         }
@@ -898,15 +905,15 @@ struct SettingsView: View {
             enabled: aiEnabled,
             mode: aiUseCloud ? .cloud : .localOnly,
             apiKey: apiKey,
-            baseURL: baseURL,
+            baseURL: normalizedCloudBase,
             cloudModel: cloudModel,
-            localEndpoint: localEndpoint,
+            localEndpoint: normalizedLocalBase,
             localModel: localModel,
             defaultIntensity: defaultIntensity,
             keepRecentTurns: 12,
             historyCharBudget: 12_000,
             cloudProfiles: profiles.isEmpty
-                ? [AICloudProfile(name: L10n.t("settings.api_default_name"), baseURL: baseURL, model: cloudModel, apiKey: apiKey)]
+                ? [AICloudProfile(name: L10n.t("settings.api_default_name"), baseURL: normalizedCloudBase, model: cloudModel, apiKey: apiKey)]
                 : profiles,
             activeCloudProfileId: activeCloudProfileId,
             cloudPrivacyAcknowledged: cloudPrivacyAcknowledged
@@ -1248,6 +1255,9 @@ private struct CloudProfilesSheet: View {
                     if !cls.isRequestAllowed {
                         endpointHint = L10n.t("settings.endpoint_public_http_blocked")
                         return
+                    }
+                    if let norm = AIEndpointPolicy.normalizedBaseURLString(p.baseURL) {
+                        p.baseURL = norm
                     }
                     if cls.isLANHTTPRisk {
                         endpointHint = L10n.t("settings.endpoint_lan_http_risk")

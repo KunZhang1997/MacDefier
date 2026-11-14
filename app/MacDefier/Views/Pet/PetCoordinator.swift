@@ -49,11 +49,8 @@ final class PetCoordinator: ObservableObject {
     private var monitorSpeakCooldown: TimeInterval { fastBanter ? 40 : 5 * 60 }
     private var cleanupSpeakCooldown: TimeInterval { fastBanter ? 40 : 5 * 60 }
 
-    private let cpuHigh: Double = 0.88
-    private let ramHigh: Double = 0.92
-    private let diskFreeLowBytes: Double = 25 * 1_073_741_824
     private let monitorSustain: TimeInterval = 20
-    private let cleanupBytesThreshold: UInt64 = 500 * 1024 * 1024
+    private let cleanupBytesThreshold: UInt64 = 500 * 1_000_000
 
     func start(monitor: MonitorService) {
         self.monitor = monitor
@@ -73,8 +70,9 @@ final class PetCoordinator: ObservableObject {
             .map { snapshot in
                 let cpuBucket = Int((snapshot.cpu?.totalUsage ?? 0) * 20)
                 let ramBucket = Int((snapshot.ram?.usage ?? 0) * 20)
-                let diskTight = snapshot.disks.contains { $0.free < 25 * 1_073_741_824 || $0.usage >= 0.90 }
-                return "\(cpuBucket)|\(ramBucket)|\(diskTight)"
+                let ramElevated = snapshot.ramIsFresh() && HealthThresholds.isMemoryPressureElevated(snapshot.ram)
+                let diskTight = snapshot.systemDiskIsFresh() && HealthThresholds.isSystemDiskTight(snapshot.disks)
+                return "\(cpuBucket)|\(ramBucket)|\(ramElevated)|\(diskTight)"
             }
             .removeDuplicates()
             .receive(on: RunLoop.main)
@@ -176,10 +174,10 @@ final class PetCoordinator: ObservableObject {
             monitorHighSince = nil
             return
         }
-        let cpu = snap.cpu?.totalUsage ?? 0
-        let ram = snap.ram?.usage ?? 0
-        let diskTight = snap.disks.contains { $0.free < diskFreeLowBytes || $0.usage >= 0.90 }
-        let high = cpu >= cpuHigh || ram >= ramHigh || diskTight
+        let cpuHigh = snap.cpuIsFresh() && (snap.cpu?.totalUsage ?? 0) >= HealthThresholds.cpuHighUsage
+        let ramHigh = snap.ramIsFresh() && HealthThresholds.isMemoryPressureElevated(snap.ram)
+        let diskTight = snap.systemDiskIsFresh() && HealthThresholds.isSystemDiskTight(snap.disks)
+        let high = cpuHigh || ramHigh || diskTight
         if high {
             if monitorHighSince == nil { monitorHighSince = Date() }
         } else {
@@ -241,9 +239,11 @@ final class PetCoordinator: ObservableObject {
             markCleanup = true
         } else if isMonitorPressureActive,
                   now.timeIntervalSince(lastMonitorSpeakAt) >= monitorSpeakCooldown {
+            let snap = monitor?.snapshot
             line = PetBanter.lineMonitorPressure(
-                cpu: monitor?.snapshot.cpu?.totalUsage ?? 0,
-                ram: monitor?.snapshot.ram?.usage ?? 0,
+                cpu: snap?.cpu?.totalUsage ?? 0,
+                ram: snap?.ram?.usage ?? 0,
+                ramPressureElevated: (snap?.ramIsFresh() ?? false) && HealthThresholds.isMemoryPressureElevated(snap?.ram),
                 language: lang
             )
             markMonitor = true

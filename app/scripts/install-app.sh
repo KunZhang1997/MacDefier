@@ -25,8 +25,9 @@ if ! codesign --verify --deep --strict "$STAGE" 2>/dev/null; then
     exit 1
   }
   SIGN_ID="${MACDEFIER_SIGN_ID:--}"
-  if ! security find-identity -v -p codesigning | grep -F "$SIGN_ID" >/dev/null; then
-    SIGN_ID="-"
+  if [[ "$SIGN_ID" != "-" ]]; then
+    RESOLVED_HASH="$(security find-identity -v -p codesigning | grep -F "$SIGN_ID" | awk '{print $2}' | head -n 1 || true)"
+    SIGN_ID="${RESOLVED_HASH:--}"
   fi
   xattr -cr "$STAGE"
   # Preserve Sparkle's nested entitlements; the privileged helper gets its own

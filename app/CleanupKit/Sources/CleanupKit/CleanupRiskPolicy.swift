@@ -65,10 +65,14 @@ public enum CleanupRiskPolicy {
                 return .rebuild
             }
             return .caution
-        case .docker, .aiApps:
-            if lowerName.contains("history") || lowerName.contains("conversation") {
-                return .skip
+        case .xcode:
+            if lowerName == "archives" || lowerPath.hasSuffix("/archives") {
+                return .caution
             }
+            if matchesActiveToken(name: lowerName, path: lowerPath) {
+                return .caution
+            }
+        case .docker, .aiApps:
             return .caution
         case .browsers:
             if lowerName.contains("password") || lowerPath.contains("login data") {
@@ -99,51 +103,16 @@ public enum CleanupRiskPolicy {
         return base
     }
 
-    /// Eligible for「勾选低风险」— narrow allowlist only.
+    /// Eligible for「勾选低风险」— aligned with `.safe` / `.rebuild` badges, excluding manual-confirm categories.
     public static func isLowRiskBulkEligible(_ item: CleanableItem) -> Bool {
-        if item.risk == .skip || item.risk == .caution { return false }
+        guard item.risk == .safe || item.risk == .rebuild else { return false }
 
         switch item.category {
-        case .orphans, .trash, .installerPackages, .largeAppData, .wallpaper, .temp, .docker, .aiApps, .browsers:
-            // 浏览器：仅缓存类可走低风险勾选
-            if item.category == .browsers {
-                return item.risk == .rebuild || item.risk == .safe
-            }
+        case .orphans, .trash, .installerPackages, .largeAppData:
             return false
-
-        case .xcode:
-            let p = item.path.lowercased()
-            let n = item.name.lowercased()
-            return p.contains("deriveddata")
-                || p.contains("coresimulator/caches")
-                || n.contains("deriveddata")
-                || n.contains("coresimulator")
-
-        case .brew, .node:
+        case .userCache, .userLogs, .systemLogs, .browsers, .xcode, .brew, .node, .wallpaper, .temp, .docker, .aiApps:
             return true
-
-        case .userLogs, .systemLogs:
-            return item.risk == .safe || item.risk == .rebuild
-
-        case .userCache:
-            return isTrustedBrowserOrPkgCache(name: item.name)
-                && !matchesActiveToken(name: item.name.lowercased(), path: item.path.lowercased())
         }
-    }
-
-    private static func isTrustedBrowserOrPkgCache(name: String) -> Bool {
-        let n = name.lowercased()
-        let browser = ["google", "chrome", "chromium", "firefox", "safari", "brave", "edge", "webkit"]
-        if browser.contains(where: { n == $0 || n.contains($0) }) {
-            // avoid random "google-foo-helper" tool dirs — require short known names
-            if n == "google" || n.contains("chrome") || n.contains("chromium")
-                || n.contains("firefox") || n == "safari" || n.contains("brave")
-                || n == "edge" || n.hasPrefix("microsoftedge") {
-                return true
-            }
-        }
-        let pkg = ["pip", "yarn", "pnpm", "npm", "composer"]
-        return pkg.contains(where: { n == $0 || n.contains($0) })
     }
 
     private static func matchesActiveToken(name: String, path: String) -> Bool {

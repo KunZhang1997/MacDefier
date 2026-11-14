@@ -12,7 +12,7 @@ public final class Repeater {
     private var callback: () -> Void
     private var state: State = .paused
     private var timer: DispatchSourceTimer
-    /// start/pause/reset 并发时保护 state，防 dispatch_resume/suspend 失衡 abort
+    /// start/pause 并发时保护 state，防 dispatch_resume/suspend 失衡 abort
     private let stateLock = NSLock()
 
     public init(seconds: Int, queueLabel: String = "com.macdefier.MonitorKit.Repeater", callback: @escaping () -> Void) {
@@ -58,16 +58,5 @@ public final class Repeater {
         guard state == .running else { return }
         state = .paused
         timer.suspend()
-    }
-
-    public func reset(seconds: Int, restart: Bool = false) {
-        if state == .running {
-            pause()
-        }
-        setupTimer(seconds)
-        if restart {
-            callback()
-            start()
-        }
     }
 }

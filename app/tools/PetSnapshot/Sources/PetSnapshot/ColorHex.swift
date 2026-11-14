@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum L10n {
+    static func t(_ key: String, _ args: CVarArg...) -> String { key }
+}
+
 extension Color {
     init(hex: UInt32, alpha: Double = 1) {
         let r = Double((hex >> 16) & 0xFF) / 255

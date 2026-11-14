@@ -345,6 +345,12 @@ struct CleanupView: View {
                      ? L10n.t("cleanup.scan_found", cleanup.groups.reduce(0) { $0 + $1.items.count })
                      : L10n.t("cleanup.preview_total", cleanup.totalBytes == 0 ? "0 B" : Format.bytes(Double(cleanup.totalBytes))))
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                if let lastResult = cleanup.lastResult, lastResult.cleanedCount > 0,
+                   cleanup.scanJourney.status != .running {
+                    Label(L10n.t("cleanup.cleaned_inline", lastResult.cleanedCount), systemImage: "checkmark.circle.fill")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(MDTheme.success)
+                }
                 if cleanup.groups.contains(where: \.isPartial) {
                     Label(L10n.t("cleanup.partial_scan"), systemImage: "info.circle")
                         .font(.caption2)
@@ -404,7 +410,7 @@ struct CleanupView: View {
                     cleanup.selectLowRiskOnly()
                     expandCategoriesWithSelection()
                 }
-                .disabled(!canSelectPreview)
+                .disabled(!canSelectPreview || cleanup.lowRiskCount == 0)
                 .help(L10n.t("cleanup.select_safe_help"))
                 .accessibilityIdentifier("cleanup.selectLowRisk")
                 .fixedSize()
@@ -590,7 +596,7 @@ struct CleanupView: View {
                     .padding(.top, 2)
                 }
 
-                riskTag(item.risk)
+                statusTag(for: item)
                     .padding(.top, 2)
 
                 MDRowMeta(text: item.formattedSize, width: 76, emphasis: true)
@@ -673,21 +679,40 @@ struct CleanupView: View {
         return n
     }
 
-    private func riskTag(_ risk: CleanupRisk) -> some View {
-        let color: Color = {
-            switch risk {
-            case .safe, .rebuild: return MDTheme.success
-            case .caution: return MDTheme.warning
-            case .skip: return MDTheme.tertiary
+    private func statusTag(for item: CleanableItem) -> some View {
+        let label: String
+        let color: Color
+        let tip: String
+        if item.risk == .skip {
+            if item.ifCleaned == "cleanup_blocked:inUse" || item.ifCleaned == "ai_cleanup:in_use" {
+                label = L10n.t("cleanup.tag.in_use")
+                color = MDTheme.warning
+                tip = item.localizedIfCleaned
+            } else if item.ifCleaned == "cleanup_blocked:permissionDenied" {
+                label = L10n.t("cleanup.tag.no_permission")
+                color = MDTheme.warning
+                tip = item.localizedIfCleaned
+            } else {
+                label = item.risk.localizedLabel
+                color = MDTheme.tertiary
+                tip = item.risk.localizedTip
             }
-        }()
-        return Text(risk.localizedLabel)
+        } else {
+            label = item.risk.localizedLabel
+            switch item.risk {
+            case .safe, .rebuild: color = MDTheme.success
+            case .caution: color = MDTheme.warning
+            case .skip: color = MDTheme.tertiary
+            }
+            tip = item.risk.localizedTip
+        }
+        return Text(label)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(color.opacity(0.12), in: Capsule())
-            .help(risk.localizedTip)
+            .help(tip)
     }
 
     private func cleaningState(progress: Double) -> some View {
@@ -764,7 +789,7 @@ struct CleanupView: View {
                                             }.padding(.vertical, 4)
                                         }
                                     } label: {
-                                        Text(L10n.t("cleanup.failure.\(kind.rawValue)") + " · \(items.count)")
+                                        Text(L10n.t("cleanup.group.\(kind.rawValue)") + " · \(items.count)")
                                     }
                                     Text(L10n.t("cleanup.reason.\(kind.rawValue)"))
                                         .font(.caption).foregroundStyle(MDTheme.secondary)
@@ -784,7 +809,7 @@ struct CleanupView: View {
                 }
             }
 
-            Button(L10n.t("cleanup.finish")) { cleanup.reset() }
+            Button(L10n.t("cleanup.finish")) { cleanup.finishSummary() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .padding(.top, 8)

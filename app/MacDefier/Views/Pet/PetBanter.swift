@@ -88,10 +88,7 @@ enum PetBanter {
     }
 
     static func lineCleanup(bytes: UInt64, language: PetBanterLanguage) -> String {
-        let gb = Double(bytes) / 1_073_741_824
-        let size = gb >= 1
-            ? String(format: "%.1f GB", gb)
-            : String(format: "%.0f MB", Double(bytes) / 1_048_576)
+        let size = Format.bytes(Double(bytes))
         switch language {
         case .chinese:
             return "大概有 \(size) 能腾出来，要不要打开清理页瞅一眼？"
@@ -100,23 +97,28 @@ enum PetBanter {
         }
     }
 
-    static func lineMonitorPressure(cpu: Double, ram: Double, language: PetBanterLanguage) -> String {
+    static func lineMonitorPressure(
+        cpu: Double,
+        ram: Double,
+        ramPressureElevated: Bool = false,
+        language: PetBanterLanguage
+    ) -> String {
         let cpuPct = Int((cpu * 100).rounded())
         let ramPct = Int((ram * 100).rounded())
         switch language {
         case .chinese:
-            if cpu >= 0.88 {
+            if cpu >= HealthThresholds.cpuHighUsage {
                 return "电脑有点忙（占用大约 \(cpuPct)%），要看看是谁在跑吗？"
             }
-            if ram >= 0.90 {
+            if ramPressureElevated {
                 return "内存有点吃紧（大约 \(ramPct)%），要不要看一眼在跑什么？"
             }
             return "电脑最近有点喘，要不要打开监控看看？"
         case .english:
-            if cpu >= 0.88 {
+            if cpu >= HealthThresholds.cpuHighUsage {
                 return "Your Mac’s been busy (~\(cpuPct)%). Want to see who’s working?"
             }
-            if ram >= 0.90 {
+            if ramPressureElevated {
                 return "Memory’s a bit tight (~\(ramPct)%). Peek at what’s running?"
             }
             return "Things feel a bit heavy — open Monitor when you can."

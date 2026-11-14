@@ -180,10 +180,14 @@ public enum ProcessRunner {
         }
         var stdout = Data()
         var stderr = Data()
+        let wakeup = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in wakeup.signal() }
+        defer { process.terminationHandler = nil }
 
         do {
             try process.run()
         } catch {
+            process.terminationHandler = nil
             try? stdoutPipe.fileHandleForWriting.close()
             try? stderrPipe.fileHandleForWriting.close()
             try? stdoutPipe.fileHandleForReading.close()
@@ -202,34 +206,59 @@ public enum ProcessRunner {
         var stdoutEOF = false
         var stderrEOF = false
         while true {
-            if !stdoutEOF { stdoutEOF = drainAvailable(stdoutFD, into: &stdout, limit: outputLimits.stdoutBytes, exceeded: &outputLimitExceeded) }
-            if !stderrEOF { stderrEOF = drainAvailable(stderrFD, into: &stderr, limit: outputLimits.stderrBytes, exceeded: &outputLimitExceeded) }
+            var saturated = false
+            if !stdoutEOF {
+                let status = drainAvailableWithSaturation(stdoutFD, into: &stdout, limit: outputLimits.stdoutBytes, exceeded: &outputLimitExceeded)
+                stdoutEOF = status.eof
+                saturated = saturated || status.saturated
+            }
+            if !stderrEOF {
+                let status = drainAvailableWithSaturation(stderrFD, into: &stderr, limit: outputLimits.stderrBytes, exceeded: &outputLimitExceeded)
+                stderrEOF = status.eof
+                saturated = saturated || status.saturated
+            }
             if !process.isRunning, stdoutEOF, stderrEOF { break }
             if isCancelled() {
                 wasCancelled = true
-                stopProcessTreeSync(process, pid: pid, ownsProcessGroup: ownsProcessGroup)
+                stopProcessTreeSync(process, pid: pid, ownsProcessGroup: ownsProcessGroup, exited: wakeup)
                 break
             }
-            if Date() >= deadline {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 {
                 timedOut = true
-                stopProcessTreeSync(process, pid: pid, ownsProcessGroup: ownsProcessGroup)
+                stopProcessTreeSync(process, pid: pid, ownsProcessGroup: ownsProcessGroup, exited: wakeup)
                 break
             }
-            Thread.sleep(forTimeInterval: 0.02)
+            if !saturated {
+                _ = wakeup.wait(timeout: .now() + min(0.05, remaining))
+            }
         }
 
         if timedOut || wasCancelled {
             let drainDeadline = Date().addingTimeInterval(0.5)
-            while Date() < drainDeadline, !stdoutEOF || !stderrEOF {
-                if !stdoutEOF { stdoutEOF = drainAvailable(stdoutFD, into: &stdout, limit: outputLimits.stdoutBytes, exceeded: &outputLimitExceeded) }
-                if !stderrEOF { stderrEOF = drainAvailable(stderrFD, into: &stderr, limit: outputLimits.stderrBytes, exceeded: &outputLimitExceeded) }
+            while true {
+                var saturated = false
+                if !stdoutEOF {
+                    let status = drainAvailableWithSaturation(stdoutFD, into: &stdout, limit: outputLimits.stdoutBytes, exceeded: &outputLimitExceeded)
+                    stdoutEOF = status.eof
+                    saturated = saturated || status.saturated
+                }
+                if !stderrEOF {
+                    let status = drainAvailableWithSaturation(stderrFD, into: &stderr, limit: outputLimits.stderrBytes, exceeded: &outputLimitExceeded)
+                    stderrEOF = status.eof
+                    saturated = saturated || status.saturated
+                }
                 if stdoutEOF, stderrEOF { break }
-                Thread.sleep(forTimeInterval: 0.02)
+                let remaining = drainDeadline.timeIntervalSinceNow
+                if remaining <= 0 { break }
+                if !saturated {
+                    _ = wakeup.wait(timeout: .now() + min(0.05, remaining))
+                }
             }
         }
         try? stdoutPipe.fileHandleForReading.close()
         try? stderrPipe.fileHandleForReading.close()
-        // Do not add an unbounded wait after the bounded polling/draining loop.
+        // Do not add an unbounded wait after the bounded draining loop.
         return ProcessRunResult(
             exitCode: process.isRunning ? -1 : process.terminationStatus,
             stdout: stdout,
@@ -267,7 +296,8 @@ public enum ProcessRunner {
     private static func stopProcessTreeSync(
         _ process: Process,
         pid: pid_t,
-        ownsProcessGroup: Bool
+        ownsProcessGroup: Bool,
+        exited: DispatchSemaphore
     ) {
         if ownsProcessGroup {
             _ = kill(-pid, SIGTERM)
@@ -275,15 +305,17 @@ public enum ProcessRunner {
             signalDescendants(of: pid, signal: SIGTERM)
         }
         if process.isRunning { process.terminate() }
-        let deadline = Date().addingTimeInterval(0.5)
-        while process.isRunning, Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
+        if process.isRunning {
+            _ = exited.wait(timeout: .now() + 0.5)
         }
         if ownsProcessGroup {
             _ = kill(-pid, SIGKILL)
         } else if process.isRunning {
-                signalDescendants(of: pid, signal: SIGKILL)
+            signalDescendants(of: pid, signal: SIGKILL)
             _ = kill(pid, SIGKILL)
+        }
+        if process.isRunning {
+            _ = exited.wait(timeout: .now() + 0.1)
         }
     }
 
@@ -296,6 +328,15 @@ public enum ProcessRunner {
     /// Drain a non-blocking descriptor on the calling task. Returns true on EOF
     /// or a terminal read error. No other thread owns or closes this descriptor.
     private static func drainAvailable(_ descriptor: Int32, into output: inout Data, limit: Int, exceeded: inout Bool) -> Bool {
+        drainAvailableWithSaturation(descriptor, into: &output, limit: limit, exceeded: &exceeded).eof
+    }
+
+    private static func drainAvailableWithSaturation(
+        _ descriptor: Int32,
+        into output: inout Data,
+        limit: Int,
+        exceeded: inout Bool
+    ) -> (eof: Bool, saturated: Bool) {
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         // Bound each pass so a command that writes continuously cannot starve
         // the timeout/cancellation checks in the outer loop.
@@ -311,12 +352,12 @@ public enum ProcessRunner {
                 // the pipe and prevent its own exit or our cancellation checks.
                 continue
             }
-            if count == 0 { return true }
+            if count == 0 { return (true, false) }
             if errno == EINTR { continue }
-            if errno == EAGAIN || errno == EWOULDBLOCK { return false }
-            return true
+            if errno == EAGAIN || errno == EWOULDBLOCK { return (false, false) }
+            return (true, false)
         }
-        return false
+        return (false, true)
     }
 
     private static func signalDescendants(of parent: pid_t, signal: Int32) {

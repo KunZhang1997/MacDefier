@@ -1,107 +1,120 @@
-# MacDefier App（工程）
+# MacDefier App（工程说明）
 
-**Bundle：** `com.macdefier.app`  
-**策略：** F′ 抽取 — 主窗自研 SwiftUI；MonitorKit ← Stats readers；CleanupKit ← PureMac（壳）
+**Bundle ID：** `com.macdefier.app`（禁止 `eu.exelban.*`）  
+**唯一应用路径：** `/Applications/MacDefier.app`（全链路单一构建，不并存 Dev/Trial/备份 `.app`）  
+**开源许可：** MIT（第三方开源署名见 `app/NOTICE`：Stats、PureMac、ZIPFoundation、Sparkle）  
+**现行直装基线：** `v0.19`（Developer ID 签名 + Apple 公证 DMG + Sparkle 2.9.4 签名更新源）
 
-## 结构
+---
 
-```
+## 工程结构
+
+```text
 app/
-  MacDefier/          # SwiftUI 主 App（侧栏 IA 对齐线框）
-  MonitorKit/         # 采样库（CPU/RAM/Disk/Net/GPU 列表…）
-  CleanupKit/         # 清理壳（B2 抽 PureMac）
-  project.yml         # xcodegen
-  NOTICE              # MIT 署名 Stats / PureMac
-  MacDefier.xcodeproj # xcodegen 生成
+  MacDefier/            # SwiftUI 主应用（横向七入口工作台 + 悬浮窗宠 Mr. Defier + 菜单栏双列面板）
+  MacDefierTests/       # 主工程正规单元测试（XCTest：AI 策略/传输/档案隔离、更新状态机、诊断等）
+  CleanupKit/           # 清理、软件盘点、CLI 多前缀治理、AI 工具数据与磁盘空间树图（Swift Package）
+  MonitorKit/           # 本机硬件与进程采样、磁盘 I/O、SMC 只读温转与卡顿事件回看（Swift Package）
+  PetArchiveKit/        # 窗宠压缩包安全校验与解包（Swift Package）
+  UninstallHelperKit/   # 受限管理员卸载助手 Core / IPC / Client（Swift Package）
+  UninstallHelper/      # 内嵌 SMAppService LaunchDaemon 可执行目标
+  Config/               # 构建与签名配置
+  Vendor/               # 第三方源码依赖（ZIPFoundation）
+  scripts/              # 单一构建生命周期、打包公证、Sparkle 清单与助手门禁脚本
+  project.yml           # XcodeGen 工程真源
+  NOTICE                # 第三方开源许可证声明
 ```
 
-## 生成 / 编译
+## 工作台信息架构
+
+- **主窗口顶栏横向七入口**（快捷键 `⌘1`–`⌘7`）：
+  `诊断` ｜ `清理` ｜ `AI 工具` ｜ `磁盘文件` ｜ `软件` ｜ `监控` ｜ `设置`
+- **悬浮参谋 `Mr. Defier`**：主窗内自由拖动窗宠（仅避让顶栏），点击展开对话气泡；关闭 AI 时全部扫描、清理、卸载与监控功能独立可用。
+- **菜单栏常驻面板**：原生双列实时状态浮层（CPU 分核、GPU/内存/网络曲线、系统盘空间、电池、Apple Silicon 只读温度与风扇 RPM、Top 5 进程及快捷入口）。
+- **明确不做进产品壳**：直接改 `vendor/stats` 品牌发版、`eu.exelban.*` 偏好域、远程多机监控、主动风扇调速控制、假内存加速、恐吓式杀毒或文件粉碎。
+
+---
+
+## 生成、构建与单一应用安装规则
+
+本仓遵循**本机唯一应用构建规则**（`scripts/single_app_build.py`）：
+
+1. 同一平台只维护唯一可运行路径 `/Applications/MacDefier.app`（使用生产 Bundle ID `com.macdefier.app` 与 Release 配置原位事务替换），**不再并行安装旧 `MacDefier-Dev.app` / `com.macdefier.app.dev`**。
+2. `rebuild_and_launch.sh`、`scripts/install-app.sh`（及兼容转发入口 `scripts/install-dev-app.sh`）、`scripts/package-dist.sh`、`scripts/package-release.sh` 与 `scripts/ci.sh` 共用产品互斥锁；任务退出时自动注销 Launch Services 临时注册并清理构建/解包临时 `.app`，保留个人设置、AI 凭据、模型与应用支持数据。
+3. 安装前先验签并请求旧实例正常退出，替换或拉起失败时自动回退；Debug 配置仅用于本地临时编译与单测，不落盘并行安装。
+
+### 常用命令
 
 ```bash
-cd "…/MacDefier/app"
+cd app
+
+# 1. 重新生成 Xcode 工程并执行临时无签名编译检查
 xcodegen generate
-xcodebuild -scheme MacDefier -configuration Debug -destination 'platform=macOS' \
-  build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-open MacDefier.xcodeproj
+xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Debug \
+  -destination 'platform=macOS' build \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+# 2. 原位重建并启动唯一 /Applications/MacDefier.app（Release）
+bash rebuild_and_launch.sh
+
+# 3. 单一应用构建生命周期自检
+bash rebuild_and_launch.sh --self-test
 ```
 
-## 页面（跟新前端，不跟 Stats 设置窗）
-
-侧栏：诊断 / 清理 / 软件 / AI / 监控 / 设置  
-监控横排：Dashboard | CPU | GPU | RAM | Disk | Sensors | Network
-
-## 不做进产品壳
-
-- 在 `vendor/stats` 改品牌发版  
-- Bundle `eu.exelban.*`  
-- 菜单栏 Stats 整壳 / Remote / 风扇控制  
-
-## 构建身份与分发真源
-
-- 日常源码构建使用 `./rebuild_and_launch.sh`，构建 Release 并原位更新唯一安装 `/Applications/MacDefier.app`，Bundle ID 为 `com.macdefier.app`。
-- Debug 仅作临时编译、调试，不并列安装 Dev 版本；`scripts/install-dev-app.sh` 为兼容入口，现转向同一个 Release 安装流程。
-- `scripts/single_app_build.py` 为构建、打包、安装和临时应用清理提供公共生命周期；自检用 `./rebuild_and_launch.sh --self-test`。
-- 未公证试用包只由 `scripts/package-dist.sh` 生成到 `dist/trial/`，文件名
-  必须带 `-unsigned`。
-- 正式无后缀包只由 `scripts/package-release.sh` 生成到 `dist/release/`；
-  Developer ID、公证、staple、NOTICE 和 debug 产物检查全部成功后才输出，
-  同版本已存在时拒绝静默覆盖。
-
-## 顶栏一键更新
-
-所有页面共用一个按需出现的右上角下载图标。启动主窗或 App 重新回到前台时静默读取更新清单；确认有可安装的新版才显示图标。最新版、尚未确认、静默检测中、检测失败及无可用更新均隐藏整块入口，不显示「已是最新版」。点击后在原位显示下载进度，完成后安装并重启；没有检查更新弹窗或浏览器跳转。正在清理、移到废纸篓或卸载时，安装会等待当前操作完成。连接、下载和等待阶段可取消，安装阶段不强制终止。Debug 不检测或显示正式版更新入口，不覆盖不同 Bundle ID 的正式版。
-
-更新由 Sparkle 2.9.4 验证签名。更新源固定为：
-`https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml`。
-仅由启动与前台激活触发元数据检测，不进行后台定时轮询；成功后至少间隔 15 分钟，失败后至少间隔 1 分钟才允许下次激活重试。检测使用 Sparkle 的 `checkForUpdateInformation`，本身不下载、安装、显示窗口或发送系统信息。实际下载仍须点击图标。
-
-发布要求：
-
-1. 首次需要发布并安装一个包含更新器的新正式版；此前的安装包无法凭空获得此入口。
-2. 每次递增包内实际版本，继续使用 `com.macdefier.app` 和同一签名身份；不能只改安装包文件名或 GitHub 标签。2026-10-23 只读核对的 GitHub `0.15` 安装包内仍是 `0.14`，不能拿它作为新版本更新包。
-3. 运行 `scripts/package-release.sh VERSION`，将输出的原始 `MacDefier-VERSION.dmg` 与 `appcast.xml` 一起上传到同一个 GitHub 正式 Release，并让它成为 latest；不可上传后再修改签名清单或安装包。默认标签为 `vVERSION`，若标签不带 v，打包时设置 `MACDEFIER_RELEASE_TAG=VERSION`。
-
-EdDSA 私钥留在登录钥匙串账户 `com.macdefier.app.sparkle`，仓库只有公钥。打包脚本会在构建前核对公钥，在签名、公证、staple 后对最终安装包生成更新清单并验签；不自动发布。新构建环境先解析项目依赖，或用 `MACDEFIER_SPARKLE_TOOLS_DIR` 指向固定版本 Sparkle 的 bin 目录。私钥迁移应走钥匙串的受控备份，不能提交到源码或 Release。
-
-可独立验证：
+### 单元测试与全量 CI
 
 ```bash
-bash scripts/test-app-update-state.sh
-bash scripts/test-app-update-controller.sh
-bash scripts/test-update-feed.sh
-scripts/generate-update-feed.sh --check-signing
-```
+cd app
 
-前三项使用隔离样本或注入回调；不代表线上下载、安装和重启已验收。最后一项只读核对本机签名账户。
-
-## 卸载权限与失败结果
-
-- 普通移动先核对选中对象身份；仅主程序位于 `/Applications` 一层、且原子移动本身因 EACCES/EPERM 失败时，进入新的受限卸载助手。读取或废纸篓访问错误不会自动当成管理员权限问题。完全磁盘访问不会授予文件拥有者或管理员权限。
-- 只处理用户确认的目标，不执行提权 shell、不更改目标权限、不永久删除。npm/Homebrew/uv 仍通过原包管理器以当前用户运行，失败时显示安装权限、依赖或命令错误，不将包管理器脚本提权。
-- 主程序未确认移走时保留关联数据；取消、恢复冲突、提交后位置不明或回执中断均停止后续项，不自动重试。原路径重新出现应用时，不继续清关联数据。
-- 已知锁定、只读卷、跨卷、安全边界或身份变化不通过管理员授权绕过。符号链接仅走原有普通用户边界，不交给 Finder 提权跟随。
-- 2026-10-23 空样本实测否决了 Finder Apple Events 自动授权方案：发送原生 file-reference URL，等待管理员确认时将原对象改名并在原路径放置另一空对象；确认后原对象仍在，替换对象消失，Finder 却回报成功。事后身份验证能发现异常，不能撤销错误处理，因此已移除该桥接及自动化 entitlement。此原型未安装或外发。
-
-定向回归（以下测试使用隔离样本或注入回调，不调用真实卸载）：
-
-```bash
-swift test --package-path CleanupKit --jobs 2 --filter 'UninstallBoundaryErrorTests|UninstallSystemTrashTests|UninstallCommandFailureTests|CliUninstallAuthorizationFlowTests|UninstallBoundaryTests|CliManualEntryTests'
-```
-
-### 受限助手实现（2026-10-23，实机启用待验收）
-
-- `UninstallHelperKit` 分离 Core、IPC、Client。SMAppService daemon 位于应用包内；Release/Dev 使用不同 Mach 服务和授权 right，同 Team 且精确签名标识双向校验。先完成不带敏感数据的握手，再发送短期授权凭证；连接中断即永久失效，不自动重连重发。
-- 第一次使用需明确启用助手，并可能在系统设置批准后台项目。之后由 macOS 请求管理员授权，系统可能复用授权，不承诺每次弹密码。设置页可查看、启用或停用。未签名/ad-hoc 构建拒绝启用。
-- RPC 不接受 UID、home、目标废纸篓或任意命令。调用用户来自 XPC，home 来自系统账户数据库；只处理其确认过的 `/Applications/<name>.app`，拒绝系统应用、MacDefier、符号链接、嵌套路径和 CLI。
-- App 保留原对象 FD 跨越授权等待；helper 将项目原子移入同卷、root 私有且拒绝额外 allow ACL 的 staging，核对实际对象后才提交调用用户的废纸篓。身份不匹配时禁止提交；还原使用不覆盖的 rename，冲突时保留对象和恢复位置。不能保证错误对象从未被短暂暂存，也不能保证冲突时自动恢复。
-- 第一次移动前写入并同步恢复 journal；记录 request UUID、原对象/父目录/废纸篓身份。已有 UUID 不重放。最终提交后再次核对目录绑定、目标对象与源路径；位置或持久化无法确认时返回 `committedUnknown`，不盲目回滚已提交对象、不报正常成功、不继续清关联数据。
-- journal/staging 只在真实服务运行时创建于 `/Library/Application Support/<service>/staging/`。本轮未注册服务、未写系统授权数据库、未移动真实应用。发生 retainedStaging 时需依据界面路径进行管理员恢复；目前没有自动恢复 RPC。直接 POSIX 移入废纸篓不承诺 Finder 的“放回原处”元数据。
-- 正式包必须执行 `scripts/validate-uninstall-helper.sh APP_PATH`，逐架构校验 plist 映射、helper/main 架构、签名、Team、runtime 和危险 entitlement。`--structure-only` 只适用于未签名构建，不算发布门禁。尚未完成公证、安装及系统授权正向验收；更新已注册助手时需先停用再重新启用，实际升级流程仍待验证。
-
-验证：Core 18 项、IPC 9 项、原卸载链路 72 项、错误提示解析 36 项通过；测试全部使用隔离样本。Core 包含授权等待替换、最终 Trash 改名窗口、还原冲突、FIFO、ACL 和中断记录。运行核心测试：
-
-```bash
+# 四个独立 Swift Package 单元测试
+swift test --package-path CleanupKit --jobs 2
+swift test --package-path MonitorKit --jobs 2
+swift test --package-path PetArchiveKit --jobs 2
 swift test --package-path UninstallHelperKit --jobs 2
+
+# 主工程单元测试（MacDefierTests）
+xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Debug \
+  -destination 'platform=macOS' test \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+# 发布前全量门禁（生成工程 + 包单测 + 主工程测试 + Debug/Release 双构建）
+bash scripts/ci.sh
 ```
 
-界面采用 standard 原生风格；新增助手设置静态审查无告警，旧卸载窗口没有 high 告警但仍有 28 项字体/固定尺寸等 medium 提示。本轮只加授权状态、错误文案和工作中禁止关闭，未重构旧布局。原生键盘/VoiceOver、缩放、明暗/高对比以及真实系统授权交互未验收；没有自定义动画，未采集 Instruments。暂评 74/100（平台12、布局11、语义13、交互13、动效12、无障碍5、实现8），不表示通过发布验收。
+### 分发打包边界
+
+- **未公证试用包**：仅由 `scripts/package-dist.sh` 输出至 `dist/trial/`，文件名强制带 `-unsigned` 后缀。
+- **正式公证发布包**：仅由 `scripts/package-release.sh VERSION` 输出至 `dist/release/`（如 `v0.19`）；须通过双架构（`arm64` + `x86_64`）构建、Developer ID 签名、Apple 公证、staple、`NOTICE` 检查、无 debug/preview dylib 检查及 `UninstallHelper` 校验后才落盘，同版本已存在时拒绝静默覆盖。
+
+---
+
+## 顶栏一键更新（Sparkle 2.9.4）
+
+- **按需显示**：七个页面共用标题栏右上角下载图标；仅在主窗启动或 App 回到前台触发 `checkForUpdateInformation` 静默读取签名元数据且确认有可安装新版时才创建按钮（无后台定时轮询；成功最短间隔 15 分钟，失败最短间隔 1 分钟）。最新版、查询中、离线或失败态完全隐藏入口，不显示「已是最新版」。
+- **原位下载与互斥安装**：仅在用户点击图标后才开始下载，原位展示进度并支持取消；准备安装时先获取 `ResourceMutationCoordinator` 互斥锁，等待当前正在执行的清理或卸载完成后再替换重启，不强杀进行中的文件操作。
+- **签名与发布规范**：
+  - 固定更新源：`https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml`。
+  - EdDSA 私钥仅存于发布机登录钥匙串账户 `com.macdefier.app.sparkle`（严禁入库或随包分发），仓库仅保留公钥。
+  - 每次发版必须递增包内真实版本号并保持 `com.macdefier.app` 与同一 Developer ID 签名身份；运行 `scripts/package-release.sh VERSION` 后，将原始 `MacDefier-VERSION.dmg` 与签名生成的 `appcast.xml` 一并上传至同一 GitHub Release（设为 latest），上传后严禁二次改动文件。
+  - 只读检查本机更新签名配置：`scripts/generate-update-feed.sh --check-signing`。
+
+---
+
+## 卸载权限边界与受限 `UninstallHelper`
+
+### 卸载安全原则
+
+- **普通用户优先**：卸载前先校验目标真实身份；仅当选中的 `/Applications/<name>.app` 一层主程序（含合规 `Wrapper/<name>.app` iOS 包装应用）在原子移动进废纸篓时因 `EACCES`/`EPERM` 失败，才进入受限管理员卸载助手。
+- **禁止提权脚本与连带误删**：绝不执行 root shell、不改目标权限、不永久删除；`npm` / `Homebrew` / `uv` 等 CLI 工具始终以当前普通用户运行原包管理器命令，不提权执行第三方包脚本。
+- **强先后依赖**：主程序未确认移走前严禁清理关联数据；扩展容器（`Contents/PlugIns/*.appex`）须通过 Apple 信任链与同 Team 签名归属核验且无其他存活所有者后才允许勾选。
+
+### 受限 LaunchDaemon 实现与门禁
+
+- **分层与双向验签**：`UninstallHelperKit` 分离 `Core`、`IPC`、`Client`；内嵌 `SMAppService` LaunchDaemon 与主应用执行同 Team 与精确签名标识双向校验。首次使用须在设置页或提示中显式启用（必要时经「系统设置 → 通用 → 登录项与扩展」批准）。
+- **v2 跨进程凭据核验**：使用私有授权规则 `com.macdefier.app.uninstall.trash.v2`（委托系统 `authenticate-admin-nonshared`，admin、30 秒有效期、非共享）；客户端前台实际获取授权后交由禁止 UI 的 helper 核验，连接断开即失效。
+- **同卷私有暂存与恢复日志**：RPC 不接受调用方传入的 UID、home、废纸篓路径或任意命令；App 跨授权等待保持原对象文件描述符，helper 先写入恢复 journal，将目标原子移入同卷 root 私有 staging 目录复核身份后，再提交至调用用户的废纸篓（冲突或异常时保留现场并阻断后续关联清理）。
+- **发布校验门禁**：正式发布包必须通过逐架构结构与签名门禁校验：
+  ```bash
+  scripts/validate-uninstall-helper.sh /Applications/MacDefier.app
+  ```
+  （`--structure-only` 仅限本地未签名编译自检，不可替代发布门禁。）

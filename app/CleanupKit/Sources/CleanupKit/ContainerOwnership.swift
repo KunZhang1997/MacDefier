@@ -177,7 +177,12 @@ public enum ContainerOwnershipScanner {
         }.map(\.path)
         #if canImport(AppKit)
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID), fm.fileExists(atPath: url.path) {
-            paths.append(rootApplicationPath(url.path) ?? url.path)
+            let candidate = rootApplicationPath(url.path) ?? url.path
+            if !PathGate.isUnderUserTrash(candidate),
+               !candidate.contains("/.Trash/"),
+               !candidate.contains("/.Trashes/") {
+                paths.append(candidate)
+            }
         }
         #endif
         return paths

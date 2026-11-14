@@ -29,7 +29,6 @@ enum AppRoute: String, CaseIterable, Identifiable, Hashable {
     case aiTools
     case software
     case diskMap
-    case ai
     case monitor
     case settings
 
@@ -42,7 +41,6 @@ enum AppRoute: String, CaseIterable, Identifiable, Hashable {
         case .aiTools: return L10n.t("route.aiTools")
         case .diskMap: return L10n.t("diskmap.title")
         case .software: return L10n.t("route.software")
-        case .ai: return L10n.t("route.ai")
         case .monitor: return L10n.t("route.monitor")
         case .settings: return L10n.t("route.settings")
         }
@@ -55,36 +53,8 @@ enum AppRoute: String, CaseIterable, Identifiable, Hashable {
         case .aiTools: return "sparkles.rectangle.stack"
         case .diskMap: return "chart.bar.xaxis"
         case .software: return "square.grid.2x2.fill"
-        case .ai: return "sparkles"
         case .monitor: return "gauge.with.dots.needle.67percent"
         case .settings: return "gearshape.fill"
-        }
-    }
-
-    /// 侧栏图标色（系统设置彩标感）
-    var sidebarIconTint: Color {
-        switch self {
-        case .diagnostic: return Color.adaptive(light: 0x007AFF, dark: 0x0A84FF)
-        case .cleanup: return Color.adaptive(light: 0xFF9F0A, dark: 0xFF9F0A)
-        case .aiTools: return Color.adaptive(light: 0x5E5CE6, dark: 0xBF5AF2)
-        case .software: return Color.adaptive(light: 0xBF5AF2, dark: 0xBF5AF2)
-        case .diskMap: return Color.adaptive(light: 0x007AFF, dark: 0x0A84FF)
-        case .ai: return Color.adaptive(light: 0x5E5CE6, dark: 0x5E5CE6)
-        case .monitor: return Color.adaptive(light: 0x30D158, dark: 0x30D158)
-        case .settings: return Color.adaptive(light: 0x8E8E93, dark: 0x98989D)
-        }
-    }
-
-    var sidebarIconFill: Color {
-        switch self {
-        case .diagnostic: return Color.adaptive(light: 0x007AFF, dark: 0x0A84FF, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .cleanup: return Color.adaptive(light: 0xFF9F0A, dark: 0xFF9F0A, lightAlpha: 0.16, darkAlpha: 0.26)
-        case .aiTools: return Color.adaptive(light: 0x5E5CE6, dark: 0xBF5AF2, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .software: return Color.adaptive(light: 0xBF5AF2, dark: 0xBF5AF2, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .diskMap: return Color.adaptive(light: 0x007AFF, dark: 0x0A84FF, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .ai: return Color.adaptive(light: 0x5E5CE6, dark: 0x5E5CE6, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .monitor: return Color.adaptive(light: 0x30D158, dark: 0x30D158, lightAlpha: 0.14, darkAlpha: 0.26)
-        case .settings: return Color.adaptive(light: 0x8E8E93, dark: 0x98989D, lightAlpha: 0.16, darkAlpha: 0.26)
         }
     }
 }

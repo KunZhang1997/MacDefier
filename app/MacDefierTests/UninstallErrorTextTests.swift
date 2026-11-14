@@ -1,23 +1,11 @@
 import Foundation
-import Darwin
+import XCTest
+@testable import MacDefier
 
-// Compile with the real UninstallErrorText.swift. This runner creates no app,
-// launches no process and supplies only synthetic, non-user paths.
-enum L10n {
-    static func t(_ key: String, _ arguments: CVarArg...) -> String { key }
-}
-
-@main struct UninstallErrorSmoke {
-    static func main() {
-        var failures = 0
-        var checks = 0
-        func check(_ condition: Bool, _ name: String) {
-            checks += 1
-            print("\(condition ? "PASS" : "FAIL") \(name)")
-            if !condition { failures += 1 }
-        }
+final class UninstallErrorTextTests: XCTestCase {
+    func testReasonCodesCommandCodesAndPathSafety() {
         let path = "/fixture-only/macdefier-uninstall-errors/missing-item"
-        let reasons = [
+        let reasons: [(String, String)] = [
             ("uninstall_application_metadata_unavailable", "application_metadata_unavailable"),
             ("uninstall_application_metadata_invalid", "application_metadata_invalid"),
             ("uninstall_container_unverified", "container_unverified"),
@@ -53,9 +41,11 @@ enum L10n {
         ]
         for (code, key) in reasons {
             let entry = UninstallErrorText.entries(for: [code + ":" + path])[0]
-            check(entry.messageKey == "uninstall.error." + key && entry.path == path, code)
+            XCTAssertEqual(entry.messageKey, "uninstall.error." + key, code)
+            XCTAssertEqual(entry.path, path, code)
         }
-        let commands = [
+
+        let commands: [(String, String)] = [
             ("command_permission_denied", "command_permission_denied"),
             ("command_operation_not_permitted", "command_operation_not_permitted"),
             ("command_read_only", "command_read_only"),
@@ -70,20 +60,28 @@ enum L10n {
         ]
         for (code, key) in commands {
             let entry = UninstallErrorText.entries(for: [code + ":" + path])[0]
-            check(entry.messageKey == "uninstall.error." + key && entry.path == nil && entry.revealURL == nil,
-                  code + " cannot authorize or reveal a stderr path")
+            XCTAssertEqual(entry.messageKey, "uninstall.error." + key, code)
+            XCTAssertNil(entry.path, "\(code) cannot authorize or reveal a stderr path")
+            XCTAssertNil(entry.revealURL, "\(code) cannot authorize or reveal a stderr path")
         }
+
         let legacyBlocked = UninstallErrorText.entries(for: ["安全策略拒绝：" + path])[0]
-        check(legacyBlocked.messageKey == "cli.uninstall.err.blocked" && legacyBlocked.path == path, "legacy blocked uses full-width colon")
+        XCTAssertEqual(legacyBlocked.messageKey, "cli.uninstall.err.blocked")
+        XCTAssertEqual(legacyBlocked.path, path)
+
         let legacyMissing = UninstallErrorText.entries(for: ["路径不存在：" + path])[0]
-        check(legacyMissing.messageKey == "uninstall.error.missing" && legacyMissing.path == path, "legacy missing uses full-width colon")
+        XCTAssertEqual(legacyMissing.messageKey, "uninstall.error.missing")
+        XCTAssertEqual(legacyMissing.path, path)
+
         let colonPath = UninstallErrorText.entries(for: ["uninstall_locked:" + path + ":part"])[0]
-        check(colonPath.path == path + ":part", "colon inside filename is preserved")
+        XCTAssertEqual(colonPath.path, path + ":part")
+
         let unknown = UninstallErrorText.entries(for: ["private token=fixture-secret:" + path])[0]
-        check(unknown.messageKey == "uninstall.error.unknown" && unknown.path == nil, "unknown diagnostics are not exposed")
+        XCTAssertEqual(unknown.messageKey, "uninstall.error.unknown")
+        XCTAssertNil(unknown.path)
+
         let unsafe = UninstallErrorText.entries(for: ["uninstall_locked:" + path + "\nfixture-secret"])[0]
-        check(unsafe.path == nil && unsafe.revealURL == nil, "control-character path is not revealed")
-        print("RESULT error parser checks=\(checks) failures=\(failures)")
-        exit(failures == 0 ? 0 : 1)
+        XCTAssertNil(unsafe.path)
+        XCTAssertNil(unsafe.revealURL)
     }
 }

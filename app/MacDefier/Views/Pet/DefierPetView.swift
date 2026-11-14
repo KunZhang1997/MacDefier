@@ -779,7 +779,7 @@ private struct PetWindowVisibilityObserver: NSViewRepresentable {
         }
 
         private func report() {
-            onChange(window.map { $0.isVisible && !$0.isMiniaturized } ?? false)
+            onChange(window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false)
         }
     }
 }

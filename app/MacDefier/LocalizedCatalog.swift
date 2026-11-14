@@ -66,11 +66,8 @@ extension CleanableItem {
         }
         if category == .largeAppData {
             let rel = homeRelativePath
-            let kind = pathIsDirectoryHint ? (AppLanguage.current.isEnglish ? "folder" : "文件夹") : (AppLanguage.current.isEnglish ? "file" : "文件")
-            if AppLanguage.current.isEnglish {
-                return "Large \(kind) by size (≥~100MB). \(rel)"
-            }
-            return "按体积发现的大\(kind)（≥约 100MB）。\(rel)"
+            let key = isDirectory ? "cleanup.large_item.folder.what" : "cleanup.large_item.file.what"
+            return L10n.t(key, rel)
         }
         return CleanupItemL10n.explain(name: name, path: path, category: category, appName: appName).what
     }
@@ -90,12 +87,6 @@ extension CleanableItem {
     private var largeFileDisplayTitle: String {
         pathIdentityTitle
     }
-
-    private var pathIsDirectoryHint: Bool {
-        var isDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
-        return isDir.boolValue
-    }
 }
 
 /// Mirrors CleanupKit `ItemExplainer` patterns with L10n keys.
@@ -107,178 +98,141 @@ enum CleanupItemL10n {
     }
 
     static func explain(name: String, path: String, category: CleanupCategory, appName: String?) -> Result {
-        let lower = (name + " " + path).lowercased()
-        let friendly = appName ?? humanizeBundle(name)
-
-        // Category beats incidental product keywords in temp build/test names.
-        if category == .temp {
+        let friendly = appName ?? ItemExplainer.humanizeBundle(name)
+        switch ItemExplainer.classify(name: name, path: path, category: category) {
+        case .temp:
             return .init(
                 title: L10n.t("cleanup.item.temp", friendly),
                 what: L10n.t("cleanup.item.temp.what"),
                 effect: L10n.t("cleanup.item.temp.if")
             )
-        }
-
-        let isKnownLocalModel = lower.contains("/library/application support/speaksend/managedmodels")
-            || lower.contains("/.ollama/models")
-            || lower.contains("/.lmstudio/models")
-            || lower.contains(".gguf")
-            || lower.contains("ggml-")
-
-        if lower.contains("deriveddata") {
+        case .derivedData:
             return .init(
                 title: L10n.t("cleanup.item.deriveddata"),
                 what: L10n.t("cleanup.item.deriveddata.what"),
                 effect: L10n.t("cleanup.item.deriveddata.if")
             )
-        }
-        if lower.contains("coresimulator") {
+        case .coreSimulator:
             return .init(
                 title: L10n.t("cleanup.item.sim"),
                 what: L10n.t("cleanup.item.sim.what"),
                 effect: L10n.t("cleanup.item.sim.if")
             )
-        }
-        if lower.contains("homebrew") || lower.contains("/brew") || category == .brew {
+        case .homebrew:
             return .init(
                 title: L10n.t("cleanup.item.brew"),
                 what: L10n.t("cleanup.item.brew.what"),
                 effect: L10n.t("cleanup.item.brew.if")
             )
-        }
-        if isKnownLocalModel {
+        case .localModel:
             return .init(
                 title: L10n.t("cleanup.item.models"),
                 what: L10n.t("cleanup.item.models.what"),
                 effect: L10n.t("cleanup.item.models.if")
             )
-        }
-        if category == .aiApps || lower.contains("ollama") || lower.contains("lmstudio") || lower.contains(".lmstudio") {
-            if lower.contains("history") || lower.contains("conversation") {
-                return .init(
-                    title: friendly,
-                    what: L10n.t("cleanup.item.ai_history.what"),
-                    effect: L10n.t("cleanup.item.ai_history.if")
-                )
-            }
+        case .aiHistory:
+            return .init(
+                title: friendly,
+                what: L10n.t("cleanup.item.ai_history.what"),
+                effect: L10n.t("cleanup.item.ai_history.if")
+            )
+        case .aiCacheOrLog:
             return .init(
                 title: L10n.t("cleanup.item.ai", friendly),
                 what: L10n.t("cleanup.item.ai.what"),
                 effect: L10n.t("cleanup.item.ai.if")
             )
-        }
-        if lower.contains("com.apple.wallpaper") || lower.contains("aerials") {
+        case .wallpaper:
             return .init(
                 title: L10n.t("cleanup.item.wallpaper"),
                 what: L10n.t("cleanup.item.wallpaper.what"),
                 effect: L10n.t("cleanup.item.wallpaper.if")
             )
-        }
-        if lower.contains("com.netease.mumu.nemux") || lower.contains("/mumu") || lower.contains("nemux") {
+        case .mumuSimulator:
             return .init(
                 title: L10n.t("cleanup.item.mumu"),
                 what: L10n.t("cleanup.item.mumu.what"),
                 effect: L10n.t("cleanup.item.mumu.if")
             )
-        }
-        if lower.contains("/.colima") || lower.contains("_lima") {
+        case .colimaVM:
             return .init(
                 title: L10n.t("cleanup.item.colima"),
                 what: L10n.t("cleanup.item.colima.what"),
                 effect: L10n.t("cleanup.item.colima.if")
             )
-        }
-        if category == .docker || lower.contains("docker") || lower.contains("buildx") {
+        case .docker:
             return .init(
                 title: L10n.t("cleanup.item.docker", friendly),
                 what: L10n.t("cleanup.item.docker.what"),
                 effect: L10n.t("cleanup.item.docker.if")
             )
-        }
-        if lower.contains("npm") || lower.contains("_cacache") {
-            return .init(
-                title: L10n.t("cleanup.item.npm"),
-                what: L10n.t("cleanup.item.npm.what"),
-                effect: L10n.t("cleanup.item.npm.if")
-            )
-        }
-        if lower.contains("yarn") || lower.contains("pnpm") || lower.contains("pip") {
+        case .devDependencyCache:
             return .init(
                 title: L10n.t("cleanup.item.devdep"),
                 what: L10n.t("cleanup.item.devdep.what"),
                 effect: L10n.t("cleanup.item.devdep.if")
             )
-        }
-        if lower.contains(".trash") || path.contains("/.Trash/") {
+        case .npmCache:
+            return .init(
+                title: L10n.t("cleanup.item.npm"),
+                what: L10n.t("cleanup.item.npm.what"),
+                effect: L10n.t("cleanup.item.npm.if")
+            )
+        case .trash:
             return .init(
                 title: friendly,
                 what: L10n.t("cleanup.item.trash.what"),
                 effect: L10n.t("cleanup.item.trash.if")
             )
-        }
-        if name.hasPrefix("com.apple.") || lower.contains("com.apple.") {
+        case .appleSystemCache:
             return .init(
                 title: L10n.t("cleanup.item.system", friendly),
                 what: L10n.t("cleanup.item.system.what"),
                 effect: L10n.t("cleanup.item.system.if")
             )
-        }
-        if lower.contains("keychain") || lower.contains("password") {
+        case .secrets:
             return .init(
                 title: friendly,
                 what: L10n.t("cleanup.item.secrets.what"),
                 effect: L10n.t("cleanup.item.secrets.if")
             )
-        }
-        if lower.contains("chrome") || lower.contains("firefox") || lower.contains("edge") || lower.contains("safari") {
+        case .browser:
             return .init(
                 title: L10n.t("cleanup.item.browser", friendly),
                 what: L10n.t("cleanup.item.browser.what"),
                 effect: L10n.t("cleanup.item.browser.if")
             )
-        }
-        if lower.contains("slack") || lower.contains("discord") || lower.contains("telegram")
-            || lower.contains("wechat") || lower.contains("whatsapp") {
+        case .chatApp:
             return .init(
                 title: L10n.t("cleanup.item.chat", friendly),
                 what: L10n.t("cleanup.item.chat.what"),
                 effect: L10n.t("cleanup.item.chat.if")
             )
-        }
-        if lower.contains("colima") || lower.contains("swiftpm") || lower == "geoservices" {
+        case .devOrSystemTool:
             return .init(
                 title: L10n.t("cleanup.item.devsys", friendly),
                 what: L10n.t("cleanup.item.devsys.what"),
                 effect: L10n.t("cleanup.item.devsys.if")
             )
-        }
-        if category == .userLogs || category == .systemLogs {
+        case .log:
             return .init(
                 title: L10n.t("cleanup.item.log", friendly),
                 what: L10n.t("cleanup.item.log.what"),
                 effect: L10n.t("cleanup.item.log.if")
             )
-        }
-        if category == .userCache {
+        case .userCache:
             return .init(
                 title: L10n.t("cleanup.item.cache", friendly),
                 what: L10n.t("cleanup.item.cache.what", friendly),
                 effect: L10n.t("cleanup.item.cache.if")
             )
+        case .categoryDefault:
+            return .init(
+                title: friendly,
+                what: category.localizedWhatIsIt,
+                effect: category.localizedIfCleaned
+            )
         }
-        return .init(
-            title: friendly,
-            what: category.localizedWhatIsIt,
-            effect: category.localizedIfCleaned
-        )
-    }
-
-    private static func humanizeBundle(_ name: String) -> String {
-        if name.hasPrefix("com.") || name.hasPrefix("org.") || name.hasPrefix("net.") || name.hasPrefix("io.") {
-            let parts = name.split(separator: ".")
-            if let last = parts.last { return String(last) }
-        }
-        return name
     }
 }
 

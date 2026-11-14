@@ -138,11 +138,6 @@ public enum PathGate {
         return false
     }
 
-    private static func isUnderAnyPrefix(_ path: String, _ prefixes: [String]) -> Bool {
-        // 历史名：解析后组件边界匹配
-        isUnderComponentPrefixes(normalize(path), prefixes.map { standardizeOnly($0) })
-    }
-
     // MARK: - Scan gate
 
     /// Can this path appear in junk scan results?
@@ -538,7 +533,7 @@ public enum PathGate {
         return true
     }
 
-    /// 对高敏 residual 根（容器 / AS）：路径相对根的第一段须归属目标 App。
+    /// 对高敏 residual 根（容器 / AS）：路径相对根的第一段须归属目标 App（或经 preflight 验证且非顶层聚合根）。
     /// Caches/Logs 等仍靠上游 ResidualMatcher 归属 + 禁止整根 forbiddenExact。
     private static func residualLeafBelongsToApp(pathN: String, target: UninstallTargetIdentity) -> Bool {
         let ownershipRoots = [
@@ -560,6 +555,11 @@ public enum PathGate {
             .first.map(String.init) ?? rest
         guard !leaf.isEmpty else { return false }
 
+        // 绝不允许把顶层厂商聚合目录整棵认领（如 ~/Library/Application Support/Google）
+        if rest == leaf, AppOwnership.isVendorMegaFolder(leaf) {
+            return false
+        }
+
         // Construct from preflight data, not the on-disk .app (it may be gone).
         let app = InstalledApp(
             name: target.displayName,
@@ -571,7 +571,57 @@ public enum PathGate {
             isSystemLocation: false,
             canTrashAppBundle: true
         )
-        return AppOwnership.folderBelongs(to: app, folderName: leaf, path: pathN)
+        if AppOwnership.folderBelongs(to: app, folderName: leaf, path: pathN) {
+            return true
+        }
+        // 渠道专用子路径（如 Google/Chrome、Google/DriveFS）
+        let channelPaths = Set(
+            AppOwnership.channelRelatedPaths(
+                bundleID: app.bundleIdentifier,
+                appPath: app.path,
+                home: home
+            ).map { normalize($0) }
+        )
+        if channelPaths.contains(pathN) {
+            return true
+        }
+
+        // 短名精确匹配（如 VS Code 的 `Code`、`Arc`、`Zed`、`OBS`、`VLC`、`IINA`）及变体匹配
+        let disallowedSystemLeaves: Set<String> = [
+            "apple", "caches", "preferences", "keychains", "mail", "messages",
+            "clouddocs", "default", "shared", "support", "application", "applications",
+            "library", "system", "users", "crashreporter", "knowledge"
+        ]
+        let normLeaf = leaf.mdNormalizedForMatching()
+        let baseBid = app.bundleIdentifier.mdBaseBundleIdentifier ?? app.bundleIdentifier
+        guard normLeaf.count >= 2, !disallowedSystemLeaves.contains(normLeaf),
+              !AppOwnership.looksLikeReverseDNS(leaf) || AppOwnership.bundleIDMatches(folderName: leaf, bundleID: baseBid) else {
+            return false
+        }
+
+        if AppOwnership.looksLikeReverseDNS(leaf) {
+            if baseBid != app.bundleIdentifier,
+               AppOwnership.bundleIDMatches(folderName: leaf, bundleID: baseBid) {
+                return true
+            }
+            return false
+        }
+
+        let baseFile = URL(fileURLWithPath: app.path).deletingPathExtension().lastPathComponent
+        let exactNormCandidates = Set([
+            app.name.mdNormalizedForMatching(),
+            baseFile.mdNormalizedForMatching(),
+            app.name.mdStrippingTrailingVersion().mdNormalizedForMatching(),
+            baseFile.mdStrippingTrailingVersion().mdNormalizedForMatching()
+        ].filter { $0.count >= 2 && !disallowedSystemLeaves.contains($0) })
+
+        if rest == leaf, exactNormCandidates.contains(normLeaf) {
+            return true
+        }
+        if target.verifiedResidualPaths.contains(pathN), !AppOwnership.isVendorMegaFolder(leaf) {
+            return true
+        }
+        return false
     }
 
     private static func isContainerPath(_ path: String) -> Bool {
@@ -598,8 +648,9 @@ public enum PathGate {
 
     // MARK: - Trash permanent delete helper
 
-    public static func isUnderUserTrash(_ path: String) -> Bool {
-        let trash = (home as NSString).appendingPathComponent(".Trash")
+    public static func isUnderUserTrash(_ path: String, home homePath: String? = nil) -> Bool {
+        let h = homePath ?? home
+        let trash = (h as NSString).appendingPathComponent(".Trash")
         let lower = normalize(path).lowercased()
         let t = normalize(trash).lowercased()
         return lower == t || lower.hasPrefix(t + "/")

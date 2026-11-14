@@ -27,14 +27,54 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         }
     }
 
+    private static let cacheLock = NSLock()
+    private static var cachedCurrent: AppLanguage?
+    private static let observerSetup: Void = {
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: nil
+        ) { _ in
+            invalidateCache()
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            invalidateCache()
+        }
+    }()
+
+    static func invalidateCache() {
+        cacheLock.lock()
+        cachedCurrent = nil
+        cacheLock.unlock()
+    }
+
     /// Current choice from app settings.
     /// Unset / legacy `"system"` → follow **system preferred language** (en* → English, else 中文).
     static var current: AppLanguage {
+        _ = observerSetup
+        cacheLock.lock()
+        if let cached = cachedCurrent {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        let resolved: AppLanguage
         let raw = UserDefaults.standard.string(forKey: storageKey)
         if let raw, raw != "system", let lang = AppLanguage(rawValue: raw) {
-            return lang
+            resolved = lang
+        } else {
+            resolved = systemPreferred
         }
-        return systemPreferred
+
+        cacheLock.lock()
+        cachedCurrent = resolved
+        cacheLock.unlock()
+        return resolved
     }
 
     /// macOS preferred language → app language (used when user has not chosen yet).
@@ -42,10 +82,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         let preferred = Locale.preferredLanguages.first?.lowercased() ?? ""
         if preferred.hasPrefix("en") { return .english }
         return .chinese
-    }
-
-    static func setCurrent(_ lang: AppLanguage) {
-        UserDefaults.standard.set(lang.rawValue, forKey: storageKey)
     }
 
     var isEnglish: Bool { self == .english }

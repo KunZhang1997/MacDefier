@@ -1,6 +1,5 @@
-// Adapted from Stats Modules/CPU/readers.swift ProcessReader (MIT)
-// Copyright (c) 2019 Serhiy Mytrovtsiy.
-// Store process count → constructor param.
+// In-process Darwin process CPU & RAM samplers via proc_listallpids + proc_pid_rusage.
+// Eliminates periodic /usr/bin/top and /bin/ps subprocesses.
 
 import AppKit
 import Darwin
@@ -11,14 +10,145 @@ private final class ProcessOutputBox: @unchecked Sendable {
     var data: Data?
 }
 
+private struct ProcessRunKey: Hashable, Sendable {
+    let pid: Int32
+    let startSeconds: UInt64
+    let startMicroseconds: UInt64
+}
+
+private enum DarwinProcessInspector {
+    static let machTimebase: mach_timebase_info_data_t = {
+        var info = mach_timebase_info_data_t()
+        if mach_timebase_info(&info) != KERN_SUCCESS || info.denom == 0 {
+            info.numer = 1
+            info.denom = 1
+        }
+        return info
+    }()
+
+    static func machTicksToNanoseconds(_ ticks: UInt64) -> Double {
+        Double(ticks) * Double(machTimebase.numer) / Double(machTimebase.denom)
+    }
+
+    static func listAllPIDs() -> [Int32] {
+        let estimated = proc_listallpids(nil, 0)
+        guard estimated > 0 else { return [] }
+        var pids = [Int32](repeating: 0, count: Int(estimated) + 128)
+        let actual = pids.withUnsafeMutableBytes { rawBuffer in
+            proc_listallpids(rawBuffer.baseAddress, Int32(rawBuffer.count))
+        }
+        guard actual > 0 else { return [] }
+        let count = min(Int(actual), pids.count)
+        var result: [Int32] = []
+        result.reserveCapacity(count)
+        for index in 0..<count {
+            let pid = pids[index]
+            if pid > 0 {
+                result.append(pid)
+            }
+        }
+        return result
+    }
+
+    static func readBSDInfo(pid: Int32) -> proc_bsdinfo? {
+        var info = proc_bsdinfo()
+        let expected = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, expected) == expected else {
+            return nil
+        }
+        return info
+    }
+
+    static func readRUsage(pid: Int32) -> rusage_info_current? {
+        var usage = rusage_info_current()
+        let rc = withUnsafeMutablePointer(to: &usage) { ptr in
+            ptr.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { rebound in
+                proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, rebound)
+            }
+        }
+        return rc == 0 ? usage : nil
+    }
+
+    static func fallbackCommandName(from bsd: proc_bsdinfo) -> String {
+        let fullName = withUnsafeBytes(of: bsd.pbi_name) { raw -> String in
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else { return "" }
+            return String(cString: base)
+        }
+        if !fullName.isEmpty { return fullName }
+        let comm = withUnsafeBytes(of: bsd.pbi_comm) { raw -> String in
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else { return "" }
+            return String(cString: base)
+        }
+        return comm.isEmpty ? "pid \(bsd.pbi_pid)" : comm
+    }
+
+    static func makeTopProcess(
+        key: ProcessRunKey,
+        fallbackName: String,
+        usage: Double
+    ) -> TopProcess? {
+        if let identity = MonitoredProcessIdentity.read(pid: key.pid) {
+            guard identity.startSeconds == key.startSeconds,
+                  identity.startMicroseconds == key.startMicroseconds,
+                  identity.isCurrent()
+            else {
+                return nil
+            }
+            var name = identity.ownerName
+            if let app = NSRunningApplication(processIdentifier: key.pid),
+               let localized = app.localizedName,
+               !localized.isEmpty {
+                name = localized
+            }
+            if (identity.executable.contains("com.apple.Virtua") || fallbackName.contains("com.apple.Virtua")),
+               name.contains("Docker") {
+                name = "Docker"
+            }
+            return TopProcess(pid: Int(key.pid), name: name, usage: usage, identity: identity)
+        }
+
+        // Fallback when proc_pidpath is unavailable for a process that still matches its BSD start time.
+        guard let currentBSD = readBSDInfo(pid: key.pid),
+              currentBSD.pbi_start_tvsec == key.startSeconds,
+              currentBSD.pbi_start_tvusec == key.startMicroseconds
+        else {
+            return nil
+        }
+        var name = fallbackName
+        if let app = NSRunningApplication(processIdentifier: key.pid),
+           let localized = app.localizedName,
+           !localized.isEmpty {
+            name = localized
+        }
+        if fallbackName.contains("com.apple.Virtua"), name.contains("Docker") {
+            name = "Docker"
+        }
+        return TopProcess(pid: Int(key.pid), name: name, usage: usage, identity: nil)
+    }
+}
+
 public final class CPUProcessSampler: Sampler<[TopProcess]> {
+    private struct CPUSnapshot {
+        let machTicks: UInt64
+        let ticksByProcess: [ProcessRunKey: (cpuTicks: UInt64, fallbackName: String)]
+    }
+
     public var limit: Int
-    private let processLock = NSLock()
-    private var currentProcess: Process?
+    private var previousSnapshot: CPUSnapshot?
+    private let cancelLock = NSLock()
+    private var coldStartWaiter: DispatchSemaphore?
+
+    /// Cold-start measurement window used only on the very first read of a sampling session
+    /// when no prior tick baseline exists yet. Subsequent ticks are single-pass delta reads.
+    static let coldStartWindowSeconds: TimeInterval = 0.12
 
     public init(limit: Int = 8, interval: Int = 2, callback: @escaping ([TopProcess]?) -> Void = { _ in }) {
         self.limit = limit
         super.init(interval: interval, queueLabel: "com.macdefier.MonitorKit.CPUProcess", callback: callback)
+    }
+
+    public override func samplingDidStart() {
+        previousSnapshot = nil
     }
 
     public override func read() {
@@ -26,100 +156,138 @@ public final class CPUProcessSampler: Sampler<[TopProcess]> {
             publish([])
             return
         }
-
-        let startedAt = Date().timeIntervalSince1970
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/ps")
-        task.arguments = ["-Aceo", "pid,pcpu,comm", "-r"]
-
-        let outputPipe = Pipe()
-        task.standardOutput = outputPipe
-        // stderr 不读：直接丢弃，防双向管道写满死锁
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            guard shouldContinueCurrentRead else { return }
-            setCurrentProcess(task)
-            try task.run()
-        } catch {
-            clearCurrentProcess(task)
-            publish(nil)
-            return
-        }
-
-        let outputData = readProcessOutput(
-            from: outputPipe.fileHandleForReading,
-            process: task,
-            timeout: 3
-        )
-        clearCurrentProcess(task)
         guard shouldContinueCurrentRead else { return }
-        guard let outputData else { publish(nil); return }
-        guard let output = String(data: outputData, encoding: .utf8), !output.isEmpty else {
+
+        guard let current = captureSnapshot() else {
             publish(nil)
             return
         }
+        guard shouldContinueCurrentRead else { return }
 
-        var index = 0
+        let baseline: CPUSnapshot
+        let latest: CPUSnapshot
+
+        if let prev = previousSnapshot,
+           current.machTicks > prev.machTicks,
+           DarwinProcessInspector.machTicksToNanoseconds(current.machTicks - prev.machTicks) <= 60_000_000_000 {
+            baseline = prev
+            latest = current
+        } else {
+            // Cold start (or stale baseline after long pause): take a short second in-process snapshot
+            // so the very first publication already carries accurate CPU% without spawning /bin/ps.
+            let waiter = DispatchSemaphore(value: 0)
+            setColdStartWaiter(waiter)
+            _ = waiter.wait(timeout: .now() + Self.coldStartWindowSeconds)
+            clearColdStartWaiter(waiter)
+            guard shouldContinueCurrentRead else { return }
+            guard let second = captureSnapshot(), second.machTicks > current.machTicks else {
+                previousSnapshot = current
+                publish(nil)
+                return
+            }
+            baseline = current
+            latest = second
+        }
+
+        previousSnapshot = latest
+        let wallNs = DarwinProcessInspector.machTicksToNanoseconds(latest.machTicks - baseline.machTicks)
+        guard wallNs > 0 else {
+            publish([])
+            return
+        }
+
+        var candidates: [(key: ProcessRunKey, fallbackName: String, usage: Double)] = []
+        candidates.reserveCapacity(latest.ticksByProcess.count)
+        for (key, entry) in latest.ticksByProcess {
+            guard let prevEntry = baseline.ticksByProcess[key],
+                  entry.cpuTicks >= prevEntry.cpuTicks
+            else {
+                continue
+            }
+            let deltaTicks = entry.cpuTicks - prevEntry.cpuTicks
+            let cpuNs = DarwinProcessInspector.machTicksToNanoseconds(deltaTicks)
+            let pct = max(0, (cpuNs / wallNs) * 100.0)
+            candidates.append((key: key, fallbackName: entry.fallbackName, usage: pct))
+        }
+
+        candidates.sort {
+            if $0.usage != $1.usage { return $0.usage > $1.usage }
+            return $0.key.pid < $1.key.pid
+        }
+
         var processes: [TopProcess] = []
-        output.enumerateLines { line, stop in
-            if index != 0 {
-                let str = line.trimmingCharacters(in: .whitespaces)
-                let parts = str.split(whereSeparator: { $0.isWhitespace })
-                guard parts.count >= 3,
-                      let pid = Int(parts[0]),
-                      let usage = Double(parts[1].replacingOccurrences(of: ",", with: "."))
-                else {
-                    index += 1
-                    return
-                }
-                let command = parts.dropFirst(2).joined(separator: " ")
-                var name = command
-                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                    name = n
-                }
-                if command.contains("com.apple.Virtua"), name.contains("Docker") {
-                    name = "Docker"
-                }
-                let identity = pid_t(exactly: pid).flatMap { MonitoredProcessIdentity.read(pid: $0) }
-                // A process born after ps/top began cannot own this earlier row.
-                guard identity.map({ Double($0.startSeconds) + Double($0.startMicroseconds) / 1_000_000 <= startedAt }) ?? true else { return }
-                processes.append(TopProcess(pid: pid, name: name, usage: usage, identity: identity))
-                if processes.count >= self.limit {
-                    stop = true
+        processes.reserveCapacity(min(limit, candidates.count))
+        for candidate in candidates {
+            guard shouldContinueCurrentRead else { return }
+            if let top = DarwinProcessInspector.makeTopProcess(
+                key: candidate.key,
+                fallbackName: candidate.fallbackName,
+                usage: candidate.usage
+            ) {
+                processes.append(top)
+                if processes.count >= limit {
+                    break
                 }
             }
-            index += 1
         }
         publish(processes)
     }
 
     public override func cancelCurrentRead() {
-        processLock.lock()
-        let process = currentProcess
-        processLock.unlock()
-        if process?.isRunning == true {
-            process?.terminate()
+        cancelLock.lock()
+        let waiter = coldStartWaiter
+        cancelLock.unlock()
+        waiter?.signal()
+    }
+
+    private func setColdStartWaiter(_ waiter: DispatchSemaphore) {
+        cancelLock.lock()
+        coldStartWaiter = waiter
+        cancelLock.unlock()
+    }
+
+    private func clearColdStartWaiter(_ waiter: DispatchSemaphore) {
+        cancelLock.lock()
+        if coldStartWaiter === waiter {
+            coldStartWaiter = nil
         }
+        cancelLock.unlock()
     }
 
-    private func setCurrentProcess(_ process: Process) {
-        processLock.lock()
-        currentProcess = process
-        processLock.unlock()
-    }
+    private func captureSnapshot() -> CPUSnapshot? {
+        let pids = DarwinProcessInspector.listAllPIDs()
+        guard !pids.isEmpty else { return nil }
+        let machTicks = mach_absolute_time()
+        var map: [ProcessRunKey: (cpuTicks: UInt64, fallbackName: String)] = [:]
+        map.reserveCapacity(pids.count)
 
-    private func clearCurrentProcess(_ process: Process) {
-        processLock.lock()
-        if currentProcess === process { currentProcess = nil }
-        processLock.unlock()
+        for pid in pids {
+            guard shouldContinueCurrentRead else { return nil }
+            guard let bsdBefore = DarwinProcessInspector.readBSDInfo(pid: pid),
+                  let usage = DarwinProcessInspector.readRUsage(pid: pid),
+                  let bsdAfter = DarwinProcessInspector.readBSDInfo(pid: pid),
+                  bsdBefore.pbi_start_tvsec == bsdAfter.pbi_start_tvsec,
+                  bsdBefore.pbi_start_tvusec == bsdAfter.pbi_start_tvusec
+            else {
+                continue
+            }
+            let key = ProcessRunKey(
+                pid: pid,
+                startSeconds: bsdAfter.pbi_start_tvsec,
+                startMicroseconds: bsdAfter.pbi_start_tvusec
+            )
+            let totalTicks = usage.ri_user_time &+ usage.ri_system_time
+            map[key] = (
+                cpuTicks: totalTicks,
+                fallbackName: DarwinProcessInspector.fallbackCommandName(from: bsdAfter)
+            )
+        }
+        return CPUSnapshot(machTicks: machTicks, ticksByProcess: map)
     }
 }
 
 public final class RAMProcessSampler: Sampler<[TopProcess]> {
     public var limit: Int
-    private let processLock = NSLock()
-    private var currentProcess: Process?
 
     public init(limit: Int = 8, interval: Int = 3, callback: @escaping ([TopProcess]?) -> Void = { _ in }) {
         self.limit = limit
@@ -131,99 +299,61 @@ public final class RAMProcessSampler: Sampler<[TopProcess]> {
             publish([])
             return
         }
+        guard shouldContinueCurrentRead else { return }
 
-        let startedAt = Date().timeIntervalSince1970
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/top")
-        task.arguments = ["-l", "1", "-o", "mem", "-n", "\(limit)", "-stats", "pid,command,mem"]
-
-        let outputPipe = Pipe()
-        task.standardOutput = outputPipe
-        // stderr 不读：直接丢弃，防双向管道写满死锁
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            guard shouldContinueCurrentRead else { return }
-            setCurrentProcess(task)
-            try task.run()
-        } catch {
-            clearCurrentProcess(task)
+        let pids = DarwinProcessInspector.listAllPIDs()
+        guard !pids.isEmpty else {
             publish(nil)
             return
         }
 
-        let outputData = readProcessOutput(
-            from: outputPipe.fileHandleForReading,
-            process: task,
-            timeout: 4
-        )
-        clearCurrentProcess(task)
+        var candidates: [(key: ProcessRunKey, fallbackName: String, usage: Double)] = []
+        candidates.reserveCapacity(pids.count)
+
+        for pid in pids {
+            guard shouldContinueCurrentRead else { return }
+            guard let bsdBefore = DarwinProcessInspector.readBSDInfo(pid: pid),
+                  let usage = DarwinProcessInspector.readRUsage(pid: pid),
+                  let bsdAfter = DarwinProcessInspector.readBSDInfo(pid: pid),
+                  bsdBefore.pbi_start_tvsec == bsdAfter.pbi_start_tvsec,
+                  bsdBefore.pbi_start_tvusec == bsdAfter.pbi_start_tvusec
+            else {
+                continue
+            }
+            let key = ProcessRunKey(
+                pid: pid,
+                startSeconds: bsdAfter.pbi_start_tvsec,
+                startMicroseconds: bsdAfter.pbi_start_tvusec
+            )
+            candidates.append((
+                key: key,
+                fallbackName: DarwinProcessInspector.fallbackCommandName(from: bsdAfter),
+                usage: Double(usage.ri_phys_footprint)
+            ))
+        }
+
         guard shouldContinueCurrentRead else { return }
-        guard let outputData else { publish(nil); return }
-        guard let output = String(data: outputData, encoding: .utf8), !output.isEmpty else {
-            publish(nil)
-            return
+        candidates.sort {
+            if $0.usage != $1.usage { return $0.usage > $1.usage }
+            return $0.key.pid < $1.key.pid
         }
 
         var processes: [TopProcess] = []
-        output.enumerateLines { line, _ in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard let first = trimmed.split(whereSeparator: { $0.isWhitespace }).first,
-                  let pid = Int(first), pid > 0
-            else { return }
-
-            // top mem column like "123M" or "1G+"
-            let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-            guard tokens.count >= 3 else { return }
-            let memToken = tokens.last ?? "0"
-            let usage = Self.parseMemory(memToken)
-            let command = tokens.dropFirst().dropLast().joined(separator: " ")
-            var name = command
-            if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                name = n
+        processes.reserveCapacity(min(limit, candidates.count))
+        for candidate in candidates {
+            guard shouldContinueCurrentRead else { return }
+            if let top = DarwinProcessInspector.makeTopProcess(
+                key: candidate.key,
+                fallbackName: candidate.fallbackName,
+                usage: candidate.usage
+            ) {
+                processes.append(top)
+                if processes.count >= limit {
+                    break
+                }
             }
-            let identity = pid_t(exactly: pid).flatMap { MonitoredProcessIdentity.read(pid: $0) }
-                // A process born after ps/top began cannot own this earlier row.
-                guard identity.map({ Double($0.startSeconds) + Double($0.startMicroseconds) / 1_000_000 <= startedAt }) ?? true else { return }
-                processes.append(TopProcess(pid: pid, name: name, usage: usage, identity: identity))
         }
-        publish(Array(processes.prefix(limit)))
-    }
-
-    public override func cancelCurrentRead() {
-        processLock.lock()
-        let process = currentProcess
-        processLock.unlock()
-        if process?.isRunning == true {
-            process?.terminate()
-        }
-    }
-
-    private func setCurrentProcess(_ process: Process) {
-        processLock.lock()
-        currentProcess = process
-        processLock.unlock()
-    }
-
-    private func clearCurrentProcess(_ process: Process) {
-        processLock.lock()
-        if currentProcess === process { currentProcess = nil }
-        processLock.unlock()
-    }
-
-    private static func parseMemory(_ raw: String) -> Double {
-        var s = raw.replacingOccurrences(of: "+", with: "").replacingOccurrences(of: "-", with: "")
-        guard let last = s.last else { return 0 }
-        let mult: Double
-        switch last {
-        case "K", "k": mult = 1024
-        case "M", "m": mult = 1024 * 1024
-        case "G", "g": mult = 1024 * 1024 * 1024
-        default:
-            return Double(s) ?? 0
-        }
-        s.removeLast()
-        return (Double(s) ?? 0) * mult
+        publish(processes)
     }
 }
 
@@ -254,20 +384,25 @@ func readProcessOutput(
         }
     }
 
-    let deadline = Date().addingTimeInterval(timeout)
-    while process.isRunning, Date() < deadline {
-        Thread.sleep(forTimeInterval: 0.02)
+    let exited = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in exited.signal() }
+    defer { process.terminationHandler = nil }
+
+    if process.isRunning, timeout > 0 {
+        _ = exited.wait(timeout: .now() + timeout)
     }
     guard !process.isRunning else {
         process.terminate()
         // EOF is independent of process exit: a child can close stdout and
         // continue running, including after ignoring SIGTERM. Always bound its
         // termination grace period and escalate based on process liveness.
-        let terminationDeadline = ContinuousClock.now.advanced(by: .milliseconds(500))
-        while process.isRunning, ContinuousClock.now < terminationDeadline {
-            Thread.sleep(forTimeInterval: 0.02)
+        if process.isRunning {
+            _ = exited.wait(timeout: .now() + 0.5)
         }
-        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+            _ = exited.wait(timeout: .now() + 0.2)
+        }
         _ = drain.wait(timeout: .now() + 0.5)
         return nil
     }

@@ -17,7 +17,8 @@ struct OllamaInstalledModel: Decodable, Identifiable, Equatable {
 
 enum OllamaEndpoint {
     static func apiURL(_ endpoint: String, path: String) throws -> URL {
-        let raw = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = AIEndpointPolicy.normalizedBaseURLString(endpoint)
+            ?? endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var parts = URLComponents(string: raw),
               ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               let host = parts.host, AIEndpointPolicy.isLoopbackHost(host),
@@ -224,6 +225,8 @@ final class OllamaModelManager: ObservableObject {
         let (bytes, response) = try await session.bytes(for: request)
         try Self.requireSuccess(response)
         var succeeded = false
+        var lastReportedProgress: Double?
+        var lastReportedTime = TimeInterval.zero
         for try await line in bytes.lines {
             try Task.checkCancellation()
             guard operationID == operation else { throw CancellationError() }
@@ -237,9 +240,18 @@ final class OllamaModelManager: ObservableObject {
             if update.status?.contains("verif") == true || update.status?.contains("manifest") == true {
                 stage = .verifying
                 progress = nil
+                lastReportedProgress = nil
+                lastReportedTime = 0
             } else if let total = update.total, total > 0, let done = update.completed {
                 stage = .downloading
-                progress = min(1, max(0, Double(done) / Double(total)))
+                let next = min(1, max(0, Double(done) / Double(total)))
+                let now = ProcessInfo.processInfo.systemUptime
+                let delta = lastReportedProgress.map { abs(next - $0) } ?? 1.0
+                if next >= 1.0 || delta >= 0.01 || (now - lastReportedTime) >= 0.1 {
+                    progress = next
+                    lastReportedProgress = next
+                    lastReportedTime = now
+                }
             }
         }
         try Task.checkCancellation()

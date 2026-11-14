@@ -2,6 +2,7 @@
 // Safety checks adapted from PureMac CleaningEngine allow-list spirit (MIT).
 
 import AppKit
+import Darwin
 import Foundation
 
 public actor TrashExecutor {
@@ -9,21 +10,32 @@ public actor TrashExecutor {
     private let executionHome: String
     private let recycle: @Sendable (URL) throws -> Void
     private let browserCleanupGuard: BrowserCleanupGuard
+    private let aiToolCleanupGuard: AIToolCleanupGuard
+    private let occupancyGuard: @Sendable (String) -> String?
 
     public init() {
         executionHome = FileManager.default.homeDirectoryForCurrentUser.path
         browserCleanupGuard = .live
+        aiToolCleanupGuard = .live
+        occupancyGuard = { _ in nil }
         recycle = { url in
             var resulting: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
         }
     }
 
-    /// Tests replace only the OS Trash side effect with a UUID-owned fixture move.
-    init(home: String, browserCleanupGuard: BrowserCleanupGuard = .live,
-         recycle: @escaping @Sendable (URL) throws -> Void) {
+    /// Tests replace only the OS Trash side effect and optional occupancy guards with UUID-owned fixtures.
+    init(
+        home: String,
+        browserCleanupGuard: BrowserCleanupGuard = .live,
+        aiToolCleanupGuard: AIToolCleanupGuard = .live,
+        occupancyGuard: @escaping @Sendable (String) -> String? = { _ in nil },
+        recycle: @escaping @Sendable (URL) throws -> Void
+    ) {
         executionHome = home
         self.browserCleanupGuard = browserCleanupGuard
+        self.aiToolCleanupGuard = aiToolCleanupGuard
+        self.occupancyGuard = occupancyGuard
         self.recycle = recycle
     }
 
@@ -88,6 +100,94 @@ public actor TrashExecutor {
         var failures: [CleanupFailure] = []
     }
 
+    private struct NodeStatIdentity: Equatable, Sendable {
+        let device: dev_t
+        let inode: ino_t
+        let fileType: mode_t
+
+        var isSymlink: Bool {
+            fileType == mode_t(S_IFLNK)
+        }
+    }
+
+    private struct ExecutionIdentitySnapshot: Equatable, Sendable {
+        let standardizedPath: String
+        let target: NodeStatIdentity
+        let parent: NodeStatIdentity
+        let ancestors: [NodeStatIdentity]
+        let physicalParentPath: String
+        let physicalAncestors: [NodeStatIdentity]
+        let physicalTarget: NodeStatIdentity
+
+        private static func lstatNode(_ path: String) -> NodeStatIdentity? {
+            var info = stat()
+            guard Darwin.lstat(path, &info) == 0 else { return nil }
+            return NodeStatIdentity(
+                device: info.st_dev,
+                inode: info.st_ino,
+                fileType: info.st_mode & mode_t(S_IFMT)
+            )
+        }
+
+        private static func ancestorStatuses(for directoryPath: String, forbidSymlinks: Bool) -> [NodeStatIdentity]? {
+            guard let rootNode = lstatNode("/") else { return nil }
+            if forbidSymlinks && rootNode.isSymlink { return nil }
+            var chain: [NodeStatIdentity] = [rootNode]
+            var current = ""
+            for part in directoryPath.split(separator: "/", omittingEmptySubsequences: true) {
+                current += "/" + part
+                guard let node = lstatNode(current) else { return nil }
+                if forbidSymlinks && node.isSymlink { return nil }
+                chain.append(node)
+            }
+            return chain
+        }
+
+        static func capture(_ rawPath: String) -> ExecutionIdentitySnapshot? {
+            guard rawPath.hasPrefix("/"),
+                  !rawPath.utf8.contains(0),
+                  !rawPath.split(separator: "/", omittingEmptySubsequences: true).contains("..")
+            else {
+                return nil
+            }
+            let std = PathGate.standardizeOnly(rawPath)
+            guard std != "/", !std.isEmpty else { return nil }
+            let leafName = (std as NSString).lastPathComponent
+            guard !leafName.isEmpty, leafName != ".", leafName != ".." else { return nil }
+            let parentPath = (std as NSString).deletingLastPathComponent
+            guard !parentPath.isEmpty else { return nil }
+
+            guard let target = lstatNode(std),
+                  let parent = lstatNode(parentPath),
+                  let ancestors = ancestorStatuses(for: parentPath, forbidSymlinks: false),
+                  let resolvedParentPtr = Darwin.realpath(parentPath, nil)
+            else {
+                return nil
+            }
+            defer { Darwin.free(resolvedParentPtr) }
+            let physicalParentPath = String(cString: resolvedParentPtr)
+            guard let physicalAncestors = ancestorStatuses(for: physicalParentPath, forbidSymlinks: true) else {
+                return nil
+            }
+            let physicalTargetPath = physicalParentPath == "/" ? "/\(leafName)" : "\(physicalParentPath)/\(leafName)"
+            guard let physicalTarget = lstatNode(physicalTargetPath),
+                  physicalTarget == target
+            else {
+                return nil
+            }
+
+            return ExecutionIdentitySnapshot(
+                standardizedPath: std,
+                target: target,
+                parent: parent,
+                ancestors: ancestors,
+                physicalParentPath: physicalParentPath,
+                physicalAncestors: physicalAncestors,
+                physicalTarget: physicalTarget
+            )
+        }
+    }
+
     private func trashOne(_ item: CleanableItem, installedApps: [InstalledApp]?, containers: [ContainerOwnership]) -> ItemOutcome {
         var outcome = ItemOutcome()
         if item.risk == .skip {
@@ -115,7 +215,8 @@ public actor TrashExecutor {
                     ? CliToolInventory.fetchAll(computeSize: false, isCancelled: { Task.isCancelled })
                     : nil
                 if Self.shouldBlockOrphanPath(path, installedApps: installedApps,
-                                             containerOwnership: containers, cliInventory: cliInventory) {
+                                             containerOwnership: containers, cliInventory: cliInventory,
+                                             home: executionHome) {
                     outcome.failedPaths.append(path)
                     outcome.errors.append("\(item.name): 应用或 CLI 仍在使用该目录，或缺少可核验的卸载证据；已阻止清理 \(path)")
                     continue
@@ -123,20 +224,35 @@ public actor TrashExecutor {
             }
             let url = URL(fileURLWithPath: path)
             let resolved = url.resolvingSymlinksInPath()
-            guard fm.fileExists(atPath: resolved.path) || fm.fileExists(atPath: path) else {
+            var rawStat = stat()
+            let lstatExists = Darwin.lstat(PathGate.standardizeOnly(path), &rawStat) == 0
+            guard lstatExists || fm.fileExists(atPath: resolved.path) || fm.fileExists(atPath: path) else {
                 outcome.failedPaths.append(path)
                 outcome.errors.append("\(item.name): \(TrashError.missing(path).localizedDescription)")
                 outcome.failures.append(.init(path: path, name: item.name, kind: .missing))
                 continue
             }
-            let allowed = item.category == .orphans
-                ? PathGate.isSafeOrphanToTrash(path, installedApps: installedApps, home: executionHome)
-                : (isSafeToTrash(resolved.path) || isSafeToTrash(path))
+            let allowed: Bool
+            if item.category == .orphans {
+                allowed = PathGate.isSafeOrphanToTrash(path, installedApps: installedApps, home: executionHome)
+            } else if item.category == .trash && isUnderUserTrash(resolved.path) {
+                allowed = true
+            } else {
+                allowed = isSafeToTrash(resolved.path) || isSafeToTrash(path)
+            }
             guard allowed else {
                 outcome.failedPaths.append(path)
                 outcome.errors.append("\(item.name): \(TrashError.blocked(path).localizedDescription)")
                 continue
             }
+            // F1: Record strict lstat identity snapshot immediately when safety gate passes.
+            guard let initialSnapshot = ExecutionIdentitySnapshot.capture(path) else {
+                outcome.failedPaths.append(path)
+                outcome.errors.append("\(item.name) · \(path): \(TrashError.changed(path).localizedDescription)")
+                outcome.failures.append(.init(path: path, name: item.name, kind: .changed, detail: "target_identity_unverifiable"))
+                continue
+            }
+
             let pathBytes: UInt64 = {
                 let vals = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
                 if vals?.isDirectory == true { return 0 }
@@ -152,15 +268,31 @@ public actor TrashExecutor {
                     outcome.failures.append(.init(path: path, name: item.name, kind: .inUse, detail: reason))
                     continue
                 }
-                if let reason = AIToolCleanupGuard.live.blockingReason(for: path, home: executionHome) {
+                if let reason = aiToolCleanupGuard.blockingReason(for: path, home: executionHome) {
                     outcome.failedPaths.append(path)
                     outcome.errors.append("\(item.name) · \(path): ai_cleanup_\(reason)")
+                    continue
+                }
+                if let occupancyReason = occupancyGuard(path) {
+                    outcome.failedPaths.append(path)
+                    outcome.errors.append("\(item.name) · \(path): \(occupancyReason)")
+                    outcome.failures.append(.init(path: path, name: item.name, kind: .inUse, detail: occupancyReason))
                     continue
                 }
                 guard CleanupEligibility.canMoveToTrash(path) else {
                     outcome.failedPaths.append(path)
                     outcome.errors.append("\(item.name) · \(path): cleanup_permission_denied")
                     outcome.failures.append(.init(path: path, name: item.name, kind: .permissionDenied))
+                    continue
+                }
+                // F1: Re-verify target, parent, and ancestor lstat identities after all
+                // synchronous occupancy checks finish, immediately before deletion.
+                guard let verifiedSnapshot = ExecutionIdentitySnapshot.capture(path),
+                      verifiedSnapshot == initialSnapshot
+                else {
+                    outcome.failedPaths.append(path)
+                    outcome.errors.append("\(item.name) · \(path): \(TrashError.changed(path).localizedDescription)")
+                    outcome.failures.append(.init(path: path, name: item.name, kind: .changed, detail: "target_identity_changed"))
                     continue
                 }
                 if item.category == .trash && isUnderUserTrash(resolved.path) {
@@ -225,23 +357,25 @@ public actor TrashExecutor {
     }
 
     private func isUnderUserTrash(_ path: String) -> Bool {
-        PathGate.isUnderUserTrash(path)
+        PathGate.isUnderUserTrash(path, home: executionHome)
     }
 
     private func isSafeToTrash(_ path: String) -> Bool {
-        PathGate.isSafeToTrash(path)
+        PathGate.isSafeToTrash(path, home: executionHome)
     }
 }
 
 public enum TrashError: LocalizedError {
     case missing(String)
     case blocked(String)
+    case changed(String)
     case timeout(String)
 
     public var errorDescription: String? {
         switch self {
         case .missing(let p): return "路径不存在：\(p)"
         case .blocked(let p): return "安全策略拒绝：\(p)"
+        case .changed(let p): return "路径身份已变化，已拒绝清理：\(p)"
         case .timeout(let p): return "移入废纸篓超时（可能在等系统授权），结果未知按失败处理：\(p)"
         }
     }

@@ -1,11 +1,11 @@
-// Real URLSession transport regression, with synthetic data and loopback only.
-// Compile with the shipped MacDefier/AI/AIRequestTransport.swift.
 import Foundation
 import Network
+import XCTest
+@testable import MacDefier
 
 private final class LoopbackHTTPServer: @unchecked Sendable {
     private let listener: NWListener
-    private let queue = DispatchQueue(label: "com.macdefier.AITransportSmoke")
+    private let queue = DispatchQueue(label: "com.macdefier.AITransportTests")
     private let handler: (String) -> String
     private let lock = NSLock()
     private var requests: [String] = []
@@ -39,7 +39,8 @@ private final class LoopbackHTTPServer: @unchecked Sendable {
                 case .failed(let error):
                     self.listener.stateUpdateHandler = nil
                     continuation.resume(throwing: error)
-                default: break
+                default:
+                    break
                 }
             }
             listener.start(queue: queue)
@@ -79,20 +80,13 @@ private final class LoopbackHTTPServer: @unchecked Sendable {
     }
 }
 
-@main
-enum AIRequestTransportSmoke {
-    enum Failure: Error { case assertion(String) }
-
-    static func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
-        if !condition() { throw Failure.assertion(message) }
-    }
-
-    static func response(_ status: Int, body: String = "", location: String? = nil) -> String {
+final class AIRequestTransportTests: XCTestCase {
+    private static func httpResponse(_ status: Int, body: String = "", location: String? = nil) -> String {
         let locationHeader = location.map { "Location: \($0)\r\n" } ?? ""
         return "HTTP/1.1 \(status) Test\r\n\(locationHeader)Content-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
     }
 
-    static func request(_ port: UInt16, path: String) -> URLRequest {
+    private func makeRequest(_ port: UInt16, path: String) -> URLRequest {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/\(path)")!)
         request.httpMethod = "POST"
         request.httpBody = Data("SYNTHETIC_PRIVATE_SUMMARY".utf8)
@@ -102,18 +96,10 @@ enum AIRequestTransportSmoke {
         return request
     }
 
-    static func main() async {
-        do {
-            try await run()
-            print("AIRequestTransportSmoke: PASS (200; 301/302/303/307/308 blocked; 400 then 307; no redirect-target requests)")
-        } catch {
-            fputs("AIRequestTransportSmoke: FAIL \(error)\n", stderr)
-            exit(1)
+    func testBlocksAllHTTPRedirectsAndPreservesNormalPOST() async throws {
+        let destination = try LoopbackHTTPServer { _ in
+            Self.httpResponse(200, body: "{\"leaked\":true}")
         }
-    }
-
-    static func run() async throws {
-        let destination = try LoopbackHTTPServer { _ in response(200, body: "{\"leaked\":true}") }
         let destinationPort = try await destination.start()
         defer { destination.stop() }
         let target = "http://localhost:\(destinationPort)/unconfigured-receiver"
@@ -124,31 +110,33 @@ enum AIRequestTransportSmoke {
                 let valid = incoming.hasPrefix("POST ")
                     && incoming.contains("SYNTHETIC_PRIVATE_SUMMARY")
                     && incoming.contains("Bearer SYNTHETIC_KEY")
-                return response(valid ? 200 : 422, body: "{\"ok\":true}")
+                return Self.httpResponse(valid ? 200 : 422, body: "{\"ok\":true}")
             }
-            if path == "/unsupported-options" { return response(400, body: "{\"error\":\"unsupported options\"}") }
+            if path == "/unsupported-options" {
+                return Self.httpResponse(400, body: "{\"error\":\"unsupported options\"}")
+            }
             let code = Int(path.dropFirst()) ?? 500
-            return response(code, body: "{\"redirect\":true}", location: target)
+            return Self.httpResponse(code, body: "{\"redirect\":true}", location: target)
         }
         let sourcePort = try await source.start()
         defer { source.stop() }
 
-        let (data, success) = try await AIRequestTransport.data(for: request(sourcePort, path: "success"))
-        try expect((success as? HTTPURLResponse)?.statusCode == 200, "normal POST must preserve body and authorization")
-        try expect(String(data: data, encoding: .utf8) == "{\"ok\":true}", "normal response is preserved")
+        let (data, success) = try await AIRequestTransport.data(for: makeRequest(sourcePort, path: "success"))
+        XCTAssertEqual((success as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertEqual(String(data: data, encoding: .utf8), "{\"ok\":true}")
 
         for code in [301, 302, 303, 307, 308] {
-            let (_, blocked) = try await AIRequestTransport.data(for: request(sourcePort, path: "\(code)"))
-            try expect((blocked as? HTTPURLResponse)?.statusCode == code, "HTTP \(code) must remain at configured endpoint")
-            try expect(blocked.url?.port == Int(sourcePort), "redirect response URL must stay at source")
-            try expect(destination.requestCount == 0, "redirect target must receive no request or synthetic body")
+            let (_, blocked) = try await AIRequestTransport.data(for: makeRequest(sourcePort, path: "\(code)"))
+            XCTAssertEqual((blocked as? HTTPURLResponse)?.statusCode, code, "HTTP \(code) must remain at configured endpoint")
+            XCTAssertEqual(blocked.url?.port, Int(sourcePort))
+            XCTAssertEqual(destination.requestCount, 0, "redirect target must receive no request or synthetic body")
         }
 
-        let (_, unsupported) = try await AIRequestTransport.data(for: request(sourcePort, path: "unsupported-options"))
-        try expect((unsupported as? HTTPURLResponse)?.statusCode == 400, "400 must reach client retry logic unchanged")
-        let (_, retryRedirect) = try await AIRequestTransport.data(for: request(sourcePort, path: "307"))
-        try expect((retryRedirect as? HTTPURLResponse)?.statusCode == 307, "retry transport must reject redirect too")
-        try expect(source.requestCount == 8, "expected exactly eight requests at the configured endpoint")
-        try expect(destination.requestCount == 0, "no request may reach the unconfigured receiver")
+        let (_, unsupported) = try await AIRequestTransport.data(for: makeRequest(sourcePort, path: "unsupported-options"))
+        XCTAssertEqual((unsupported as? HTTPURLResponse)?.statusCode, 400)
+        let (_, retryRedirect) = try await AIRequestTransport.data(for: makeRequest(sourcePort, path: "307"))
+        XCTAssertEqual((retryRedirect as? HTTPURLResponse)?.statusCode, 307)
+        XCTAssertEqual(source.requestCount, 8)
+        XCTAssertEqual(destination.requestCount, 0)
     }
 }

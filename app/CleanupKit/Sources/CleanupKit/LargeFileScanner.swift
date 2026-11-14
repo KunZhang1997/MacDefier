@@ -112,7 +112,8 @@ public enum LargeFileScanner {
             ifCleaned: "进废纸篓可还原。可能是个人文件/项目，默认不勾。",
             risk: .caution,
             parentPath: (path as NSString).deletingLastPathComponent,
-            sizeIsLowerBound: isPartial
+            sizeIsLowerBound: isPartial,
+            isDirectory: isDir
         )
     }
 }

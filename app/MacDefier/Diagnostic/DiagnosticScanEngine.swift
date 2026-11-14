@@ -127,8 +127,8 @@ struct DiagnosticReport: Sendable {
 
 enum DiagnosticScanEngine {
     /// 废纸篓独立预警阈值（已删未清空，占磁盘）
-    private static let trashWarnBytes: UInt64 = 200 * 1024 * 1024 // 200 MB
-    private static let trashHighBytes: UInt64 = 1 * 1_073_741_824 // 1 GB
+    private static let trashWarnBytes: UInt64 = HealthThresholds.trashWarnBytes
+    private static let trashHighBytes: UInt64 = HealthThresholds.trashHighBytes
 
     /// hog 提示只针对可解析的第三方 App：系统进程/后台守护不给「结束进程」入口
     private static func isUserAppProcess(pid: Int) -> Bool {
@@ -179,7 +179,7 @@ enum DiagnosticScanEngine {
 
         if snapshot.cpuIsFresh(at: now), let cpu = snapshot.cpu {
             let pct = cpu.totalUsage * 100
-            if pct >= 85 {
+            if cpu.totalUsage >= HealthThresholds.cpuHighUsage {
                 let sep = AppLanguage.current.isEnglish ? ", " : "、"
                 let top = snapshot.topCPU.prefix(3).map { "\($0.name) \(String(format: "%.0f", $0.usage))%" }.joined(separator: sep)
                 findings.append(DiagnosticFinding(
@@ -194,7 +194,7 @@ enum DiagnosticScanEngine {
                     action: .openMonitor,
                     actionTitle: openMon
                 ))
-            } else if pct >= 65 {
+            } else if cpu.totalUsage >= HealthThresholds.cpuWarnUsage {
                 findings.append(DiagnosticFinding(
                     id: "cpu-warn",
                     kind: .monitor,
@@ -250,8 +250,8 @@ enum DiagnosticScanEngine {
             let isSystem = DiagnosticScore.isSystemVolume(disk)
 
             if isSystem {
-                // 系统根卷：可用 20GB 绝对阈值 + 高使用率 → 系统危急
-                if pct >= 92 || disk.free < 20 * 1_073_741_824 {
+                // 系统根卷：可用空间绝对阈值 + 高使用率 → 系统危急
+                if HealthThresholds.isSystemDiskCritical(disk) {
                     findings.append(DiagnosticFinding(
                         id: "disk-high-\(disk.id)",
                         kind: .cleanup,
@@ -262,7 +262,7 @@ enum DiagnosticScanEngine {
                         action: .openCleanupAndScan,
                         actionTitle: goClean
                     ))
-                } else if pct >= 85 {
+                } else if disk.usage >= HealthThresholds.systemDiskWarnUsage {
                     findings.append(DiagnosticFinding(
                         id: "disk-warn-\(disk.id)",
                         kind: .cleanup,
@@ -276,7 +276,7 @@ enum DiagnosticScanEngine {
                 }
             } else {
                 // 外置盘：仅按使用率中性提醒，不用 20GB 绝对阈值制造系统危急
-                if pct >= 95 {
+                if disk.usage >= HealthThresholds.externalDiskInfoUsage {
                     findings.append(DiagnosticFinding(
                         id: "disk-ext-\(disk.id)",
                         kind: .monitor,
@@ -313,7 +313,7 @@ enum DiagnosticScanEngine {
                 action: .openCleanupAndScan, actionTitle: goClean
             ))
         }
-        if !cleanupIsPartial, nonTrashJunk >= 5 * 1_073_741_824 {
+        if !cleanupIsPartial, nonTrashJunk >= HealthThresholds.junkHighBytes {
             let sz = ByteCountFormatter.string(fromByteCount: Int64(nonTrashJunk), countStyle: .file)
             findings.append(DiagnosticFinding(
                 id: "junk-high",
@@ -325,7 +325,7 @@ enum DiagnosticScanEngine {
                 action: .openCleanupAndScan,
                 actionTitle: goClean
             ))
-        } else if !cleanupIsPartial, nonTrashJunk >= 1 * 1_073_741_824 {
+        } else if !cleanupIsPartial, nonTrashJunk >= HealthThresholds.junkWarnBytes {
             let sz = ByteCountFormatter.string(fromByteCount: Int64(nonTrashJunk), countStyle: .file)
             findings.append(DiagnosticFinding(
                 id: "junk-warn",
@@ -482,7 +482,7 @@ enum DiagnosticScanEngine {
             : "?"
         let disks = snapshot.disks.physical.isEmpty ? snapshot.disks : snapshot.disks.physical
         let disk = snapshot.systemDiskIsFresh(at: now)
-            ? disks.map { "\($0.id):\(Int($0.usage * 20)):\($0.free < 25 * 1_073_741_824)" }.sorted().joined(separator: ",")
+            ? disks.map { "\($0.id):\(Int($0.usage * 20)):\($0.free < HealthThresholds.systemDiskTightFreeBytes)" }.sorted().joined(separator: ",")
             : "?"
         let hog = snapshot.cpuIsFresh(at: now) ? snapshot.topCPU.first.map { "\($0.pid):\(Int($0.usage / 10))" } ?? "" : ""
         return "\(cpu)|\(ram)|\(disk)|\(hog)"

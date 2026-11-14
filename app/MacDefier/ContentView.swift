@@ -121,8 +121,6 @@ struct ContentView: View {
                     DiskMapView()
                 case .software:
                     SoftwareView()
-                case .ai:
-                    Color.clear.onAppear { nav.misterOpen = true; nav.route = .diagnostic }
                 case .monitor:
                     MonitorCenterView(selectedTab: $nav.monitorTab)
                 case .settings:

@@ -21,6 +21,8 @@ public actor JunkScanner {
     private var stepIsPartial = false
     private var lastSizeIsPartial = false
     private var stepStarted = ContinuousClock.now
+    private var activeBrowserGuard: BrowserCleanupGuard?
+    private var activeAIGuard: AIToolCleanupGuard?
 
     public init() {}
 
@@ -52,7 +54,14 @@ public actor JunkScanner {
     ) async -> [CleanupCategoryGroup] {
         var groups: [CleanupCategoryGroup] = []
         let steps = steps(for: profile)
-        defer { detailProgress = nil }
+        let processSnapshot = CleanupProcessSnapshot()
+        activeBrowserGuard = BrowserCleanupGuard.withCapturedProcessSnapshot(processSnapshot)
+        activeAIGuard = AIToolCleanupGuard.withCapturedProcessSnapshot(processSnapshot)
+        defer {
+            detailProgress = nil
+            activeBrowserGuard = nil
+            activeAIGuard = nil
+        }
 
         for (index, step) in steps.enumerated() {
             if Task.isCancelled { return [] }
@@ -160,8 +169,7 @@ public actor JunkScanner {
             if let item = makeItem(
                 name: URL(fileURLWithPath: path).lastPathComponent,
                 path: path,
-                category: .userCache,
-                selected: false
+                category: .userCache
             ) {
                 items.append(item)
             }
@@ -175,9 +183,12 @@ public actor JunkScanner {
 
     private func scanSystemLogs() -> [CleanableItem] {
         // PureMac systemJunk includes /Library/Logs + /private/var/log.
+        // Only surface entries movable by the current user so root-only logs do not sit as unselectable rows.
         var items: [CleanableItem] = []
         for p in ["/Library/Logs", "/private/var/log"] {
-            items.append(contentsOf: listImmediateChildren(of: p, category: .systemLogs))
+            items.append(contentsOf: listImmediateChildren(of: p, category: .systemLogs) { _, path in
+                CleanupEligibility.canMoveToTrash(path)
+            })
         }
         return dedupe(items)
     }
@@ -191,7 +202,7 @@ public actor JunkScanner {
             ("com.apple.dt.Xcode", "\(home)/Library/Caches/com.apple.dt.Xcode")
         ]
         return targets.compactMap { name, path in
-            makeItem(name: name, path: path, category: .xcode, selected: false)
+            makeItem(name: name, path: path, category: .xcode)
         }
     }
 
@@ -224,8 +235,7 @@ public actor JunkScanner {
             makeItem(
                 name: URL(fileURLWithPath: path).lastPathComponent,
                 path: path,
-                category: .brew,
-                selected: false
+                category: .brew
             )
         }
     }
@@ -238,7 +248,7 @@ public actor JunkScanner {
             ("pnpm store", "\(home)/Library/pnpm/store")
         ]
         return paths.compactMap { name, path in
-            makeItem(name: name, path: path, category: .node, selected: false)
+            makeItem(name: name, path: path, category: .node)
         }
     }
 
@@ -246,7 +256,7 @@ public actor JunkScanner {
     /// Cookie 不进列表；每条路径必须能通过执行 PathGate（密码库 skip 项除外且不进可选项）。
     private func scanBrowsers() -> [CleanableItem] {
         let specs = BrowserCleanupCatalog.specs(home: home, fm: fm)
-        let browserGuard = BrowserCleanupGuard.live
+        let browserGuard = activeBrowserGuard ?? BrowserCleanupGuard.withCapturedProcessSnapshot()
         var browserBlockReasons: [BrowserBrand: String] = [:]
         for brand in BrowserBrand.allCases {
             if let reason = browserGuard.ownerBlockingReason(for: brand) {
@@ -291,7 +301,7 @@ public actor JunkScanner {
                     appName: spec.brand.displayName,
                     displayTitle: title,
                     whatIsIt: spec.kind.what,
-                    ifCleaned: blockedReason == nil ? spec.kind.effect : "cleanup_blocked:browserOwner",
+                    ifCleaned: blockedReason == nil ? spec.kind.effect : "cleanup_blocked:inUse",
                     risk: blockedReason == nil ? spec.kind.risk : .skip,
                     extraPaths: extra,
                     sizeIsLowerBound: partial,
@@ -330,7 +340,7 @@ public actor JunkScanner {
             .init(name: "LM Studio Conversations (Optional)", path: "\(home)/.lmstudio/conversations", minBytes: 0)
         ]
         return targets.compactMap { t in
-            makeItem(name: t.name, path: t.path, category: .aiApps, selected: false, minimumBytes: t.minBytes)
+            makeItem(name: t.name, path: t.path, category: .aiApps, minimumBytes: t.minBytes)
         }
     }
 
@@ -348,8 +358,7 @@ public actor JunkScanner {
             makeItem(
                 name: URL(fileURLWithPath: path).lastPathComponent,
                 path: path,
-                category: .docker,
-                selected: false
+                category: .docker
             )
         }
     }
@@ -409,7 +418,7 @@ public actor JunkScanner {
             if category != .trash, InstallerPackageScanner.isInstallerPackagePath(path) { continue }
             if let filter, !filter(name, path) { continue }
             if !isPathAllowed(path) { continue }
-            if let item = makeItem(name: name, path: path, category: category, selected: category.defaultSelected) {
+            if let item = makeItem(name: name, path: path, category: category) {
                 items.append(item)
             }
             if items.count >= maxItems { stepIsPartial = true; break }
@@ -421,11 +430,11 @@ public actor JunkScanner {
         name: String,
         path: String,
         category: CleanupCategory,
-        selected: Bool,
         minimumBytes: UInt64 = 4096
     ) -> CleanableItem? {
         reportItem(name)
-        guard fm.fileExists(atPath: path) else { return nil }
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return nil }
         guard isPathAllowed(path) else { return nil }
         // 废纸篓清空走 removeItem，不要求 isSafeToTrash；其余项必须执行闸可通过
         if category != .trash, !PathGate.isSafeToTrash(path) { return nil }
@@ -433,8 +442,14 @@ public actor JunkScanner {
         let size = directorySize(at: path)
         if size < minimumBytes && category != .trash { return nil }
         let appName = friendlyAppName(from: name)
-        let aiReason = category == .trash ? nil : AIToolCleanupGuard.live.blockingReason(for: path, home: home)
-        let eligibility = CleanupEligibility.previewBlock(for: path, home: home)
+        let aiGuard = activeAIGuard ?? AIToolCleanupGuard.withCapturedProcessSnapshot()
+        let browserGuard = activeBrowserGuard ?? BrowserCleanupGuard.withCapturedProcessSnapshot()
+        let aiReason = category == .trash ? nil : aiGuard.previewBlockingReason(for: path, home: home)
+        if aiReason == "dedicated_preview_required" {
+            // Owned by the dedicated AI Tools workbench; do not duplicate as a dead locked row here.
+            return nil
+        }
+        let eligibility = CleanupEligibility.previewBlock(for: path, home: home, browser: browserGuard)
         return CleanableItem(
             name: name,
             path: path,
@@ -444,7 +459,8 @@ public actor JunkScanner {
             appName: appName,
             ifCleaned: eligibility.map { "cleanup_blocked:" + $0.rawValue } ?? aiReason.map { "ai_cleanup:" + $0 },
             risk: eligibility == nil && aiReason == nil ? nil : .skip,
-            sizeIsLowerBound: lastSizeIsPartial
+            sizeIsLowerBound: lastSizeIsPartial,
+            isDirectory: isDir.boolValue
         )
     }
 
@@ -500,11 +516,13 @@ public actor JunkScanner {
     }
 
     private func directorySize(at path: String) -> UInt64 {
-        let result = DiskUsageScanner.scan(root: URL(fileURLWithPath: path),
+        let result = DiskUsageScanner.sumAllocatedBytes(
+            root: URL(fileURLWithPath: path),
             budget: DiskScanBudget(maxEntries: 50_000, maxSeconds: 2),
-            isCancelled: { Task.isCancelled })
-        lastSizeIsPartial = result.root?.isComplete != true
+            isCancelled: { Task.isCancelled }
+        )
+        lastSizeIsPartial = !result.isComplete
         stepIsPartial = stepIsPartial || lastSizeIsPartial
-        return result.root?.allocatedBytes ?? 0
+        return result.allocatedBytes
     }
 }

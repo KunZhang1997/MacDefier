@@ -137,8 +137,8 @@ struct MenuBarPanelView: View {
             metricValue(ram.map { percent($0.usage) })
             PanelSparkline(values: ram == nil ? [] : s.dashRAMSeries, tint: tint, maximum: 1)
                 .frame(height: 24)
-            caption(topProcess.map { "\($0.name) · \(bytes($0.usage))" }
-                    ?? ram.map { "\(bytes($0.used)) / \(bytes($0.total))" } ?? waiting(now))
+            caption(topProcess.map { "\($0.name) · \(Format.memoryBytes($0.usage))" }
+                    ?? ram.map { "\(Format.memoryBytes($0.used)) / \(Format.memoryBytes($0.total))" } ?? waiting(now))
         }
     }
 
@@ -146,10 +146,10 @@ struct MenuBarPanelView: View {
         let disk = s.systemDiskIsFresh(at: now) ? s.disks.first(where: DiagnosticScore.isSystemVolume) : nil
         return metricCard(title: L10n.t("menupanel.free_space"), icon: "internaldrive", tint: .blue,
                           badge: disk.map {
-                              let gb = $0.total / 1_073_741_824
-                              return gb >= 1024 ? String(format: "%.1f TB", gb / 1024) : String(format: "%.0f GB", gb)
+                              let gb = $0.total / 1_000_000_000
+                              return gb >= 1000 ? String(format: "%.1f TB", gb / 1000) : String(format: "%.0f GB", gb)
                           }, tab: .disk) {
-            metricValue(disk.map { bytes($0.free) })
+            metricValue(disk.map { Format.bytes($0.free) })
             PanelFill(value: disk?.usage, tint: .blue).frame(height: 24)
             caption(disk.map { L10n.t("menupanel.disk_used", percent($0.usage)) } ?? waiting(now))
         }
@@ -161,10 +161,10 @@ struct MenuBarPanelView: View {
         let connectionName = overview?.details.ssid ?? overview?.details.mediaLabel
         return metricCard(title: L10n.t("menupanel.network"), icon: "network", tint: .cyan,
                           badge: connectionName, tab: .network) {
-            metricValue(network.map { "↓ " + bytes($0.bytesInPerSec) + "/s" }, size: 20)
+            metricValue(network.map { "↓ " + Format.bytes($0.bytesInPerSec) + "/s" }, size: 20)
             PanelSparkline(values: network == nil ? [] : (overview?.history.map(\.downBytesPerSec) ?? []),
                            tint: .cyan, maximum: nil).frame(height: 24)
-            caption(network.map { "↑ \(bytes($0.bytesOutPerSec))/s · \($0.displayName)" } ?? waiting(now))
+            caption(network.map { "↑ \(Format.bytes($0.bytesOutPerSec))/s · \($0.displayName)" } ?? waiting(now))
         }
     }
 
@@ -257,7 +257,7 @@ struct MenuBarPanelView: View {
                             }
                             Text(process.name).lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 5)
-                            Text(processMetric == .memory ? bytes(process.usage) : String(format: "%.1f%%", process.usage))
+                            Text(processMetric == .memory ? Format.memoryBytes(process.usage) : String(format: "%.1f%%", process.usage))
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
                         .font(.system(size: 11))
@@ -383,10 +383,6 @@ struct MenuBarPanelView: View {
     }
 
     private func percent(_ value: Double) -> String { String(format: "%.0f%%", value * 100) }
-    private func bytes(_ value: Double) -> String {
-        guard value.isFinite, value >= 0, value < Double(Int64.max) else { return "—" }
-        return ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
-    }
 }
 
 private struct CoreBars: View {

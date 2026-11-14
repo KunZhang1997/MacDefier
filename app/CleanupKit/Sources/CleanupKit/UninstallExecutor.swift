@@ -146,9 +146,17 @@ public actor UninstallExecutor {
 
     private func quitIfRunning(appPath: String, force: Bool) async -> QuitOutcome {
         let normalized = Self.normalize(appPath)
+        let prefix = normalized + "/"
         let running = NSWorkspace.shared.runningApplications.filter { app in
-            guard let url = app.bundleURL else { return false }
-            return Self.normalize(url.path) == normalized
+            if let url = app.bundleURL {
+                let candidate = Self.normalize(url.path)
+                if candidate == normalized || candidate.hasPrefix(prefix) { return true }
+            }
+            if let exec = app.executableURL {
+                let execPath = Self.normalize(exec.path)
+                if execPath.hasPrefix(prefix) { return true }
+            }
+            return false
         }
         for app in running {
             if force {

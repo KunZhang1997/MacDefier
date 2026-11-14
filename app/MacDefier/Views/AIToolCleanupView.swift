@@ -50,9 +50,14 @@ struct AIToolCleanupView: View {
             confirmationSheet(frozen)
         }
         .sheet(item: $cliTarget) { tool in
-            CliUninstallSheet(tool: tool) {
+            CliUninstallSheet(tool: tool) { result in
                 cliTarget = nil
-                if model.requiresRescan { model.startScan() }
+                if let result {
+                    SoftwareService.shared.markCLIToolCleaned(tool, result: result)
+                    if SoftwareService.shared.isCLIToolCleaned(tool) {
+                        model.markCLIToolCleaned(tool)
+                    }
+                }
             }
         }
     }
@@ -221,6 +226,10 @@ struct AIToolCleanupView: View {
 
     private var selectionControls: some View {
         HStack(spacing: 12) {
+            Button(L10n.t("aitools.select_low_risk")) { model.selectLowRiskOnly() }
+                .disabled(model.lowRiskCount == 0)
+                .help(L10n.t("cleanup.select_safe_help"))
+                .accessibilityIdentifier("aitools.selectLowRisk")
             Button(L10n.t("common.select_all")) { model.selectAllEligible() }
                 .disabled(model.groups.allSatisfy { $0.selectable.isEmpty })
                 .help(L10n.t("aitools.select_all_help"))
@@ -328,24 +337,37 @@ struct AIToolCleanupView: View {
     }
 
     private func candidateRow(_ item: AICleanupCandidate) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            if item.canSelect {
+        let isCleaned = model.isCleaned(item)
+        return HStack(alignment: .top, spacing: 10) {
+            if isCleaned {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(MDTheme.success)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
+            } else if item.canSelect {
                 MDCheckbox(item.title, isOn: Binding(get: { model.selectedIDs.contains(item.id) }, set: { _ in model.toggle(item) }))
                     .disabled(model.phase != .preview || model.requiresRescan)
             } else {
                 Image(systemName: item.state == .inUse ? "lock.fill" : "doc.text.magnifyingglass")
-                    .font(.caption).foregroundStyle(.tertiary).frame(width: 28, height: 28)
+                    .font(.caption).foregroundStyle(item.state == .inUse ? MDTheme.warning : .secondary).frame(width: 28, height: 28)
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(item.title).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                    if item.kind != .tool {
+                    Text(item.title)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(isCleaned ? MDTheme.secondary : MDTheme.label)
+                        .lineLimit(1).truncationMode(.middle)
+                    if isCleaned {
+                        MDTag(text: L10n.t("software.cleaned_badge"), tone: .success)
+                    } else if item.kind != .tool {
                         Text(L10n.t("aitools.state." + item.state.rawValue))
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(item.state == .ready ? MDTheme.success : item.state == .inUse ? MDTheme.warning : .secondary)
                     }
                 }
-                Text(item.tool.name + " · " + AIToolCleanupCopy.reason(item.reason))
+                Text(item.tool.name + " · " + (isCleaned ? L10n.t("software.cleaned_badge") : AIToolCleanupCopy.reason(item.reason)))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let date = item.lastActivity, date > .distantPast {
@@ -353,7 +375,11 @@ struct AIToolCleanupView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 if item.kind == .model, let count = Int(item.metadata["sharedBlobCount"] ?? ""), count > 0 {
-                    Text(L10n.t("aitools.shared_blobs", count)).font(.caption2).foregroundStyle(.secondary)
+                    let fullBytes = UInt64(item.metadata["fullModelBytes"] ?? "") ?? 0
+                    let detail = fullBytes > item.bytes
+                        ? L10n.t("aitools.shared_blobs", count) + " · " + L10n.t("aitools.model_full_size", AIToolCleanupCopy.bytes(Double(fullBytes)))
+                        : L10n.t("aitools.shared_blobs", count)
+                    Text(detail).font(.caption2).foregroundStyle(.secondary)
                 }
                 if item.kind == .worktree {
                     Text(worktreeDetails(item)).font(.caption2).foregroundStyle(.secondary)
@@ -363,21 +389,38 @@ struct AIToolCleanupView: View {
             }
             Spacer(minLength: 4)
             if let tool = item.cliTool {
-                Button(L10n.t("aitools.manage")) { cliTarget = tool }
-                    .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(model.phase == .cleaning)
+                if isCleaned || SoftwareService.shared.isCLIToolCleaned(tool) {
+                    Text(L10n.t("software.cleaned_badge"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MDTheme.success)
+                } else {
+                    Button(L10n.t("aitools.manage")) { cliTarget = tool }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .disabled(model.phase == .cleaning)
+                }
             } else {
-                Text(item.resources.isEmpty ? "—" : (item.metadata["sizeComplete"] == "false" ? "≥ " : "") + AIToolCleanupCopy.bytes(Double(item.bytes)))
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(item.resources.isEmpty ? "—" : (item.metadata["sizeComplete"] == "false" ? "≥ " : "") + AIToolCleanupCopy.bytes(Double(item.bytes)))
+                        .font(.caption.monospacedDigit()).foregroundStyle(isCleaned ? .tertiary : .secondary)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    if item.kind == .model, let full = UInt64(item.metadata["fullModelBytes"] ?? ""), full > item.bytes {
+                        Text(L10n.t("aitools.model_full_size", AIToolCleanupCopy.bytes(Double(full))))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    }
+                }
             }
-            Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)]) } label: {
-                Image(systemName: "magnifyingglass").frame(width: 24, height: 24)
+            if !isCleaned {
+                Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)]) } label: {
+                    Image(systemName: "folder").frame(width: 24, height: 24)
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.t("diskmap.reveal"))
+                .accessibilityLabel(L10n.t("aitools.reveal", item.title))
             }
-            .buttonStyle(.borderless)
-            .help(L10n.t("diskmap.reveal"))
-            .accessibilityLabel(L10n.t("aitools.reveal", item.title))
         }
+        .opacity(isCleaned ? 0.68 : 1.0)
         .padding(.horizontal, 12).padding(.vertical, 10)
     }
 
@@ -386,11 +429,13 @@ struct AIToolCleanupView: View {
         if group.kind == .conversation {
             if group.owner.map({ model.age(for: $0) == .dontList }) == true {
                 return L10n.t("aitools.sessions_total", group.all.count,
-                              AIToolCleanupCopy.bytes(Double(group.totalBytes))) + " · " + L10n.t("aitools.conversation_managed")
+                              AIToolCleanupCopy.bytes(Double(group.totalBytes)))
             }
-            let range = group.visible.isEmpty && group.owner.map { model.age(for: $0) != .dontList } == true
-                ? L10n.t("aitools.no_matching") : L10n.t("aitools.conversation_managed")
-            return L10n.t("aitools.sessions_summary", group.all.count, AIToolCleanupCopy.bytes(Double(group.totalBytes)), group.visible.count) + " · " + range
+            if group.visible.isEmpty {
+                return L10n.t("aitools.sessions_total", group.all.count,
+                              AIToolCleanupCopy.bytes(Double(group.totalBytes))) + " · " + L10n.t("aitools.no_matching")
+            }
+            return L10n.t("aitools.group_summary", group.selectable.count, group.visible.count, AIToolCleanupCopy.bytes(Double(group.eligibleBytes)))
         }
         if group.kind == .model && group.all.contains(where: { $0.reason == "modelGraphIncomplete" }) {
             return L10n.t("aitools.models_unverified", group.all.count)

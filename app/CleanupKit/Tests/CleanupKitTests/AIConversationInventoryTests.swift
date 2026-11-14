@@ -44,7 +44,7 @@ final class AIConversationInventoryTests: XCTestCase {
         XCTAssertEqual(rows.count, 3)
         XCTAssertEqual(Set(rows.flatMap(\.resources).map(\.path)), Set([first, second, archive]))
         XCTAssertEqual(rows.filter { ($0.lastActivity ?? now) < now.addingTimeInterval(-90 * 86_400) }.count, 2)
-        XCTAssertTrue(rows.allSatisfy { $0.state == .reviewOnly && !$0.canSelect && $0.reason == "indexed_conversations" })
+        XCTAssertTrue(rows.allSatisfy { $0.state == .ready && $0.canSelect && $0.reason == "conversation_session" })
         XCTAssertTrue(rows.allSatisfy { $0.metadata["activityEvidence"] == "file_mtime" })
         XCTAssertFalse(String(describing: rows.map { [$0.title, $0.reason, String(describing: $0.metadata)] }).contains("PRIVATE_PROMPT"))
     }
@@ -66,7 +66,7 @@ final class AIConversationInventoryTests: XCTestCase {
         XCTAssertEqual(row.metadata["fileCount"], "3")
         XCTAssertEqual(row.metadata["sessionCount"], "1")
         XCTAssertEqual(row.metadata["format"], "cursor_saved_transcript")
-        XCTAssertFalse(row.canSelect, "A plain text extension alone does not prove an independently disposable export")
+        XCTAssertTrue(row.canSelect, "Verified conversation sessions can be moved to Trash together")
     }
 
     func testClaudeIncludesOnlySessionJSONLAndKnownSubagents() throws {
@@ -98,7 +98,7 @@ final class AIConversationInventoryTests: XCTestCase {
         let rows = conversations()
         XCTAssertEqual(rows.count, 2)
         XCTAssertEqual(Set(rows.flatMap(\.resources).map(\.path)), Set([wire, context, oldWire]))
-        XCTAssertTrue(rows.allSatisfy { $0.tool == .kimi && !$0.canSelect })
+        XCTAssertTrue(rows.allSatisfy { $0.tool == .kimi && $0.canSelect })
     }
 
     func testSymlinksAndUnrecognizedFilesAreNeverIncluded() throws {
@@ -151,6 +151,27 @@ final class AIConversationInventoryTests: XCTestCase {
         XCTAssertFalse(AIConversationInventory.validateConversation(candidate, home: home))
         try Data("new appended messages".utf8).write(to: URL(fileURLWithPath: candidate.resources[0].path))
         XCTAssertFalse(AIConversationInventory.validateConversation(candidate, home: home))
+    }
+
+    func testMultiFileConversationMovesAllSessionFilesToTrashAndPreservesIndex() async throws {
+        let trash = root.appendingPathComponent("FixtureTrash").path
+        try fm.createDirectory(atPath: trash, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let base = ".claude/projects/-Users-fixture-project/"
+        let main = try write(base + a + ".jsonl", text: "main-session")
+        let child = try write(base + a + "/subagents/agent-a7b8c9.jsonl", text: "subagent-session")
+        let indexFile = try write(base + "sessions-index.json", text: "{}")
+        let row = try XCTUnwrap(conversations().first)
+        XCTAssertEqual(row.resources.count, 2)
+        let exec = AIToolCleanupExecutor.Execution(
+            cleanupGuard: AIToolCleanupGuard(processState: { _ in .idle }, openFileState: { _ in .idle }),
+            recycle: { try UninstallFileBoundary.move($0.boundary, toTrashDirectory: trash) }
+        )
+        let result = await AIToolCleanupExecutor.execute(candidates: [row], home: home, execution: exec)
+        XCTAssertEqual(result.cleanedCount, 1)
+        XCTAssertTrue(result.failures.isEmpty)
+        XCTAssertFalse(fm.fileExists(atPath: main))
+        XCTAssertFalse(fm.fileExists(atPath: child))
+        XCTAssertTrue(fm.fileExists(atPath: indexFile))
     }
 
     func testWorktreeStatusIncludesTrackedUntrackedAndIgnoredWithoutModifyingIndex() throws {

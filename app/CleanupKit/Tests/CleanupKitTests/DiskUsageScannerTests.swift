@@ -106,4 +106,57 @@ final class DiskUsageScannerTests: XCTestCase {
         XCTAssertTrue(result.root?.issues.contains(.cancelled) == true)
         XCTAssertFalse(result.root?.isComplete ?? true)
     }
+
+    func testSumAllocatedBytesMatchesTreeScanAcrossHardLinksSymlinksAndBudgets() throws {
+        let fileA = try write("nested/a.bin", bytes: 12_288)
+        _ = try write("nested/deeper/b.bin", bytes: 20_480)
+        _ = try write(".hidden-data", bytes: 4_096)
+        let hardLink = root.appendingPathComponent("nested/a-hardlink.bin")
+        XCTAssertEqual(link(fileA.path, hardLink.path), 0)
+
+        let external = FileManager.default.temporaryDirectory.appendingPathComponent("DiskSumOutside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: external) }
+        try Data(repeating: 9, count: 65_536).write(to: external.appendingPathComponent("outside.bin"))
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("external-link"),
+            withDestinationURL: external
+        )
+
+        // Full scan parity
+        let fullScan = DiskUsageScanner.scan(root: root)
+        let fullSum = DiskUsageScanner.sumAllocatedBytes(root: root)
+        XCTAssertEqual(fullSum.allocatedBytes, fullScan.root?.allocatedBytes)
+        XCTAssertEqual(fullSum.isComplete, fullScan.root?.isComplete)
+        XCTAssertTrue(fullSum.isComplete)
+
+        // Single file parity
+        let singleScan = DiskUsageScanner.scan(root: fileA)
+        let singleSum = DiskUsageScanner.sumAllocatedBytes(root: fileA)
+        XCTAssertEqual(singleSum.allocatedBytes, singleScan.root?.allocatedBytes)
+        XCTAssertEqual(singleSum.isComplete, singleScan.root?.isComplete)
+
+        // Depth budget parity
+        let depthBudget = DiskScanBudget(maxDepth: 0)
+        let depthScan = DiskUsageScanner.scan(root: root, budget: depthBudget)
+        let depthSum = DiskUsageScanner.sumAllocatedBytes(root: root, budget: depthBudget)
+        XCTAssertEqual(depthSum.allocatedBytes, depthScan.root?.allocatedBytes)
+        XCTAssertFalse(depthSum.isComplete)
+
+        // Entry budget parity (incomplete flag + bounded positive bytes)
+        let entryBudget = DiskScanBudget(maxEntries: 2)
+        let entryScan = DiskUsageScanner.scan(root: root, budget: entryBudget)
+        let entrySum = DiskUsageScanner.sumAllocatedBytes(root: root, budget: entryBudget)
+        XCTAssertEqual(entrySum.allocatedBytes, entryScan.root?.allocatedBytes)
+        XCTAssertFalse(entrySum.isComplete)
+
+        // Zero time budget, cancellation, and missing root parity
+        let zeroTimeSum = DiskUsageScanner.sumAllocatedBytes(root: root, budget: DiskScanBudget(maxSeconds: 0))
+        XCTAssertFalse(zeroTimeSum.isComplete)
+        let cancelledSum = DiskUsageScanner.sumAllocatedBytes(root: root, isCancelled: { true })
+        XCTAssertFalse(cancelledSum.isComplete)
+        let missingSum = DiskUsageScanner.sumAllocatedBytes(root: root.appendingPathComponent("does-not-exist"))
+        XCTAssertEqual(missingSum.allocatedBytes, 0)
+        XCTAssertFalse(missingSum.isComplete)
+    }
 }

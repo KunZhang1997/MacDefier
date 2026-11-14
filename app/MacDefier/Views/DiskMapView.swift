@@ -409,6 +409,7 @@ struct DiskMapView: View {
             detail: isStopping ? nil : model.isScanning && !isStopped ? L10n.t("scan.files_read", model.scannedEntries) :
                 (isStopped ? (model.current != nil ? L10n.t("scan.card.saved") : nil) : L10n.t("scan.card.disk_detail")),
             compact: compact,
+            activeOverride: model.isScanning && !isStopped,
             action: model.isScanning ? nil : { model.scan(model.scanScopeURL) },
             stop: model.isScanning && !isStopped ? { model.stop() } : nil,
             identifier: compact ? "diskmap.scanActivity" : "diskmap.scanPrimary"

@@ -23,6 +23,13 @@ struct BrowserCleanupGuard: Sendable {
         openFileState: { liveOpenFileState($0) }
     )
 
+    static func withCapturedProcessSnapshot(_ snapshot: CleanupProcessSnapshot = .init()) -> BrowserCleanupGuard {
+        BrowserCleanupGuard(
+            processState: { snapshot.browserActivity(for: $0) },
+            openFileState: { liveOpenFileState($0) }
+        )
+    }
+
     func blockingReason(for path: String, home: String) -> String? {
         // Keep extension service-worker bytecode even when a browser is closed.
         // A stale preview or a generic cache row must not reintroduce this target.
@@ -123,22 +130,7 @@ struct BrowserCleanupGuard: Sendable {
     }
 
     private static func liveProcessState(_ brand: BrowserBrand) -> BrowserCleanupActivity {
-        let applications = NSWorkspace.shared.runningApplications.map {
-            BrowserProcessIdentity(bundleIdentifier: $0.bundleIdentifier, executablePath: $0.executableURL?.path)
-        }
-        if applications.contains(where: { isBrowserProcess($0, brand: brand) }) { return .inUse }
-
-        // Workspace does not include every detached helper. A bounded complete ps
-        // snapshot covers executable paths without relying on localized app names.
-        guard let run = try? ProcessRunner.runSync(
-            ["/bin/ps", "-axo", "comm="], timeout: 2, isCancelled: { Task.isCancelled }
-        ), run.succeeded, !run.stdout.isEmpty, run.stderr.isEmpty else { return .unknown }
-        let executables = run.stdoutString.split(whereSeparator: \.isNewline)
-        guard !executables.isEmpty else { return .unknown }
-        return executables.contains {
-            isBrowserProcess(BrowserProcessIdentity(bundleIdentifier: nil,
-                executablePath: String($0).trimmingCharacters(in: .whitespaces)), brand: brand)
-        } ? .inUse : .idle
+        CleanupProcessSnapshot().browserActivity(for: brand)
     }
 
     private static func liveOpenFileState(_ path: String) -> BrowserCleanupActivity {
@@ -146,12 +138,14 @@ struct BrowserCleanupGuard: Sendable {
         guard fm.isExecutableFile(atPath: "/usr/sbin/lsof") else { return .unknown }
         var directory: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &directory) else { return .unknown }
-        let arguments: [String]
         if directory.boolValue {
-            arguments = ["/usr/sbin/lsof", "-nP", "-Fpn", "+D", path]
-        } else {
-            arguments = ["/usr/sbin/lsof", "-nP", "-Fpn", "--"] + sqliteFamily(for: path, fm: fm)
+            switch AIToolCleanupGuard.openFileActivity(for: path, in: AIToolCleanupGuard.captureOpenFilePaths()) {
+            case .idle: return .idle
+            case .inUse: return .inUse
+            case .unknown: return .unknown
+            }
         }
+        let arguments = ["/usr/sbin/lsof", "-nP", "-Fpn", "--"] + sqliteFamily(for: path, fm: fm)
         guard let run = try? ProcessRunner.runSync(arguments, timeout: 2, isCancelled: { Task.isCancelled }),
               !run.timedOut, !run.wasCancelled, !run.outputLimitExceeded else { return .unknown }
         if !run.stdout.isEmpty { return .inUse }

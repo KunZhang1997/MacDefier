@@ -6,13 +6,19 @@ import MonitorKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let mainWindowID = "main"
 
+    static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !Self.isRunningTests else { return false }
         MainWindowRouter.openMainWindow()
         return false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        guard !Self.isRunningTests else { return }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--monitor-history") {
             AppNavigator.shared.route = .monitor
@@ -26,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !Self.isRunningTests else { return .terminateNow }
         Task { @MainActor in
             await MonitorService.shared.history.finishRecording()
             sender.reply(toApplicationShouldTerminate: true)
@@ -34,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        guard !Self.isRunningTests else { return }
         OllamaModelManager.shared.cancel()
         OllamaRuntime.shutdown()
     }

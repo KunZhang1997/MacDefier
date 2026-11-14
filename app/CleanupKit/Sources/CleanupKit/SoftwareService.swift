@@ -117,6 +117,9 @@ public final class SoftwareService: ObservableObject {
     @Published public private(set) var isAIEnriching = false
     /// AI 建议预览卸载的真实 path（须在 apps 列表内）
     @Published public var aiPreviewActions: [SoftwareAIPreviewAction] = []
+    /// 原位标记「已清理」的应用路径与 CLI 工具 ID（避免卸载后整页重扫丢失上下文）
+    @Published public private(set) var cleanedAppPaths: Set<String> = []
+    @Published public private(set) var cleanedCLIToolIDs: Set<String> = []
 
     private var resourceObserver: AnyCancellable?
 
@@ -125,11 +128,33 @@ public final class SoftwareService: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                self.cancelInventoryWork()
-                self.lastInventoryAt = nil
-                self.lastCLIInventoryAt = nil
+                // Do NOT cancel ongoing size calculations or force a full inventory reload
+                // when an uninstall or cleanup completes; keep rows in place.
                 self.aiNarrative = nil
             }
+    }
+
+    public func isAppCleaned(_ app: InstalledApp) -> Bool {
+        cleanedAppPaths.contains(PathGate.normalize(app.path)) || cleanedAppPaths.contains(app.path)
+    }
+
+    public func isCLIToolCleaned(_ tool: CliTool) -> Bool {
+        cleanedCLIToolIDs.contains(tool.id)
+    }
+
+    public func markAppCleaned(_ app: InstalledApp, result: CleanupResult) {
+        guard result.cleanedCount > 0 || !result.succeededPaths.isEmpty else { return }
+        cleanedAppPaths.insert(app.path)
+        cleanedAppPaths.insert(PathGate.normalize(app.path))
+        aiPreviewActions.removeAll {
+            PathGate.normalize($0.path) == PathGate.normalize(app.path)
+                || $0.bundleID == app.bundleIdentifier
+        }
+    }
+
+    public func markCLIToolCleaned(_ tool: CliTool, result: CliUninstallResult) {
+        guard result.programUninstalled || !result.trashedPaths.isEmpty || result.agentsStopped > 0 else { return }
+        cleanedCLIToolIDs.insert(tool.id)
     }
 
     public var filtered: [InstalledApp] {
@@ -258,6 +283,7 @@ public final class SoftwareService: ObservableObject {
         usedAI = false
         isAIEnriching = false
         aiPreviewActions = []
+        cleanedAppPaths.removeAll()
         lastInventoryAt = nil
 
         let inventoryHandler = testInventoryHandler
@@ -300,11 +326,6 @@ public final class SoftwareService: ObservableObject {
         }
     }
 
-    /// Compatibility entry point: requesting one size must not cancel the inventory or queue.
-    public func loadSize(for app: InstalledApp) {
-        resumeSizeCalculation()
-    }
-
     /// Metadata appears first. One utility-priority worker then measures every pending app.
     public func resumeSizeCalculation() {
         guard !isLoading, !isSizingApps else { return }
@@ -326,6 +347,8 @@ public final class SoftwareService: ObservableObject {
             await previousTask?.value
             for app in pending {
                 guard !Task.isCancelled else { return }
+                let skipCleaned = await MainActor.run { self.isAppCleaned(app) }
+                if skipCleaned { continue }
                 let result = await DiskScanCoordinator.shared.withPermit {
                     if let sizeHandler { return await sizeHandler(app) }
                     return AppInventory.loadApp(
@@ -416,6 +439,7 @@ public final class SoftwareService: ObservableObject {
         // Force: clear ghosts immediately so deleted tools (e.g. vercel) don't linger in UI
         if force {
             cliTools = []
+            cleanedCLIToolIDs.removeAll()
             lastCLIInventoryAt = nil
         }
 

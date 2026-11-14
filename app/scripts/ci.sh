@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# CI：CleanupKit / PetArchiveKit / MonitorKit / AI 回归 + Debug / Release 构建。
+# CI：唯一构建锁 / Sparkle 门禁 / UninstallHelperKit / CleanupKit / PetArchiveKit / MonitorKit / MacDefierTests + Debug & 双架构 Release 构建与资源门禁。
 # 任何一步失败即退出；发布前必跑。
-# Vault 在 iCloud Desktop 时，CleanupKit swift test 在缓存目录跑，避免 NSFileCoordinator 卡死。
+# Vault 在 iCloud Desktop 时，构建与单测在缓存目录跑，避免 NSFileCoordinator 卡死。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -51,17 +51,68 @@ assert_safe_scratch() {
   printf '%s\n' "$path"
 }
 
+# XCTest / Swift Testing failures can yield EXIT 0 in mixed suites unless both
+# text diagnostics and exit status are verified.
+run_verified_swift_test() {
+  local label="$1" pkg_dir="$2"
+  shift 2
+  set +e
+  local test_log
+  test_log="$(mktemp -t "macdefier-${label}-test.XXXXXX")"
+  (cd "$pkg_dir" && swift test "$@" 2>&1 | tee "$test_log")
+  local test_ec=${PIPESTATUS[0]}
+  set -e
+  if grep -Eiq 'failed \(| error: |XCTAssert[^[:space:]]* failed|Test Case .* failed| Testhad failures|failures before|failed \([1-9]' "$test_log"; then
+    echo "==> $label tests reported failures (see log)" >&2
+    rm -f "$test_log"
+    exit 1
+  fi
+  if grep -E 'Executed [0-9]+ tests?' "$test_log" | tail -5 | grep -Eq 'with [1-9][0-9]* failure'; then
+    echo "==> $label XCTest summary has failures" >&2
+    rm -f "$test_log"
+    exit 1
+  fi
+  if grep -Eiq '^error: |Building for debugging.*error:|Test Suite .* failed' "$test_log"; then
+    echo "==> $label test build/run error" >&2
+    rm -f "$test_log"
+    exit 1
+  fi
+  if [[ "$test_ec" -ne 0 ]]; then
+    echo "==> $label swift test exit $test_ec" >&2
+    rm -f "$test_log"
+    exit 1
+  fi
+  rm -f "$test_log"
+}
+
+verify_app_bundle_resources() {
+  local app_bundle="$1" label="$2"
+  local res_dir="$app_bundle/Contents/Resources"
+  [[ -d "$res_dir" ]] || { echo "==> [$label] Resources 目录缺失：$res_dir" >&2; exit 1; }
+  if find "$res_dir" -name '*.zip' -print -quit | grep -q .; then
+    echo "==> [$label] 发现误打包的 .zip 资源（如 defier-guard-bot.zip）：" >&2
+    find "$res_dir" -name '*.zip' >&2
+    exit 1
+  fi
+  for required in "zh-Hans.lproj/Localizable.strings" "en.lproj/Localizable.strings" "Assets.car"; do
+    [[ -f "$res_dir/$required" ]] || {
+      echo "==> [$label] 缺少关键应用资源：$res_dir/$required" >&2
+      exit 1
+    }
+  done
+}
+
 CK_CACHE="$(assert_safe_scratch "$CK_CACHE" "CleanupKit test cache" cleanup-test)"
 BUILD_CACHE="$(assert_safe_scratch "$BUILD_CACHE" "build cache" build-cache)"
 python3 "$LIFECYCLE" track "$BUILD_CACHE"
 
-echo "==> [1/7] xcodegen (cache tree if iCloud Desktop)"
-# Prefer building app from non-iCloud cache when source is under Desktop/iCloud
+echo "==> [1/9] xcodegen（iCloud Desktop 下同步至构建缓存树）"
 if [[ "$APP_DIR" == *"/Desktop/"* ]] || [[ "$APP_DIR" == *"Mobile Documents"* ]]; then
   rsync -a --delete \
     --exclude '.macdefier-*' \
     --exclude '.build' --exclude 'build' --exclude 'DerivedData' \
     --exclude 'CleanupKit/.build' --exclude 'MonitorKit/.build' \
+    --exclude 'PetArchiveKit/.build' --exclude 'UninstallHelperKit/.build' \
     "$APP_DIR/" "$BUILD_CACHE/"
   WORK_APP="$BUILD_CACHE"
 else
@@ -70,89 +121,75 @@ fi
 cd "$WORK_APP"
 xcodegen generate
 
-echo "==> [2/7] CleanupKit 单测（PathGate 删除安全 / 匹配引擎）"
+echo "==> [2/9] single_app_build.py 唯一构建锁与回滚单测"
+python3 -B -m unittest discover -s "$WORK_APP/scripts/tests" -p "test_*.py"
+
+echo "==> [3/9] Sparkle 更新源与嵌套签名顺序门禁"
+bash "$WORK_APP/scripts/test-update-feed.sh"
+
+echo "==> [4/9] UninstallHelperKit 单测（root 助手安全边界 / IPC）"
+run_verified_swift_test "UninstallHelperKit" "$WORK_APP/UninstallHelperKit"
+
+echo "==> [5/9] CleanupKit 单测（PathGate 删除安全 / 匹配引擎）"
 rsync -a --delete \
   --exclude '.macdefier-*' \
   --exclude '.build' --exclude 'build' \
   "$CK_SRC/" "$CK_CACHE/"
-# Keep WORK_APP CleanupKit in sync if using cache tree
 if [[ "$WORK_APP" != "$APP_DIR" ]]; then
   rsync -a --delete --exclude '.build' --exclude '.macdefier-*' "$CK_SRC/" "$WORK_APP/CleanupKit/"
 fi
-# XCTest failures can still yield EXIT 0 when Swift Testing reports "0 tests".
-# Parse the summary and fail hard on any failure/error.
+run_verified_swift_test "CleanupKit" "$WORK_APP/CleanupKit" --scratch-path "$CK_CACHE/.build"
+
+echo "==> [6/9] PetArchiveKit 单测（M10 pet zip symlink/slip）"
+run_verified_swift_test "PetArchiveKit" "$WORK_APP/PetArchiveKit"
+
+echo "==> [7/9] MonitorKit 单测（进程退出 / 超时 / Pipe / 采样生命周期）"
+run_verified_swift_test "MonitorKit" "$WORK_APP/MonitorKit"
+
+echo "==> [8/9] MacDefierTests 主工程单测（AI / 诊断 / 树图 / 更新 / 引导 / 卸载错误 / 本地化与几何）"
+cd "$WORK_APP"
 set +e
-TEST_LOG="$(mktemp -t macdefier-ck-test.XXXXXX)"
-# Keep the package beside UninstallHelperKit so its relative dependency resolves.
-(cd "$WORK_APP/CleanupKit" && swift test --scratch-path "$CK_CACHE/.build" 2>&1 | tee "$TEST_LOG")
-TEST_EC=$?
+APP_TEST_LOG="$(mktemp -t macdefier-apptests.XXXXXX)"
+xcodebuild test -project MacDefier.xcodeproj -scheme MacDefier -configuration Debug \
+  -derivedDataPath build/DerivedData \
+  -destination 'platform=macOS' \
+  -only-testing:MacDefierTests \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$APP_TEST_LOG"
+APP_TEST_EC=${PIPESTATUS[0]}
 set -e
-if grep -Eiq 'failed \(| error: |XCTAssert[^[:space:]]* failed|Test Case .* failed| Testhad failures|failures before|failed \([1-9]' "$TEST_LOG"; then
-  echo "==> CleanupKit tests reported failures (see log)"
-  rm -f "$TEST_LOG"
+if grep -Eiq '\*\* TEST FAILED \*\*|Test Case .* failed|XCTAssert[^[:space:]]* failed' "$APP_TEST_LOG" || [[ "$APP_TEST_EC" -ne 0 ]]; then
+  echo "==> MacDefierTests failed (exit $APP_TEST_EC)" >&2
+  rm -f "$APP_TEST_LOG"
   exit 1
 fi
-# Also require an explicit suite summary with 0 failures when present
-if grep -E 'Executed [0-9]+ tests?' "$TEST_LOG" | tail -5 | grep -Eq 'with [1-9][0-9]* failure'; then
-  echo "==> CleanupKit XCTest summary has failures"
-  rm -f "$TEST_LOG"
-  exit 1
-fi
-if grep -Eiq '^error: |Building for debugging.*error:|Test Suite .* failed' "$TEST_LOG"; then
-  echo "==> CleanupKit test build/run error"
-  rm -f "$TEST_LOG"
-  exit 1
-fi
-# If swift test itself failed and we didn't already catch text, still fail
-if [[ "$TEST_EC" -ne 0 ]]; then
-  echo "==> swift test exit $TEST_EC (earlier passing suites cannot override a later failure)"
-  rm -f "$TEST_LOG"
-  exit 1
-fi
-rm -f "$TEST_LOG"
+rm -f "$APP_TEST_LOG"
 
-echo "==> [3/7] PetArchiveKit 单测（M10 pet zip symlink/slip）"
-# WORK_APP 已含 PetArchiveKit + Vendor/ZIPFoundation（Package path: ../Vendor/ZIPFoundation）
-set +e
-PA_LOG="$(mktemp -t macdefier-pa-test.XXXXXX)"
-(cd "$WORK_APP/PetArchiveKit" && swift test 2>&1 | tee "$PA_LOG")
-PA_EC=$?
-set -e
-if grep -Eiq 'failed \(| error: |XCTAssert[^[:space:]]* failed|Test Case .* failed|failures before|failed \([1-9]' "$PA_LOG"; then
-  echo "==> PetArchiveKit tests reported failures (see log)"
-  rm -f "$PA_LOG"
-  exit 1
-fi
-if [[ "$PA_EC" -ne 0 ]]; then
-  echo "==> PetArchiveKit swift test exit $PA_EC"
-  rm -f "$PA_LOG"
-  exit 1
-fi
-rm -f "$PA_LOG"
-
-echo "==> [4/7] MonitorKit 单测（进程退出 / 超时 / Pipe / 采样生命周期）"
-(cd "$WORK_APP/MonitorKit" && swift test)
-
-echo "==> [5/7] AI 与诊断回归（端点 / 重定向 / 凭据隔离 / 采样有效性）"
-bash "$WORK_APP/scripts/test-ai-endpoint-policy.sh"
-bash "$WORK_APP/scripts/test-ai-request-transport.sh"
-bash "$WORK_APP/scripts/test-ai-profile-isolation.sh"
-bash "$WORK_APP/scripts/test-diagnostic-memory.sh"
-bash "$WORK_APP/scripts/test-disk-treemap.sh"
-
-echo "==> [6/7] App 全量构建（Debug）"
+echo "==> [9/9] App 全量构建（Debug + 双架构 Release）与打包资源校验"
 cd "$WORK_APP"
 xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Debug \
   -derivedDataPath build/DerivedData \
   -destination 'platform=macOS' build \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+verify_app_bundle_resources "$WORK_APP/build/DerivedData/Build/Products/Debug/MacDefier-Dev.app" "Debug"
 
-python3 "$LIFECYCLE" cleanup
+python3 "$LIFECYCLE" cleanup "$WORK_APP/build"
 
-echo "==> [7/7] App 全量构建（Release，不签名、不分发）"
 xcodebuild -project MacDefier.xcodeproj -scheme MacDefier -configuration Release \
   -derivedDataPath build/DerivedData \
-  -destination 'generic/platform=macOS' build \
+  -destination 'generic/platform=macOS' \
+  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+verify_app_bundle_resources "$WORK_APP/build/DerivedData/Build/Products/Release/MacDefier.app" "Release"
 
-echo "==> CI OK：单测 + 构建全部通过"
+RELEASE_BIN="$WORK_APP/build/DerivedData/Build/Products/Release/MacDefier.app/Contents/MacOS/MacDefier"
+RELEASE_ARCHS="$(lipo -archs "$RELEASE_BIN")"
+if [[ "$RELEASE_ARCHS" != *"arm64"* || "$RELEASE_ARCHS" != *"x86_64"* ]]; then
+  echo "==> [Release] 双架构校验失败，当前架构：$RELEASE_ARCHS" >&2
+  exit 1
+fi
+if nm "$RELEASE_BIN" 2>/dev/null | grep -q 'IconExport'; then
+  echo "==> [Release] IconExport 调试符号未隔离出正式包" >&2
+  exit 1
+fi
+
+echo "==> CI OK：全链路单测 + Debug/双架构 Release 构建与资源校验全部通过"

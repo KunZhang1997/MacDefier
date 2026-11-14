@@ -6,6 +6,7 @@ public enum PetPackError: Error, Equatable, LocalizedError {
     case invalidManifest
     case missingSpritesheet
     case unzipFailed
+    case corruptedArchive
     case archiveTooLarge
     case tooManyEntries
     case expandedTooLarge
@@ -19,7 +20,7 @@ public enum PetPackError: Error, Equatable, LocalizedError {
         switch self {
         case .invalidManifest: return "pet.error.invalid_manifest"
         case .missingSpritesheet: return "pet.error.missing_spritesheet"
-        case .unzipFailed: return "pet.error.unzip_failed"
+        case .unzipFailed, .corruptedArchive: return "pet.error.unzip_failed"
         case .archiveTooLarge: return "pet.error.archive_too_large"
         case .tooManyEntries: return "pet.error.too_many_entries"
         case .expandedTooLarge: return "pet.error.expanded_too_large"
@@ -36,6 +37,7 @@ public enum PetPackError: Error, Equatable, LocalizedError {
         case .invalidManifest: return "Pet pack is missing a valid pet.json"
         case .missingSpritesheet: return "Pet pack is missing a spritesheet image"
         case .unzipFailed: return "Could not extract zip"
+        case .corruptedArchive: return "ZIP archive is corrupted (CRC32 mismatch)"
         case .archiveTooLarge: return "ZIP must be at most 100 MB"
         case .tooManyEntries: return "Pet pack cannot exceed 500 entries"
         case .expandedTooLarge: return "Expanded pet pack cannot exceed 500 MB"

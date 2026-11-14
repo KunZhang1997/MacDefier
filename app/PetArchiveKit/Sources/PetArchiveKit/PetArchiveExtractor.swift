@@ -57,6 +57,12 @@ public enum PetArchiveExtractor {
         var writtenBytes: UInt64 = 0
         var writtenEntries = 0
         let rootResolved = destination.resolvingSymlinksInPath().standardizedFileURL
+        var extractionSucceeded = false
+        defer {
+            if !extractionSucceeded {
+                cleanupExtractedContents(under: rootResolved)
+            }
+        }
 
         for entry in entryList {
             try Task.checkCancellation()
@@ -73,34 +79,16 @@ public enum PetArchiveExtractor {
                 writtenEntries += 1
             case .file:
                 try fm.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                // 流式写出：每个 chunk 累计真实展开字节；从不创建 symlink
-                guard let out = OutputStream(url: destURL, append: false) else {
-                    throw PetPackError.unzipFailed
+                let computedCRC = try extractVerifiedFile(
+                    entry: entry,
+                    from: archive,
+                    to: destURL,
+                    deadline: deadline,
+                    writtenBytes: &writtenBytes
+                )
+                guard computedCRC == entry.checksum else {
+                    throw PetPackError.corruptedArchive
                 }
-                out.open()
-                defer { out.close() }
-
-                _ = try archive.extract(entry, consumer: { data in
-                    try Task.checkCancellation()
-                    if Date() >= deadline { throw PetPackError.unzipTimedOut }
-                    let n = data.count
-                    guard n > 0 else { return }
-                    writtenBytes = writtenBytes &+ UInt64(n)
-                    if writtenBytes > Limit.expandedBytes {
-                        throw PetPackError.expandedTooLarge
-                    }
-                    try data.withUnsafeBytes { raw in
-                        guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
-                            throw PetPackError.unzipFailed
-                        }
-                        var offset = 0
-                        while offset < n {
-                            let wrote = out.write(base.advanced(by: offset), maxLength: n - offset)
-                            if wrote <= 0 { throw PetPackError.unzipFailed }
-                            offset += wrote
-                        }
-                    }
-                })
                 // 写出后必须是普通文件，禁止变成 symlink
                 try assertContainedRegularOrDirectory(destURL, root: rootResolved, expectDirectory: false)
                 writtenEntries += 1
@@ -124,6 +112,73 @@ public enum PetArchiveExtractor {
 
         // 全部图片元数据：任一超过 64 MP 失败
         try validateAllImagesUnder(rootResolved, deadline: deadline)
+        extractionSucceeded = true
+    }
+
+    private static func extractVerifiedFile(
+        entry: Entry,
+        from archive: Archive,
+        to destURL: URL,
+        deadline: Date,
+        writtenBytes: inout UInt64
+    ) throws -> CRC32 {
+        // 流式写出：每个 chunk 累计真实展开字节；从不创建 symlink；显式开启 CRC32 校验
+        guard let out = OutputStream(url: destURL, append: false) else {
+            throw PetPackError.unzipFailed
+        }
+        out.open()
+        defer { out.close() }
+
+        do {
+            return try archive.extract(
+                entry,
+                bufferSize: Limit.chunkBytes,
+                skipCRC32: false,
+                consumer: { data in
+                    try Task.checkCancellation()
+                    if Date() >= deadline { throw PetPackError.unzipTimedOut }
+                    let n = data.count
+                    guard n > 0 else { return }
+                    writtenBytes = writtenBytes &+ UInt64(n)
+                    if writtenBytes > Limit.expandedBytes {
+                        throw PetPackError.expandedTooLarge
+                    }
+                    try data.withUnsafeBytes { raw in
+                        guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
+                            throw PetPackError.unzipFailed
+                        }
+                        var offset = 0
+                        while offset < n {
+                            let wrote = out.write(base.advanced(by: offset), maxLength: n - offset)
+                            if wrote <= 0 { throw PetPackError.unzipFailed }
+                            offset += wrote
+                        }
+                    }
+                }
+            )
+        } catch let error as PetPackError {
+            throw error
+        } catch let error as CancellationError {
+            throw error
+        } catch is Archive.ArchiveError {
+            throw PetPackError.corruptedArchive
+        } catch {
+            throw PetPackError.corruptedArchive
+        }
+    }
+
+    private static func cleanupExtractedContents(under rootResolved: URL) {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(
+            at: rootResolved,
+            includingPropertiesForKeys: nil,
+            options: []
+        ) else {
+            return
+        }
+        for item in items {
+            try? fm.removeItem(at: item)
+        }
     }
 
     // MARK: - Entry validation

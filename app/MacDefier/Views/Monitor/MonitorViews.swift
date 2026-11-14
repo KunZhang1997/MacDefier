@@ -9,12 +9,6 @@ struct MonitorCenterView: View {
     @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { timeline in
-            content(at: timeline.date)
-        }
-    }
-
-    private func content(at now: Date) -> some View {
         VStack(spacing: 0) {
             MDPageBar {
                 ViewThatFits(in: .horizontal) {
@@ -38,10 +32,10 @@ struct MonitorCenterView: View {
             ScrollView {
                 Group {
                     switch selectedTab {
-                    case .dashboard: MonitorDashboardPane(onOpenNetwork: { selectedTab = .network }, now: now)
-                    case .cpu: MonitorCPUPane(now: now)
+                    case .dashboard: MonitorDashboardPane(onOpenNetwork: { selectedTab = .network })
+                    case .cpu: MonitorCPUPane()
                     case .gpu: MonitorGPUPane()
-                    case .ram: MonitorRAMPane(now: now)
+                    case .ram: MonitorRAMPane()
                     case .disk: MonitorDiskPane()
                     case .sensors: MonitorSensorsPane()
                     case .network: MonitorNetworkPane()
@@ -680,14 +674,13 @@ struct MonitorDashboardPane: View {
     @EnvironmentObject private var monitor: MonitorService
     @ObservedObject private var monitorAI = MonitorAIAssist.shared
     var onOpenNetwork: () -> Void = {}
-    var now: Date = Date()
     @AppStorage("ip.history.window.days") private var windowDays: Int = 3
 
     private var s: MonitorSnapshot { monitor.snapshot }
-    private var cpu: CPULoad? { s.cpuIsFresh(at: now) ? s.cpu : nil }
-    private var ram: RAMUsage? { s.ramIsFresh(at: now) ? s.ram : nil }
+    private var cpu: CPULoad? { s.cpuIsFresh() ? s.cpu : nil }
+    private var ram: RAMUsage? { s.ramIsFresh() ? s.ram : nil }
     private var systemDisk: DiskVolume? {
-        s.systemDiskIsFresh(at: now) ? s.disks.first(where: DiagnosticScore.isSystemVolume) : nil
+        s.systemDiskIsFresh() ? s.disks.first(where: DiagnosticScore.isSystemVolume) : nil
     }
     private var ov: NetworkOverview { s.networkOverview }
     private var windowed: [IPHistoryEntry] {
@@ -732,7 +725,7 @@ struct MonitorDashboardPane: View {
                     footer: ramFooter
                 )
                 dashKPI(
-                    L10n.t("diag.kpi.disk"),
+                    L10n.t("monitor.kpi.disk_used"),
                     diskValueLabel,
                     systemDisk?.usage,
                     MDTheme.chart3,
@@ -773,10 +766,7 @@ struct MonitorDashboardPane: View {
     // MARK: Dashboard 状态一句
 
     private var dashStatusStrip: some View {
-        let line = monitorAI.dashLine.isEmpty || !s.hasFreshDiagnosticMetrics(at: now)
-            ? MonitorAIAssist.ruleDashLine(snapshot: s)
-            : monitorAI.dashLine
-        return VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: monitorAI.dashUsedAI ? "sparkles" : "gauge.with.dots.needle.67percent")
                     .font(.system(size: 11, weight: .semibold))
@@ -801,9 +791,14 @@ struct MonitorDashboardPane: View {
                 }
             }
 
-            MDAIClampedText(line)
-                .font(.system(size: 12.5))
-                .foregroundStyle(MDTheme.label)
+            TimelineView(.periodic(from: .now, by: 5)) { timeline in
+                let line = monitorAI.dashLine.isEmpty || !s.hasFreshDiagnosticMetrics(at: timeline.date)
+                    ? MonitorAIAssist.ruleDashLine(snapshot: s)
+                    : monitorAI.dashLine
+                MDAIClampedText(line)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(MDTheme.label)
+            }
 
             if let note = monitorAI.dashStaleNote, !note.isEmpty {
                 Text(note)
@@ -852,14 +847,14 @@ struct MonitorDashboardPane: View {
 
     private var diskValueLabel: String {
         guard let d = systemDisk else { return "—" }
-        let usedGB = d.used / 1_073_741_824
+        let usedGB = d.used / 1_000_000_000
         if usedGB >= 1000 { return String(format: "%.1f TB", usedGB / 1000) }
         return String(format: "%.0f GB", usedGB)
     }
 
     private var diskFooter: String {
         guard let d = systemDisk else { return "—" }
-        let totalGB = d.total / 1_073_741_824
+        let totalGB = d.total / 1_000_000_000
         let totalStr: String
         if totalGB >= 1000 { totalStr = L10n.t("monitor.kpi.total_tb", totalGB / 1000) }
         else { totalStr = L10n.t("monitor.kpi.total_gb", totalGB) }
@@ -982,7 +977,9 @@ struct MonitorDashboardPane: View {
                 }
                 .padding(.bottom, 8)
 
-                summaryRow(L10n.t("monitor.ip.current"), currentIPLine)
+                TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                    summaryRow(L10n.t("monitor.ip.current"), currentIPLine(at: timeline.date))
+                }
                 MDRowSeparator(leading: 0)
                 summaryRow(
                     windowDays <= 0 ? L10n.t("monitor.ip.retained") : L10n.t("monitor.ip.window", windowDays),
@@ -1010,9 +1007,9 @@ struct MonitorDashboardPane: View {
         }
     }
 
-    private var currentIPLine: String {
+    private func currentIPLine(at now: Date) -> String {
         guard let ip = ov.details.publicIP else { return L10n.t("monitor.ip.probing") }
-        let stable = Format.stableDuration(since: ov.publicIPConfirmedSince)
+        let stable = Format.stableDuration(since: ov.publicIPConfirmedSince, now: now)
         if let place = ov.publicIPPlaceLabel {
             return L10n.t("monitor.ip.stable_line", ip, place, stable)
         }
@@ -1097,8 +1094,8 @@ struct MonitorDashboardPane: View {
 struct MonitorCPUPane: View {
     @EnvironmentObject private var monitor: MonitorService
     @ObservedObject private var nav = AppNavigator.shared
-    var now: Date = Date()
-    private var cpu: CPULoad? { monitor.snapshot.cpuIsFresh(at: now) ? monitor.snapshot.cpu : nil }
+    @State private var coreGridColumns = 4
+    private var cpu: CPULoad? { monitor.snapshot.cpuIsFresh() ? monitor.snapshot.cpu : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1123,7 +1120,7 @@ struct MonitorCPUPane: View {
                     VStack(alignment: .leading, spacing: 8) {
                         MDSectionTitle(title: L10n.t("monitor.cpu.per_core"))
                         if let cores = cpu?.usagePerCore, !cores.isEmpty {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: coreGridColumns), spacing: 8) {
                                 ForEach(Array(cores.enumerated()), id: \.offset) { idx, v in
                                     VStack(spacing: 4) {
                                         Text("C\(idx)").font(.system(size: 10)).foregroundStyle(MDTheme.tertiary)
@@ -1132,6 +1129,15 @@ struct MonitorCPUPane: View {
                                     }
                                     .padding(8)
                                     .background(MDTheme.surfaceInset, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                            }
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear
+                                        .onAppear { updateCoreGrid(width: geometry.size.width) }
+                                        .onChange(of: geometry.size.width) { _, width in
+                                            updateCoreGrid(width: width)
+                                        }
                                 }
                             }
                         }
@@ -1155,6 +1161,12 @@ struct MonitorCPUPane: View {
         }
     }
 
+    private func updateCoreGrid(width: CGFloat) {
+        // Four 50-point cells plus three 8-point gaps need at least 224 points.
+        let columns = width >= 224 ? 4 : 2
+        if coreGridColumns != columns { coreGridColumns = columns }
+    }
+
     private func row(_ k: String, _ v: String) -> some View {
         HStack {
             Text(k).font(.system(size: 12)).foregroundStyle(MDTheme.secondary)
@@ -1167,8 +1179,7 @@ struct MonitorCPUPane: View {
 struct MonitorRAMPane: View {
     @EnvironmentObject private var monitor: MonitorService
     @ObservedObject private var nav = AppNavigator.shared
-    var now: Date = Date()
-    private var ram: RAMUsage? { monitor.snapshot.ramIsFresh(at: now) ? monitor.snapshot.ram : nil }
+    private var ram: RAMUsage? { monitor.snapshot.ramIsFresh() ? monitor.snapshot.ram : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1178,14 +1189,14 @@ struct MonitorRAMPane: View {
                     HStack {
                         MDRing(progress: ram?.usage ?? 0, size: 110, tint: MDTheme.chart2, center: Format.percent(ram?.usage), caption: L10n.t("monitor.ram.used"))
                         VStack(alignment: .leading, spacing: 8) {
-                            row(L10n.t("monitor.ram.used"), Format.bytes(ram?.used))
-                            row(L10n.t("monitor.ram.total"), Format.bytes(ram?.total))
-                            row(L10n.t("workbench.memory_app"), Format.bytes(ram?.app))
-                            row(L10n.t("workbench.memory_wired"), Format.bytes(ram?.wired))
-                            row(L10n.t("workbench.memory_compressed"), Format.bytes(ram?.compressed))
+                            row(L10n.t("monitor.ram.used"), Format.memoryBytes(ram?.used))
+                            row(L10n.t("monitor.ram.total"), Format.memoryBytes(ram?.total))
+                            row(L10n.t("workbench.memory_app"), Format.memoryBytes(ram?.app))
+                            row(L10n.t("workbench.memory_wired"), Format.memoryBytes(ram?.wired))
+                            row(L10n.t("workbench.memory_compressed"), Format.memoryBytes(ram?.compressed))
                             row(L10n.t("monitor.ram.pressure"), L10n.t("memory.pressure.\(monitor.snapshot.ramIsFresh() ? (ram?.pressure.value.rawValue ?? "unknown") : "unknown")"))
                             row(L10n.t("workbench.memory_swap"), monitor.snapshot.ramIsFresh() && ram?.swap.isAvailable == true
-                                ? Format.bytes(ram?.swap.used) : "—")
+                                ? Format.memoryBytes(ram?.swap.used) : "—")
                         }
                     }
                 }
@@ -1197,7 +1208,7 @@ struct MonitorRAMPane: View {
                         processes: Array(monitor.snapshot.topRAM.prefix(10)),
                         name: { $0.name },
                         detail: { "PID \($0.pid)" },
-                        value: { Format.bytes($0.usage) },
+                        value: { Format.memoryBytes($0.usage) },
                         highlight: { nav.monitorFocusPID == $0.pid }
                     )
                 }

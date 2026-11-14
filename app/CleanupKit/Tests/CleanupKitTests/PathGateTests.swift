@@ -383,6 +383,25 @@ final class PathGateTests: XCTestCase {
         XCTAssertFalse(PathGate.isSafeForUninstall(otherContainer, allowAppBundle: target))
         XCTAssertFalse(PathGate.isSafeForUninstall(otherAS, allowAppBundle: target))
     }
+
+    func testUninstallAllowsShortAppNameAndChannelSubpathsWhileBlockingVendorRoot() {
+        let vsCodeTarget = UninstallTargetIdentity(
+            bundleID: "com.microsoft.VSCode",
+            displayName: "Code",
+            originalAppPath: "/Applications/Visual Studio Code.app"
+        )
+        XCTAssertTrue(PathGate.isSafeForUninstall(home + "/Library/Application Support/Code", target: vsCodeTarget))
+        XCTAssertFalse(PathGate.isSafeForUninstall(home + "/Library/Application Support/Microsoft", target: vsCodeTarget))
+        XCTAssertFalse(PathGate.isSafeForUninstall(home + "/Library/Application Support/Apple", target: vsCodeTarget))
+
+        let chromeTarget = UninstallTargetIdentity(
+            bundleID: "com.google.Chrome",
+            displayName: "Google Chrome",
+            originalAppPath: "/Applications/Google Chrome.app"
+        )
+        XCTAssertTrue(PathGate.isSafeForUninstall(home + "/Library/Application Support/Google/Chrome", target: chromeTarget))
+        XCTAssertFalse(PathGate.isSafeForUninstall(home + "/Library/Application Support/Google", target: chromeTarget))
+    }
 }
 
 final class AppQueryMatcherTests: XCTestCase {

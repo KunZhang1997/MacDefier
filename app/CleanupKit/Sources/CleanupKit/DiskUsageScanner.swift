@@ -148,7 +148,7 @@ public enum DiskUsageScanner {
                     }
                 }
                 if name == "." || name == ".." { continue }
-                let childPath = URL(fileURLWithPath: path).appendingPathComponent(name).path
+                let childPath = path == "/" ? "/\(name)" : "\(path)/\(name)"
                 count += 1
                 emit(childPath)
                 var info = stat()
@@ -230,6 +230,140 @@ public enum DiskUsageScanner {
         let duration = started.duration(to: .now).components
         return DiskUsageSnapshot(rootPath: path, nodes: nodes, scannedAt: Date(),
             elapsed: Double(duration.seconds) + Double(duration.attoseconds) / 1e18)
+    }
+
+    /// Allocation-free directory/file byte accumulator sharing the exact same safety boundaries
+    /// (O_NOFOLLOW, mount-point guard, hard-link deduplication, dataless placeholder detection,
+    /// and entry/depth/time budgets) without constructing `DiskUsageNode` trees or child arrays.
+    public static func sumAllocatedBytes(
+        root: URL,
+        budget: DiskScanBudget = .init(),
+        isCancelled: () -> Bool = { false }
+    ) -> (allocatedBytes: UInt64, isComplete: Bool) {
+        let measured = sumAllocatedBytesCountingEntries(root: root, budget: budget, isCancelled: isCancelled)
+        return (measured.allocatedBytes, measured.isComplete)
+    }
+
+    static func sumAllocatedBytesCountingEntries(
+        root: URL,
+        budget: DiskScanBudget = .init(),
+        isCancelled: () -> Bool = { false }
+    ) -> (allocatedBytes: UInt64, isComplete: Bool, entriesVisited: Int) {
+        let started = ContinuousClock.now
+        let path = root.standardizedFileURL.path
+        var visited = Set<FileIdentity>()
+        var count = 0
+        var totalBytes: UInt64 = 0
+        var isComplete = true
+        var stopped = false
+
+        func shouldStop() -> Bool {
+            if isCancelled() { return true }
+            if started.duration(to: .now) >= .seconds(budget.maxSeconds) { return true }
+            if count >= budget.maxEntries { return true }
+            return false
+        }
+
+        func walkSum(_ fd: Int32, depth: Int, device: dev_t) {
+            guard let directory = fdopendir(fd) else {
+                close(fd)
+                isComplete = false
+                return
+            }
+            defer { closedir(directory) }
+            let parentFD = dirfd(directory)
+
+            while true {
+                if stopped || shouldStop() {
+                    stopped = true
+                    isComplete = false
+                    break
+                }
+                errno = 0
+                guard let entry = readdir(directory) else {
+                    if errno != 0 { isComplete = false }
+                    break
+                }
+                let namlen = Int(entry.pointee.d_namlen)
+                var childFDToWalk: Int32 = -1
+                withUnsafePointer(to: &entry.pointee.d_name) { nameTuplePtr in
+                    nameTuplePtr.withMemoryRebound(to: CChar.self, capacity: namlen + 1) { cName in
+                        if namlen == 1 && cName[0] == 0x2E { return }
+                        if namlen == 2 && cName[0] == 0x2E && cName[1] == 0x2E { return }
+
+                        count += 1
+                        var info = stat()
+                        guard fstatat(parentFD, cName, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                            isComplete = false
+                            return
+                        }
+                        guard info.st_dev == device else {
+                            isComplete = false
+                            return
+                        }
+                        let type = info.st_mode & mode_t(S_IFMT)
+                        let isDirectory = type == mode_t(S_IFDIR)
+                        let identity = FileIdentity(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
+                        let duplicate = !isDirectory && info.st_nlink > 1 && !visited.insert(identity).inserted
+                        if !duplicate {
+                            totalBytes &+= UInt64(max(0, info.st_blocks)) * 512
+                        }
+                        if info.st_flags & UInt32(SF_DATALESS) != 0 {
+                            isComplete = false
+                        } else if isDirectory {
+                            if depth >= budget.maxDepth {
+                                isComplete = false
+                            } else {
+                                let openedFD = openat(parentFD, cName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                                if openedFD < 0 {
+                                    isComplete = false
+                                } else {
+                                    var opened = stat()
+                                    if fstat(openedFD, &opened) != 0 || opened.st_dev != info.st_dev || opened.st_ino != info.st_ino {
+                                        close(openedFD)
+                                        isComplete = false
+                                    } else {
+                                        childFDToWalk = openedFD
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if childFDToWalk >= 0 {
+                    walkSum(childFDToWalk, depth: depth + 1, device: device)
+                }
+            }
+        }
+
+        var rootInfo = stat()
+        guard lstat(path, &rootInfo) == 0 else {
+            return (0, false, 0)
+        }
+        let rootType = rootInfo.st_mode & mode_t(S_IFMT)
+        let rootIsDirectory = rootType == mode_t(S_IFDIR)
+        let rootIdentity = FileIdentity(device: UInt64(rootInfo.st_dev), inode: UInt64(rootInfo.st_ino))
+        let rootDuplicate = !rootIsDirectory && rootInfo.st_nlink > 1 && !visited.insert(rootIdentity).inserted
+        if !rootDuplicate {
+            totalBytes &+= UInt64(max(0, rootInfo.st_blocks)) * 512
+        }
+        if rootInfo.st_flags & UInt32(SF_DATALESS) != 0 {
+            isComplete = false
+        } else if rootIsDirectory {
+            let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            if fd < 0 {
+                isComplete = false
+            } else {
+                var opened = stat()
+                if fstat(fd, &opened) != 0 || opened.st_ino != rootInfo.st_ino || opened.st_dev != rootInfo.st_dev {
+                    close(fd)
+                    isComplete = false
+                } else {
+                    walkSum(fd, depth: 0, device: rootInfo.st_dev)
+                }
+            }
+        }
+        return (totalBytes, isComplete, count)
     }
 
     private struct FileIdentity: Hashable {

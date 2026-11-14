@@ -57,9 +57,9 @@ cd MacDefier/app
 bash app/scripts/ci.sh
 ```
 
-测试和构建使用隔离缓存目录。完整脚本会运行 CleanupKit、PetArchiveKit、MonitorKit 单元测试，AI 端点及传输检查、诊断与磁盘布局检查，再构建 Debug 和 Release。
+测试和构建使用隔离缓存目录。完整脚本会运行唯一构建锁与 Sparkle 更新源检查、`UninstallHelperKit` / `CleanupKit` / `PetArchiveKit` / `MonitorKit` 单元测试、`MacDefierTests` 主工程单元测试，再构建并校验 Debug 与双架构 Release 应用。
 
-卸载助手、更新器和构建生命周期还提供独立检查入口：`app/UninstallHelperKit` 的 `swift test`、`app/scripts/test-update-feed.sh`、`test-app-update-state.sh`、`test-app-update-controller.sh` 和 `bash app/rebuild_and_launch.sh --self-test`。
+也可单独运行唯一构建边界自检：`bash app/rebuild_and_launch.sh --self-test`（使用隔离文件，不重建或重启当前应用）。
 
 ## 数据与权限
 
@@ -72,13 +72,14 @@ bash app/scripts/ci.sh
 | 路径 | 内容 |
 | --- | --- |
 | `app/MacDefier/` | SwiftUI 应用、诊断、AI 和界面资源 |
+| `app/MacDefierTests/` | 主工程单元测试（AI、诊断、布局、更新、引导与本地化） |
 | `app/CleanupKit/` | 扫描、清理、卸载及保护规则 |
 | `app/MonitorKit/` | 系统资源采样 |
 | `app/PetArchiveKit/` | 宠物包导入与校验 |
 | `app/UninstallHelperKit/` | 卸载助手协议、权限边界、客户端与测试 |
 | `app/UninstallHelper/` | 按需授权的卸载助手入口 |
 | `app/Vendor/ZIPFoundation/` | 固定版本的 ZIPFoundation 依赖 |
-| `app/scripts/` | 测试、构建与打包脚本 |
+| `app/scripts/` | 构建、校验与打包脚本 |
 
 ## 许可证与致谢
 

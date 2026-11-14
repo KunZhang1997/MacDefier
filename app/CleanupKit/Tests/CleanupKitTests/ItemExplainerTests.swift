@@ -56,4 +56,66 @@ final class ItemExplainerTests: XCTestCase {
         XCTAssertEqual(item.whatIsIt, "应用下载到本机的语音/大语言模型文件")
         XCTAssertEqual(item.risk, .caution)
     }
+
+    func testPnpmIsNotMisclassifiedAsNpmCache() {
+        XCTAssertEqual(
+            ItemExplainer.classify(
+                name: "pnpm store",
+                path: "/Users/test/Library/pnpm/store",
+                category: .node
+            ),
+            .devDependencyCache
+        )
+        XCTAssertEqual(
+            ItemExplainer.classify(
+                name: "pnpm",
+                path: "/Users/test/.cache/pnpm",
+                category: .userCache
+            ),
+            .devDependencyCache
+        )
+        XCTAssertEqual(
+            ItemExplainer.classify(
+                name: "npm cache",
+                path: "/Users/test/.npm",
+                category: .node
+            ),
+            .npmCache
+        )
+
+        let pnpmItem = CleanableItem(
+            name: "pnpm store",
+            path: "/Users/test/Library/pnpm/store",
+            bytes: 1024,
+            category: .node,
+            isSelected: false
+        )
+        XCTAssertEqual(pnpmItem.displayTitle, "开发依赖缓存")
+        XCTAssertNotEqual(pnpmItem.displayTitle, "npm 包缓存")
+    }
+
+    func testCleanableItemCachesIsDirectoryAtInit() throws {
+        let fm = FileManager.default
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("IsDir-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tempDir) }
+
+        let tempFile = tempDir.appendingPathComponent("sample.bin")
+        try Data([1, 2, 3]).write(to: tempFile)
+
+        let dirItem = CleanableItem(name: "dir", path: tempDir.path, bytes: 1, category: .temp, isSelected: false)
+        let fileItem = CleanableItem(name: "sample.bin", path: tempFile.path, bytes: 3, category: .temp, isSelected: false)
+        let explicitOverride = CleanableItem(
+            name: "virtual",
+            path: tempDir.appendingPathComponent("nonexistent").path,
+            bytes: 0,
+            category: .temp,
+            isSelected: false,
+            isDirectory: true
+        )
+
+        XCTAssertTrue(dirItem.isDirectory)
+        XCTAssertFalse(fileItem.isDirectory)
+        XCTAssertTrue(explicitOverride.isDirectory)
+    }
 }

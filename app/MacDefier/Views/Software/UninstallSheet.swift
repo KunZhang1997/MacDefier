@@ -1,13 +1,15 @@
 import SwiftUI
 import CleanupKit
 import AppKit
+import Darwin
+import UninstallHelperClient
 
 struct UninstallSheet: View {
     let app: InstalledApp
-    var onClose: () -> Void
+    var onClose: (CleanupResult?) -> Void
 
     @State private var items: [ResidualItem] = []
-    @State private var keepUserData = true
+    @State private var keepUserData = false
     @State private var phase: Phase = .loading
     @State private var result: CleanupResult?
     @State private var errorEntries: [UninstallErrorText.Entry] = []
@@ -15,6 +17,13 @@ struct UninstallSheet: View {
     @State private var confirm = false
     @State private var confirmForceQuit = false
     @State private var loadError: String?
+
+    private var needsPrivilegedHelperForMainApp: Bool {
+        guard app.canTrashAppBundle, app.path.hasPrefix("/Applications/") else { return false }
+        var st = stat()
+        guard lstat(app.path, &st) == 0 else { return false }
+        return st.st_uid != getuid() && UninstallHelperSetup.state != .enabled
+    }
 
     private enum Phase {
         case loading, preview, working, done
@@ -86,7 +95,7 @@ struct UninstallSheet: View {
                 Divider()
                 HStack {
                     Spacer()
-                    Button(L10n.t("common.done")) { onClose() }
+                    Button(L10n.t("common.done")) { onClose(result) }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                 }
@@ -150,7 +159,7 @@ struct UninstallSheet: View {
                     .truncationMode(.middle)
             }
             Spacer()
-            Button(L10n.t("uninstall.close")) { onClose() }
+            Button(L10n.t("uninstall.close")) { onClose(result) }
                 .disabled(isWorking)
                 .keyboardShortcut(.cancelAction)
         }
@@ -163,6 +172,13 @@ struct UninstallSheet: View {
                 Text(loadError)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 16)
+            }
+
+            if needsPrivilegedHelperForMainApp {
+                UninstallHelperSettings()
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MDTheme.surfaceInset))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
             }
 
             MDCheckbox(L10n.t("uninstall.keep_user_data"), isOn: Binding(
@@ -344,8 +360,8 @@ struct UninstallSheet: View {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
             }
             Spacer()
-            Button(L10n.t("uninstall.cancel")) { onClose() }
-            Button(isWorking ? L10n.t("uninstall.working") : (app.canTrashAppBundle ? L10n.t("uninstall.move_trash") : L10n.t("uninstall.verb_residual"))) {
+            Button(L10n.t("uninstall.cancel")) { onClose(nil) }
+            Button(isWorking ? L10n.t("uninstall.sheet.working") : (app.canTrashAppBundle ? L10n.t("uninstall.move_trash") : L10n.t("uninstall.verb_residual"))) {
                 confirm = true
             }
             .buttonStyle(.borderedProminent)
@@ -525,11 +541,8 @@ struct UninstallSheet: View {
                 // 照片/音乐/影片本体永不自动勾（执行器层也已硬拦截），只能逐项手选
                 updated[i].isSelected = false
             case .cache, .logs, .savedState, .other:
-                // 稳妥：不自动勾，用户手选
-                if keepUserData {
-                    updated[i].isSelected = false
-                }
-                // keepUserData 关时也不强勾缓存，避免误伤；仍手选
+                // 缓存、日志、窗口保存状态等非个人文档，默认随应用一并移入废纸篓
+                updated[i].isSelected = true
             }
         }
         items = updated

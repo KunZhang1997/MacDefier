@@ -590,12 +590,6 @@ final class AIChatViewModel: ObservableObject {
         updateStatusIdle()
     }
 
-    /// 设置页「清空聊天记录」：不依赖当前是否打开聊天面板。
-    static func clearPersistedConversation() {
-        AIConversationStore.clear()
-        NotificationCenter.default.post(name: .macDefierConversationDidClear, object: nil)
-    }
-
     /// Lightweight app identity cache. Free chat never recursively computes
     /// bundle/data sizes; detailed sizes belong to SoftwareService's explicit scan.
     private static var appsCache: (apps: [InstalledApp], at: Date)?
@@ -638,14 +632,6 @@ final class AIChatViewModel: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    func toggleThinking(_ id: UUID) {
-        if expandedThinkingIDs.contains(id) {
-            expandedThinkingIDs.remove(id)
-        } else {
-            expandedThinkingIDs.insert(id)
-        }
-    }
-
     /// Call when intensity / monitor toggle changes
     func noteSettingsChanged() {
         schedulePersist()
@@ -654,6 +640,5 @@ final class AIChatViewModel: ObservableObject {
 }
 
 extension Notification.Name {
-    static let macDefierConversationDidClear = Notification.Name("macDefier.conversationDidClear")
     static let macDefierAISettingsDidChange = Notification.Name("macDefier.aiSettingsDidChange")
 }

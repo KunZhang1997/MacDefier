@@ -4,7 +4,6 @@
 "route.diagnostic" = "首页诊断";
 "route.cleanup" = "清理";
 "route.software" = "软件";
-"route.ai" = "Mr. Defier";
 "route.monitor" = "监控中心";
 "route.settings" = "设置";
 "sidebar.primary" = "主要";
@@ -461,7 +460,7 @@
 "uninstall.show_finder" = "在 Finder 显示";
 "uninstall.cancel" = "取消";
 "uninstall.move_trash" = "移到废纸篓";
-"uninstall.working" = "处理中…";
+"uninstall.sheet.working" = "处理中…";
 "uninstall.pwd_hint_app" = "如弹出密码框请输入登录密码\n会先尝试结束正在运行的 %@";
 "uninstall.pwd_hint_res" = "如弹出密码框请输入登录密码\n只会处理可安全移入废纸篓的残留";
 "uninstall.done_ok" = "%@完成";
@@ -875,6 +874,7 @@
 "monitor.kpi.idle" = "%@ · 闲置";
 "monitor.kpi.util_na" = "%@ · 利用率未接";
 "monitor.kpi.gpu_enum" = "型号已枚举";
+"monitor.kpi.disk_used" = "磁盘已用";
 "monitor.kpi.used_pct" = "已用 %.0f%%";
 "monitor.kpi.total_tb" = "总 %.1f TB";
 "monitor.kpi.total_gb" = "总 %.0f GB";
@@ -1383,14 +1383,16 @@
 
 /* Cleanup preflight and outcome reasons */
 "cleanup.technical_details" = "技术详情";
-"cleanup.failure.inUse" = "应用正在使用";
-"cleanup.failure.permissionDenied" = "当前没有移走权限";
-"cleanup.failure.protectedResource" = "已保留的受保护项目";
-"cleanup.failure.missing" = "项目已不存在";
-"cleanup.failure.changed" = "扫描后发生变化";
-"cleanup.failure.cancelled" = "已取消";
-"cleanup.failure.busy" = "另一项操作正在处理";
-"cleanup.failure.unknown" = "其他原因";
+"cleanup.group.inUse" = "应用正在使用";
+"cleanup.group.permissionDenied" = "当前没有移走权限";
+"cleanup.group.protectedResource" = "已保留的受保护项目";
+"cleanup.group.missing" = "项目已不存在";
+"cleanup.group.changed" = "扫描后发生变化";
+"cleanup.group.cancelled" = "已取消";
+"cleanup.group.busy" = "另一项操作正在处理";
+"cleanup.group.unknown" = "其他原因";
+"cleanup.large_item.folder.what" = "按体积发现的大文件夹（≥约 100MB）。%@";
+"cleanup.large_item.file.what" = "按体积发现的大文件（≥约 100MB）。%@";
 "cleanup.reason.inUse" = "应用或其辅助进程正在运行；退出对应应用后重新扫描。未移动这些文件。";
 "cleanup.reason.permissionDenied" = "当前用户无权将这些项目移到废纸篓。系统日志通常由 macOS 管理，建议保留；完全磁盘访问权限不等同于管理员删除权限。";
 "cleanup.reason.protectedResource" = "安全检查要求保留此项目，或暂时无法确认它未被使用。可重新扫描以更新状态。";
@@ -1520,3 +1522,13 @@
 "cleanup.browser.effect.downloads" = "下载信息或未完成的下载可能丢失。";
 "cleanup.browser.effect.siteData" = "离线数据和网站设置可能丢失，网站可能要求重新登录。";
 "cleanup.reason.browserOwner" = "浏览器或辅助进程正在运行，或无法确认其状态；请退出浏览器后重新扫描。";
+"cleanup.tag.in_use" = "使用中";
+"cleanup.tag.no_permission" = "无权限";
+"cleanup.cleaned_inline" = "本次已清理 %d 项";
+"aitools.select_low_risk" = "勾选低风险项";
+"aitools.reason.conversation_session" = "本地会话记录，移入废纸篓后可还原";
+"aitools.reason.cleaned" = "已移入废纸篓";
+"aitools.model_full_size" = "模型共 %@";
+"software.cleaned_badge" = "已清理";
+"software.current_app" = "当前应用";
+"software.protected_help" = "系统内置或当前运行应用受保护，仅可查看与清理关联残留";

@@ -5,6 +5,7 @@
 // - v4 / face：头肩近景（当前 AppIcon）
 // - v4b / body：头略小，露出胸盾十字 + 金领 + 披风（安全感）
 
+#if DEBUG
 import AppKit
 import SwiftUI
 
@@ -411,3 +412,4 @@ enum IconExport {
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
+#endif

@@ -70,7 +70,7 @@ final class CleanupInteractionResponsivenessTests: XCTestCase {
         XCTAssertEqual(total, 2000)
         print("INTERACTION_PERF stage=preview_reads count=200 repeats=10 elapsed_ms=\(elapsed)")
         XCTAssertLessThan(elapsed, 50, "Repeated UI reads must not rerun string-based risk rules")
-        service.setCategorySelected(.userCache, selected: true)
+        service.selectLowRiskOnly()
         XCTAssertEqual(service.selectedCount, 200)
         service.setSelected(itemID: items[0].id, selected: false)
         XCTAssertEqual(service.selectedCount, 199)
@@ -83,7 +83,7 @@ final class CleanupInteractionResponsivenessTests: XCTestCase {
         let service = CleanupService()
         let requests = Requests()
         await load(items, into: service)
-        service.setCategorySelected(.userCache, selected: true)
+        service.selectLowRiskOnly()
         service.testTrashHandler = { selected in
             await requests.record(selected)
             return CleanupResult(cleanedCount: selected.count, trashedPaths: selected.map(\.path),
@@ -149,7 +149,7 @@ final class CleanupInteractionResponsivenessTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let service = CleanupService(), requests = Requests()
         await load(items, into: service)
-        service.setCategorySelected(.userCache, selected: true)
+        service.selectLowRiskOnly()
         service.testTrashHandler = { selected in
             await requests.record(selected)
             return CleanupResult(errors: ["Injected EACCES"], failedPaths: selected.map(\.path))
@@ -162,7 +162,7 @@ final class CleanupInteractionResponsivenessTests: XCTestCase {
         XCTAssertEqual(service.allItems.count, 3)
         XCTAssertEqual(service.selectedCount, 0)
         await load(items, into: service)
-        service.setCategorySelected(.userCache, selected: true)
+        service.selectLowRiskOnly()
         service.testTrashHandler = { selected in
             await requests.record(selected)
             return CleanupResult(cleanedCount: selected.count, trashedPaths: selected.map(\.path),

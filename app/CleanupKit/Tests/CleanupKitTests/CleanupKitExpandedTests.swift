@@ -143,14 +143,55 @@ final class CleanupRiskPolicyTests: XCTestCase {
         XCTAssertEqual(r, .rebuild)
     }
 
-    func testAIHistorySkip() {
+    func testAIHistoryRefinesToCaution() {
         let r = CleanupRiskPolicy.refine(
             name: "conversations-history",
             path: "/Users/x/.ollama/history",
             category: .aiApps,
             base: .caution
         )
-        XCTAssertEqual(r, .skip)
+        XCTAssertEqual(r, .caution)
+    }
+
+    func testLowRiskBulkMatchesSafeAndRebuildWhileExcludingArchives() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let spotifyCache = CleanableItem(
+            name: "com.spotify.client",
+            path: home + "/Library/Caches/com.spotify.client",
+            bytes: 1024,
+            category: .userCache,
+            isSelected: false,
+            risk: .safe
+        )
+        let wallpaperItem = CleanableItem(
+            name: "Aerial-1",
+            path: home + "/Library/Application Support/com.apple.wallpaper/aerials/videos/1.mov",
+            bytes: 2048,
+            category: .wallpaper,
+            isSelected: false,
+            risk: .rebuild
+        )
+        let xcodeCache = CleanableItem(
+            name: "com.apple.dt.Xcode",
+            path: home + "/Library/Caches/com.apple.dt.Xcode",
+            bytes: 4096,
+            category: .xcode,
+            isSelected: false,
+            risk: .rebuild
+        )
+        let xcodeArchives = CleanableItem(
+            name: "Archives",
+            path: home + "/Library/Developer/Xcode/Archives",
+            bytes: 8192,
+            category: .xcode,
+            isSelected: false,
+            risk: .rebuild
+        )
+        XCTAssertTrue(CleanupRiskPolicy.isLowRiskBulkEligible(spotifyCache))
+        XCTAssertTrue(CleanupRiskPolicy.isLowRiskBulkEligible(wallpaperItem))
+        XCTAssertTrue(CleanupRiskPolicy.isLowRiskBulkEligible(xcodeCache))
+        XCTAssertEqual(xcodeArchives.risk, .caution)
+        XCTAssertFalse(CleanupRiskPolicy.isLowRiskBulkEligible(xcodeArchives))
     }
 
     func testOrphansAlwaysCaution() {
@@ -584,7 +625,7 @@ final class SoftwareServiceLoadingTests: XCTestCase {
         service.refresh(force: true) { done.fulfill() }
         await fulfillment(of: [started], timeout: 3)
         XCTAssertTrue(service.isLoading)
-        service.loadSize(for: app)
+        service.resumeSizeCalculation()
         XCTAssertTrue(service.isLoading, "Metadata retains ownership of its loading state")
         gate.open()
         await fulfillment(of: [done], timeout: 3)
@@ -654,6 +695,122 @@ final class UninstallExecutorGateTests: XCTestCase {
         // blocked or missing — never cleaned
         XCTAssertTrue(result.trashedPaths.isEmpty)
         XCTAssertFalse(result.errors.isEmpty)
+    }
+
+    // MARK: - F1 TrashExecutor TOCTOU identity verification
+
+    func testTrashExecutorExecutionWindowIdentityGuard() async throws {
+        let fm = FileManager.default
+        let fixtureRoot = fm.temporaryDirectory.appendingPathComponent("F1-TOCTOU-\(UUID().uuidString)", isDirectory: true)
+        let home = fixtureRoot.appendingPathComponent("Home", isDirectory: true).path
+        let recycleSink = fixtureRoot.appendingPathComponent("Recycled", isDirectory: true)
+        let externalDir = fixtureRoot.appendingPathComponent("ExternalImportant", isDirectory: true)
+        try fm.createDirectory(atPath: home + "/Library/Caches/TargetSub", withIntermediateDirectories: true)
+        try fm.createDirectory(at: recycleSink, withIntermediateDirectories: true)
+        try fm.createDirectory(at: externalDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: fixtureRoot) }
+
+        let idleBrowser = BrowserCleanupGuard(processState: { _ in .idle }, openFileState: { _ in .idle })
+        let idleAI = AIToolCleanupGuard(processState: { _ in .idle }, openFileState: { _ in .idle })
+
+        // Case 1: Leaf file replaced with a new inode during the occupancy check window -> REJECTED.
+        let leafPath = home + "/Library/Caches/TargetSub/leaf.dat"
+        try Data("original-cache-bytes".utf8).write(to: URL(fileURLWithPath: leafPath))
+        let replacementPayload = Data("newly-swapped-important-file".utf8)
+
+        let swapLeafExecutor = TrashExecutor(
+            home: home,
+            browserCleanupGuard: idleBrowser,
+            aiToolCleanupGuard: idleAI,
+            occupancyGuard: { checkedPath in
+                // Simulate external race replacing leaf inode during slow lsof/ps check.
+                try? fm.removeItem(atPath: checkedPath)
+                try? replacementPayload.write(to: URL(fileURLWithPath: checkedPath))
+                return nil
+            },
+            recycle: { url in
+                XCTFail("Must never recycle swapped inode: \(url.path)")
+            }
+        )
+        var leafItem = CleanableItem(name: "leaf.dat", path: leafPath, bytes: 20, category: .userCache, isSelected: false)
+        leafItem.isSelected = true
+        let swapLeafResult = await swapLeafExecutor.trash(items: [leafItem], onProgress: { _ in })
+        XCTAssertEqual(swapLeafResult.cleanedCount, 0)
+        XCTAssertEqual(swapLeafResult.changedPaths, [leafPath])
+        XCTAssertEqual(swapLeafResult.failures.map(\.kind), [.changed])
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: leafPath)), replacementPayload)
+
+        // Case 2: Parent directory replaced with a symlink to external victim directory during occupancy check -> REJECTED.
+        let victimFile = externalDir.appendingPathComponent("victim.dat")
+        let victimPayload = Data("do-not-delete-external-victim".utf8)
+        try victimPayload.write(to: victimFile)
+
+        let subDir = home + "/Library/Caches/ParentSwapSub"
+        try fm.createDirectory(atPath: subDir, withIntermediateDirectories: true)
+        let subTarget = subDir + "/victim.dat"
+        try Data("harmless-cache".utf8).write(to: URL(fileURLWithPath: subTarget))
+
+        let swapParentExecutor = TrashExecutor(
+            home: home,
+            browserCleanupGuard: idleBrowser,
+            aiToolCleanupGuard: idleAI,
+            occupancyGuard: { _ in
+                // Replace parent directory with symlink pointing at externalDir!
+                try? fm.removeItem(atPath: subDir)
+                try? fm.createSymbolicLink(atPath: subDir, withDestinationPath: externalDir.path)
+                return nil
+            },
+            recycle: { url in
+                XCTFail("Must never recycle through swapped parent symlink: \(url.path)")
+            }
+        )
+        var parentSwapItem = CleanableItem(name: "victim.dat", path: subTarget, bytes: 14, category: .userCache, isSelected: false)
+        parentSwapItem.isSelected = true
+        let swapParentResult = await swapParentExecutor.trash(items: [parentSwapItem], onProgress: { _ in })
+        XCTAssertEqual(swapParentResult.cleanedCount, 0)
+        XCTAssertEqual(swapParentResult.changedPaths, [subTarget])
+        XCTAssertEqual(swapParentResult.failures.map(\.kind), [.changed])
+        XCTAssertEqual(try Data(contentsOf: victimFile), victimPayload)
+
+        // Case 3: Positive control — unchanged file passes identity re-verification and recycles normally.
+        let untouchedPath = home + "/Library/Caches/TargetSub/untouched.dat"
+        try Data("cleanable-bytes".utf8).write(to: URL(fileURLWithPath: untouchedPath))
+        let okExecutor = TrashExecutor(
+            home: home,
+            browserCleanupGuard: idleBrowser,
+            aiToolCleanupGuard: idleAI,
+            occupancyGuard: { _ in nil },
+            recycle: { url in
+                try fm.moveItem(at: url, to: recycleSink.appendingPathComponent(url.lastPathComponent))
+            }
+        )
+        var okItem = CleanableItem(name: "untouched.dat", path: untouchedPath, bytes: 15, category: .userCache, isSelected: false)
+        okItem.isSelected = true
+        let okResult = await okExecutor.trash(items: [okItem], onProgress: { _ in })
+        XCTAssertEqual(okResult.cleanedCount, 1)
+        XCTAssertTrue(okResult.changedPaths.isEmpty)
+        XCTAssertEqual(okResult.succeededPaths, [untouchedPath])
+        XCTAssertFalse(fm.fileExists(atPath: untouchedPath))
+        XCTAssertTrue(fm.fileExists(atPath: recycleSink.appendingPathComponent("untouched.dat").path))
+    }
+
+    func testInstalledAppFormattedSizeDetailSupportsEnglishAndChinese() {
+        let app = InstalledApp(
+            name: "Demo",
+            bundleIdentifier: "com.example.demo",
+            path: "/Applications/Demo.app",
+            version: "1.0",
+            bytes: 200_000_000,
+            relatedBytes: 100 * 1_048_576,
+            isSystemLocation: false,
+            canTrashAppBundle: true
+        )
+        let en = app.formattedSizeDetail(english: true)
+        let zh = app.formattedSizeDetail(english: false)
+        XCTAssertEqual(en?.hasPrefix("App "), true)
+        XCTAssertEqual(en?.contains(" · Data "), true)
+        XCTAssertEqual(zh?.hasPrefix("应用 "), true)
+        XCTAssertEqual(zh?.contains(" · 数据 "), true)
     }
 }
 

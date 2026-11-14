@@ -103,11 +103,34 @@ public enum AIConversationInventory {
                                   issues: context.issues.sorted(), scannedAt: now)
     }
 
-    /// No native transcript format currently has an independently disposable proof.
-    /// A caller changing the candidate's state/metadata cannot enable a raw-file
-    /// delete that leaves Codex/Cursor/Claude/Kimi indexes or related state behind.
-    public static func validateConversation(_ candidate: AICleanupCandidate, home: String) -> Bool {
-        false
+    /// Verify that a conversation candidate came from this inventory, its session file set
+    /// has not gained/changed files since scan, and any already-moved resources are absent.
+    public static func validateConversation(
+        _ candidate: AICleanupCandidate,
+        home: String,
+        excludingMovedPaths: Set<String> = []
+    ) -> Bool {
+        let allPaths = Set(candidate.resources.map(\.path))
+        guard candidate.kind == .conversation,
+              !candidate.resources.isEmpty,
+              candidate.reason == "conversation_session",
+              candidate.metadata["producer"] == "conversation_inventory_v1",
+              excludingMovedPaths.isSubset(of: allPaths),
+              excludingMovedPaths.allSatisfy({ UninstallFileBoundary.isMissing($0) }) else {
+            return false
+        }
+        let remainingResources = candidate.resources.filter { !excludingMovedPaths.contains($0.path) }
+        guard !remainingResources.isEmpty else { return false }
+        for resource in remainingResources {
+            guard AIToolCleanupExecutor.resourceStillMatches(resource) else { return false }
+        }
+        let freshInventory = scan(home: home, includeWorktrees: false)
+        guard freshInventory.issues.isEmpty,
+              let fresh = freshInventory.candidates.first(where: { $0.id == candidate.id && $0.tool == candidate.tool }) else {
+            return false
+        }
+        let expectedRemaining = allPaths.subtracting(excludingMovedPaths)
+        return Set(fresh.resources.map(\.path)) == expectedRemaining
     }
 
     private static func codex(_ root: String, archived: Bool, context: AIInventoryMetadata, group: inout Group) {
@@ -178,7 +201,7 @@ public enum AIConversationInventory {
                     id: tool.rawValue + ":conversation:" + root + ":" + session,
                     tool: tool, kind: .conversation,
                     title: tool.name + " · " + URL(fileURLWithPath: session).lastPathComponent,
-                    resources: resources, state: .reviewOnly, reason: "indexed_conversations",
+                    resources: resources, state: .ready, reason: "conversation_session",
                     lastActivity: latest,
                     metadata: ["producer": "conversation_inventory_v1", "format": format,
                                "sessionCount": "1", "fileCount": String(resources.count), "storeRoot": root,

@@ -67,22 +67,22 @@ targets:
       - path: MacDefier
         excludes:
           - "**/.DS_Store"
-          - "**/Resources/Pet/README.md"
-      - path: NOTICE
-        buildPhase: resources
-      - path: Vendor/Sparkle-LICENSE.txt
-        buildPhase: resources
-    resources:
+          - "Resources/**"
       - path: MacDefier/Resources
         excludes:
           - "**/.DS_Store"
           - "**/README.md"
           - "**/*.zip"
           # keep **/*.lproj and Localizable.strings
+      - path: NOTICE
+        buildPhase: resources
+      - path: Vendor/Sparkle-LICENSE.txt
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app
         PRODUCT_NAME: MacDefier
+        PRODUCT_MODULE_NAME: MacDefier
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
@@ -106,6 +106,7 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.dev
           PRODUCT_NAME: MacDefier-Dev
           INFOPLIST_KEY_CFBundleDisplayName: MacDefier Dev
+          ENABLE_TESTABILITY: YES
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG"
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app
@@ -135,4 +136,33 @@ targets:
         script: 'bash "$SRCROOT/scripts/embed-uninstall-helper-plist.sh"'
         basedOnDependencyAnalysis: false
     scheme:
-      testTargets: []
+      testTargets:
+        - MacDefierTests
+  MacDefierTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MacDefierTests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.tests
+        PRODUCT_NAME: MacDefierTests
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(BUILT_PRODUCTS_DIR) $(BUILT_PRODUCTS_DIR)/PackageFrameworks"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks"
+        OTHER_LDFLAGS: "$(inherited) -framework Sparkle"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.dev.tests
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/MacDefier-Dev.app/Contents/MacOS/MacDefier-Dev"
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app.tests
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/MacDefier.app/Contents/MacOS/MacDefier"
+    dependencies:
+      - target: MacDefier

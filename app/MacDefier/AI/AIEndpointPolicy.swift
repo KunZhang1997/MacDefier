@@ -40,30 +40,65 @@ public enum AIEndpointPolicy {
         }
     }
 
-    /// 解析 base URL（可带 /v1 等路径）。
-    public static func classify(_ raw: String) -> Classification {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return Classification(kind: .invalid, host: "", usesTLS: false)
-        }
-        var s = trimmed
+    /// 统一规范化端点 URL 字符串：无协议头时对 loopback 自动补 `http://`，其余补 `https://`；
+    /// 去除首尾空白与末尾多余 `/`。若协议非 http/https 或无合法 host 返回 `nil`。
+    public static func normalizedBaseURLString(_ raw: String) -> String? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s.removeLast() }
+        guard !s.isEmpty else { return nil }
         if !s.contains("://") {
-            // 无 scheme：本机默认 http，其它默认 https
-            let hostGuess = s.split(separator: "/").first.map(String.init) ?? s
-            if isLoopbackHost(hostGuess) {
+            let authority = String(s.prefix(while: { $0 != "/" && $0 != "?" && $0 != "#" }))
+            let hostCandidate = extractHostCandidate(from: authority)
+            if hostCandidate == "::1", !authority.hasPrefix("[") {
+                s = "[" + authority + "]" + String(s.dropFirst(authority.count))
+            }
+            if isLoopbackHost(hostCandidate) {
                 s = "http://" + s
             } else {
                 s = "https://" + s
             }
         }
-        guard let url = URL(string: s), let host = url.host, !host.isEmpty else {
+        guard let parts = URLComponents(string: s),
+              let scheme = parts.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = parts.host, !host.isEmpty,
+              URL(string: s) != nil else {
+            return nil
+        }
+        return s
+    }
+
+    public static func normalizedURL(_ raw: String) -> URL? {
+        guard let normalized = normalizedBaseURLString(raw) else { return nil }
+        return URL(string: normalized)
+    }
+
+    private static func extractHostCandidate(from authority: String) -> String {
+        let hostPort: Substring
+        if let at = authority.lastIndex(of: "@") {
+            hostPort = authority[authority.index(after: at)...]
+        } else {
+            hostPort = authority[...]
+        }
+        if hostPort.hasPrefix("["), let close = hostPort.firstIndex(of: "]") {
+            return String(hostPort[hostPort.index(after: hostPort.startIndex)..<close])
+        }
+        let colons = hostPort.filter { $0 == ":" }.count
+        if colons == 1, let colon = hostPort.firstIndex(of: ":") {
+            return String(hostPort[..<colon])
+        }
+        return String(hostPort)
+    }
+
+    /// 解析 base URL（可带 /v1 等路径）。
+    public static func classify(_ raw: String) -> Classification {
+        guard let s = normalizedBaseURLString(raw),
+              let url = URL(string: s),
+              let host = url.host, !host.isEmpty else {
             return Classification(kind: .invalid, host: "", usesTLS: false)
         }
         let scheme = (url.scheme ?? "").lowercased()
         let usesTLS = scheme == "https"
-        if scheme != "http", scheme != "https" {
-            return Classification(kind: .invalid, host: host, usesTLS: false)
-        }
 
         let kind: AIEndpointKind
         if isLoopbackHost(host) {
@@ -103,12 +138,6 @@ public enum AIEndpointPolicy {
         let cls = classify(raw)
         if cls.requiresRemotePrivacyAck { return privacyAcknowledged }
         return true
-    }
-
-    /// 数据是否会离开本机（LAN + 公网）。
-    public static func dataLeavesDevice(_ raw: String) -> Bool {
-        let k = classify(raw).kind
-        return k == .privateLAN || k == .remote
     }
 
     public static func isLoopbackHost(_ host: String) -> Bool {

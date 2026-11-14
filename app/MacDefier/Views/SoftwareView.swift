@@ -128,10 +128,12 @@ struct SoftwareView: View {
             service.cancelInventoryWork()
         }
         .sheet(item: $target) { app in
-            UninstallSheet(app: app) {
+            UninstallSheet(app: app) { result in
                 target = nil
                 nav.clearPendingUninstall()
-                service.refresh()
+                if let result {
+                    service.markAppCleaned(app, result: result)
+                }
             }
         }
         .confirmationDialog(
@@ -160,9 +162,11 @@ struct SoftwareView: View {
             Text(L10n.t("software.deep_link.pick_message"))
         }
         .sheet(item: $cliTarget) { tool in
-            CliUninstallSheet(tool: tool) {
+            CliUninstallSheet(tool: tool) { result in
                 cliTarget = nil
-                service.refreshCLI(force: true)
+                if let result {
+                    service.markCLIToolCleaned(tool, result: result)
+                }
             }
         }
     }
@@ -200,6 +204,7 @@ struct SoftwareView: View {
                 : L10n.t(canResumeSizes ? "scan.card.resume" : "scan.card.rescan"),
             detail: !isScanning && hasInventory ? L10n.t("scan.card.saved") : nil,
             compact: isScanning || scanJourney.status == .stopped || hasInventory,
+            activeOverride: isScanning,
             action: isScanning || service.isAIEnriching ? nil : {
                 if canResumeSizes { service.resumeSizeCalculation() }
                 else { startCurrentScan() }
@@ -535,7 +540,10 @@ struct SoftwareView: View {
     }
 
     private func appRow(_ app: InstalledApp, showSeparator: Bool) -> some View {
-        MDListRowChrome(
+        let isCleaned = service.isAppCleaned(app)
+        let appGone = isCleaned && !FileManager.default.fileExists(atPath: app.path)
+        let isSelf = app.bundleIdentifier == Bundle.main.bundleIdentifier
+        return MDListRowChrome(
             showSeparator: showSeparator,
             separatorLeading: MDTheme.entitySeparatorLeading,
             verticalPadding: MDTheme.rowVerticalPadding
@@ -543,16 +551,21 @@ struct SoftwareView: View {
             HStack(spacing: MDTheme.entityIconSpacing) {
                 SoftwareAppIcon(path: app.path)
 
-                Text(app.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(MDTheme.label)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(app.bundleIdentifier + "\n" + app.path)
-
-                if app.isSystemLocation {
-                    MDTag(text: L10n.t("common.system"), tone: .neutral)
+                HStack(spacing: 6) {
+                    Text(app.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(appGone ? MDTheme.secondary : MDTheme.label)
+                        .lineLimit(1)
+                    if isCleaned {
+                        MDTag(text: L10n.t("software.cleaned_badge"), tone: .success)
+                    } else if isSelf {
+                        MDTag(text: L10n.t("software.current_app"), tone: .neutral)
+                    } else if app.isSystemLocation || !app.canTrashAppBundle {
+                        MDTag(text: L10n.t("common.system"), tone: .neutral)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(app.bundleIdentifier + "\n" + app.path)
 
                 MDRowMeta(text: "v\(app.version)", width: MDTheme.metaVersionWidth)
 
@@ -572,12 +585,21 @@ struct SoftwareView: View {
                 .help((app.sizeState == .partial || app.sizeState == .unavailable
                        ? L10n.t("software.size_incomplete_help") + "\n" : "") + app.path)
 
-                Button(app.canTrashAppBundle ? L10n.t("software.uninstall") : L10n.t("software.residuals")) {
-                    target = app
+                if appGone {
+                    Button(L10n.t("software.cleaned_badge")) {}
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(true)
+                } else {
+                    Button(app.canTrashAppBundle ? L10n.t("software.uninstall") : L10n.t("software.residuals")) {
+                        target = app
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(app.canTrashAppBundle ? "" : L10n.t("software.protected_help"))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
+            .opacity(appGone ? 0.65 : 1.0)
         }
         .background(focusedAppID == app.id ? MDTheme.surfaceSelected : Color.clear)
         .id(app.id)
@@ -615,6 +637,7 @@ struct SoftwareView: View {
     }
 
     private func cliRow(_ tool: CliTool, showSeparator: Bool) -> some View {
+        let isCleaned = service.isCLIToolCleaned(tool)
         let programSize = tool.programBytes == 0 ? "0 B" : tool.formattedProgramSize
         let dataSize = tool.dataBytes == 0 ? "0 B" : tool.formattedDataSize
         return MDListRowChrome(
@@ -625,8 +648,8 @@ struct SoftwareView: View {
             HStack(spacing: MDTheme.entityIconSpacing) {
                 MDEntityLeading(
                     kind: .symbol(
-                        tool.protected ? "lock.shield" : "terminal",
-                        tint: tool.protected ? MDTheme.tertiary : MDTheme.accent
+                        isCleaned ? "checkmark.circle.fill" : (tool.protected ? "lock.shield" : "terminal"),
+                        tint: isCleaned ? MDTheme.success : (tool.protected ? MDTheme.tertiary : MDTheme.accent)
                     )
                 )
 
@@ -634,10 +657,13 @@ struct SoftwareView: View {
                     HStack(spacing: 6) {
                         Text(tool.displayName)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(MDTheme.label)
+                            .foregroundStyle(isCleaned ? MDTheme.secondary : MDTheme.label)
                             .lineLimit(1)
+                        if isCleaned {
+                            MDTag(text: L10n.t("software.cleaned_badge"), tone: .success)
+                        }
                         MDTag(text: tool.channel.localizedTitle, tone: .neutral)
-                        if tool.isRunning {
+                        if !isCleaned && tool.isRunning {
                             MDTag(text: L10n.t("software.cli.running"), tone: .warning)
                         }
                         if tool.protected {
@@ -655,7 +681,7 @@ struct SoftwareView: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(tool.formattedTotalSize)
                         .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(MDTheme.label)
+                        .foregroundStyle(isCleaned ? MDTheme.tertiary : MDTheme.label)
                     Text(L10n.t("software.cli.size_split", programSize, dataSize))
                         .font(.system(size: 9).monospacedDigit())
                         .foregroundStyle(MDTheme.tertiary)
@@ -664,15 +690,23 @@ struct SoftwareView: View {
                 .frame(minWidth: MDTheme.metaSizeWidth, alignment: .trailing)
                 .help(L10n.t("software.cli.size_help", programSize, dataSize))
 
-                Button(tool.protected ? L10n.t("software.cli.protected") : L10n.t("software.uninstall")) {
-                    guard !tool.protected else { return }
-                    cliTarget = tool
+                if isCleaned {
+                    Button(L10n.t("software.cleaned_badge")) {}
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(true)
+                } else {
+                    Button(tool.protected ? L10n.t("software.cli.protected") : L10n.t("software.uninstall")) {
+                        guard !tool.protected else { return }
+                        cliTarget = tool
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(tool.protected)
+                    .help(tool.protected ? L10n.t("software.cli.protected_help") : L10n.t("software.cli.uninstall_help"))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(tool.protected)
-                .help(tool.protected ? L10n.t("software.cli.protected_help") : L10n.t("software.cli.uninstall_help"))
             }
+            .opacity(isCleaned ? 0.65 : 1.0)
         }
     }
 
@@ -688,14 +722,33 @@ struct SoftwareView: View {
     }
 }
 
+private enum SoftwareAppIconCache {
+    static let shared: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 256
+        return cache
+    }()
+}
+
 /// Keep size/progress publications from reloading every visible icon in the view body.
 private struct SoftwareAppIcon: View {
     let path: String
     @State private var image: NSImage?
 
     var body: some View {
-        MDEntityLeading(kind: image.map { .appIcon($0) } ?? .symbol("app"))
-            .task(id: path) { image = NSWorkspace.shared.icon(forFile: path) }
+        let resolved = image ?? SoftwareAppIconCache.shared.object(forKey: path as NSString)
+        MDEntityLeading(kind: resolved.map { .appIcon($0) } ?? .symbol("app"))
+            .task(id: path) {
+                if let cached = SoftwareAppIconCache.shared.object(forKey: path as NSString) {
+                    if image !== cached { image = cached }
+                    return
+                }
+                let loaded = await Task.detached(priority: .utility) {
+                    NSWorkspace.shared.icon(forFile: path)
+                }.value
+                SoftwareAppIconCache.shared.setObject(loaded, forKey: path as NSString)
+                image = loaded
+            }
             .accessibilityHidden(true)
     }
 }

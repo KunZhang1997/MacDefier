@@ -4,7 +4,6 @@
 "route.diagnostic" = "Home";
 "route.cleanup" = "Cleanup";
 "route.software" = "Apps";
-"route.ai" = "Mr. Defier";
 "route.monitor" = "Monitor";
 "route.settings" = "Settings";
 "sidebar.primary" = "Main";
@@ -461,7 +460,7 @@
 "uninstall.show_finder" = "Show in Finder";
 "uninstall.cancel" = "Cancel";
 "uninstall.move_trash" = "Move to Trash";
-"uninstall.working" = "Working…";
+"uninstall.sheet.working" = "Working…";
 "uninstall.pwd_hint_app" = "Enter your login password if asked.\nWe'll try to quit %@ if it's running.";
 "uninstall.pwd_hint_res" = "Enter your login password if asked.\nOnly safe leftovers will be moved to Trash.";
 "uninstall.done_ok" = "%@ complete";
@@ -884,6 +883,7 @@
 "monitor.kpi.idle" = "%@ · idle";
 "monitor.kpi.util_na" = "%@ · util. n/a";
 "monitor.kpi.gpu_enum" = "GPU enumerated";
+"monitor.kpi.disk_used" = "Disk used";
 "monitor.kpi.used_pct" = "%.0f%% used";
 "monitor.kpi.total_tb" = "%.1f TB total";
 "monitor.kpi.total_gb" = "%.0f GB total";
@@ -1388,14 +1388,16 @@
 
 /* Cleanup preflight and outcome reasons */
 "cleanup.technical_details" = "Technical details";
-"cleanup.failure.inUse" = "App data in use";
-"cleanup.failure.permissionDenied" = "Permission required to move";
-"cleanup.failure.protectedResource" = "Protected items retained";
-"cleanup.failure.missing" = "Item no longer exists";
-"cleanup.failure.changed" = "Changed since scanning";
-"cleanup.failure.cancelled" = "Cancelled";
-"cleanup.failure.busy" = "Another operation is using this item";
-"cleanup.failure.unknown" = "Other reasons";
+"cleanup.group.inUse" = "App data in use";
+"cleanup.group.permissionDenied" = "Permission required to move";
+"cleanup.group.protectedResource" = "Protected items retained";
+"cleanup.group.missing" = "Item no longer exists";
+"cleanup.group.changed" = "Changed since scanning";
+"cleanup.group.cancelled" = "Cancelled";
+"cleanup.group.busy" = "Another operation is using this item";
+"cleanup.group.unknown" = "Other reasons";
+"cleanup.large_item.folder.what" = "Large folder by size (≥~100MB). %@";
+"cleanup.large_item.file.what" = "Large file by size (≥~100MB). %@";
 "cleanup.reason.inUse" = "The app or a helper is running. Quit that app and scan again. These files were not moved.";
 "cleanup.reason.permissionDenied" = "The current user cannot move these items to Trash. System logs are normally managed by macOS and should be retained. Full Disk Access does not grant administrator deletion privileges.";
 "cleanup.reason.protectedResource" = "A safety check requires keeping this item, or its usage could not be verified. Scan again to refresh its state.";
@@ -1525,3 +1527,13 @@
 "cleanup.browser.effect.downloads" = "Download information or incomplete downloads may be lost.";
 "cleanup.browser.effect.siteData" = "Offline data and site settings may be lost; sites may require sign-in again.";
 "cleanup.reason.browserOwner" = "Browser or a helper is running, or its status cannot be verified. Quit it and scan again.";
+"cleanup.tag.in_use" = "In Use";
+"cleanup.tag.no_permission" = "No Permission";
+"cleanup.cleaned_inline" = "Cleaned %d items";
+"aitools.select_low_risk" = "Select Low-Risk";
+"aitools.reason.conversation_session" = "Local session transcript; movable to Trash";
+"aitools.reason.cleaned" = "Moved to Trash";
+"aitools.model_full_size" = "Full model %@";
+"software.cleaned_badge" = "Cleaned";
+"software.current_app" = "Current App";
+"software.protected_help" = "Protected system or active app; only related residuals can be cleaned";

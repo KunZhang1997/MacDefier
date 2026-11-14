@@ -315,4 +315,57 @@ final class AIToolCleanupSafetyTests: XCTestCase {
         let unknown = AIToolCleanupGuard(processState: { _ in .unknown }, openFileState: { _ in .unknown })
         XCTAssertNil(unknown.blockingReasonForExplicitRemoval(source, home: home))
     }
+
+    func testBlockingReasonQueriesProcessStateOncePerToolAndSharedSnapshotRunsPSOnce() throws {
+        let row = try cacheCandidate()
+        final class Counter: @unchecked Sendable {
+            let lock = NSLock()
+            var processQueries = 0
+            var psRuns = 0
+        }
+        let counter = Counter()
+
+        let guardSinglePass = AIToolCleanupGuard(
+            processState: { _ in
+                counter.lock.lock()
+                counter.processQueries += 1
+                counter.lock.unlock()
+                return .idle
+            },
+            openFileState: { _ in .idle }
+        )
+        XCTAssertNil(guardSinglePass.blockingReason(for: row.path, home: home))
+        XCTAssertEqual(counter.processQueries, 1, "blockingReason must not query processState twice for one single-tool cache item")
+
+        let sharedSnapshot = CleanupProcessSnapshot(
+            runningApplicationsProvider: { [] },
+            runPS: { args in
+                counter.lock.lock()
+                counter.psRuns += 1
+                counter.lock.unlock()
+                let stdout = args.contains("comm=") ? "/sbin/launchd\n" : "/sbin/launchd\n/usr/libexec/logd\n"
+                return ProcessRunResult(
+                    exitCode: 0,
+                    stdout: Data(stdout.utf8),
+                    stderr: Data(),
+                    timedOut: false,
+                    wasCancelled: false,
+                    outputLimitExceeded: false
+                )
+            }
+        )
+        let aiGuard = AIToolCleanupGuard.withCapturedProcessSnapshot(sharedSnapshot)
+        let browserGuard = BrowserCleanupGuard.withCapturedProcessSnapshot(sharedSnapshot)
+
+        for _ in 0..<25 {
+            for tool in AITool.allCases {
+                XCTAssertEqual(aiGuard.state(for: tool), .idle)
+            }
+            for brand in BrowserBrand.allCases {
+                XCTAssertNil(browserGuard.ownerBlockingReason(for: brand))
+            }
+        }
+        // One ps for AI command lines + one ps for browser executable paths across 325 queries.
+        XCTAssertEqual(counter.psRuns, 2)
+    }
 }

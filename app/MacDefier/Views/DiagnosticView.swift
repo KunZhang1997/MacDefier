@@ -80,13 +80,21 @@ struct DiagnosticView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(MDTheme.label)
                     .lineLimit(1)
+                    .layoutPriority(1)
             }
 
             Spacer(minLength: 8)
 
             if scan.isScanning {
-                ProgressView().controlSize(.small)
-                Text(scan.phaseHint).font(.caption).foregroundStyle(MDTheme.secondary)
+                ProgressView().controlSize(.small).fixedSize()
+                Text(scan.phaseHint)
+                    .font(.caption)
+                    .foregroundStyle(MDTheme.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(-1)
+                    .help(scan.phaseHint)
+                    .accessibilityLabel(scan.phaseHint)
             } else if scan.report.scannedAt != .distantPast {
                 Text(scan.report.scannedAt, format: .dateTime.hour().minute())
                     .font(.caption.monospacedDigit()).foregroundStyle(MDTheme.secondary)
@@ -106,6 +114,7 @@ struct DiagnosticView: View {
                 Label(L10n.t("workbench.diagnosis_options"), systemImage: "ellipsis.circle")
             }
             .menuStyle(.borderlessButton).labelsHidden().fixedSize()
+            .layoutPriority(1)
             .accessibilityIdentifier("diagnostic.options")
             .disabled(scan.isScanning)
         }

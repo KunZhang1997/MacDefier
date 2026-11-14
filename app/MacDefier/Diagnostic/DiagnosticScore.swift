@@ -67,15 +67,15 @@ struct DiagnosticScoreCleanupInput: Sendable, Equatable {
 }
 
 enum DiagnosticScore {
-    // MARK: - Thresholds (与 DiagnosticScanEngine 发现档对齐)
+    // MARK: - Thresholds (统一引用 HealthThresholds)
 
-    private static let diskHighUsage = 0.92
-    private static let diskWarnUsage = 0.85
+    private static let diskHighUsage = HealthThresholds.systemDiskCriticalUsage
+    private static let diskWarnUsage = HealthThresholds.systemDiskWarnUsage
     /// 仅系统根卷使用绝对空闲阈值（外置盘不用 20GB 规则）
-    private static let diskFreeHighBytes: Double = 20 * 1_073_741_824
+    private static let diskFreeHighBytes = HealthThresholds.systemDiskCriticalFreeBytes
 
-    private static let cpuHigh = 0.85
-    private static let cpuWarn = 0.65
+    private static let cpuHigh = HealthThresholds.cpuHighUsage
+    private static let cpuWarn = HealthThresholds.cpuWarnUsage
     private static let hogExtra = 70.0
     private static let loadCap = 16
     /// 清理类扣分上限，避免「可回收」制造恐慌
@@ -83,14 +83,12 @@ enum DiagnosticScore {
 
     /// 系统根卷：`.system` 或挂载点 `/`
     static func isSystemVolume(_ disk: DiskVolume) -> Bool {
-        disk.kind == .system || disk.path == "/"
+        HealthThresholds.isSystemVolume(disk)
     }
 
     /// 系统盘是否偏紧（AI / 卸载 CTA 门控共用）
     static func isSystemDiskTight(_ disks: [DiskVolume]) -> Bool {
-        guard let sys = disks.first(where: isSystemVolume), sys.total.isFinite, sys.total > 0,
-              sys.free.isFinite, (0...sys.total).contains(sys.free) else { return false }
-        return sys.usage >= 0.88 || sys.free < 25 * 1_073_741_824
+        HealthThresholds.isSystemDiskTight(disks)
     }
 
     static func evaluate(
@@ -161,21 +159,21 @@ enum DiagnosticScore {
         if let cleanup, !cleanup.isPartial {
             var cleanupPts = 0
             let junk = cleanup.junkBytes
-            if junk >= 5 * 1_073_741_824 {
+            if junk >= HealthThresholds.junkHighBytes {
                 let p = 8
                 cleanupPts += p
                 items.append(.init(domain: .space, points: p, reasonKey: "junk_high"))
-            } else if junk >= 1 * 1_073_741_824 {
+            } else if junk >= HealthThresholds.junkWarnBytes {
                 let p = 4
                 cleanupPts += p
                 items.append(.init(domain: .space, points: p, reasonKey: "junk_warn"))
             }
             let trash = cleanup.trashBytes
-            if trash >= 1 * 1_073_741_824 {
+            if trash >= HealthThresholds.trashHighBytes {
                 let p = 6
                 cleanupPts += p
                 items.append(.init(domain: .space, points: p, reasonKey: "trash_high"))
-            } else if trash >= 200 * 1_024 * 1_024 {
+            } else if trash >= HealthThresholds.trashWarnBytes {
                 let p = 3
                 cleanupPts += p
                 items.append(.init(domain: .space, points: p, reasonKey: "trash_warn"))

@@ -508,23 +508,6 @@ public final class CleanupService: ObservableObject {
         applySelection(updated)
     }
 
-    /// 组头一键勾选：selected=true 时**追加勾选低风险**（不取消组内已手勾的谨慎项）；
-    /// caution / 废纸篓等仍须用户手勾。selected=false 时组内全清。
-    public func setCategorySelected(_ category: CleanupCategory, selected: Bool) {
-        var updated = groups
-        guard let gi = updated.firstIndex(where: { $0.category == category }) else { return }
-        for i in updated[gi].items.indices {
-            if selected {
-                if updated[gi].items[i].isLowRiskBulkEligible {
-                    updated[gi].items[i].isSelected = true
-                }
-            } else {
-                updated[gi].items[i].isSelected = false
-            }
-        }
-        applySelection(updated)
-    }
-
     public func isItemSelected(id: String) -> Bool {
         guard let location = previewIndex.locations[id] else { return false }
         return groups[location.group].items[location.item].isSelected
@@ -858,6 +841,15 @@ public final class CleanupService: ObservableObject {
     public func reviewFailedItems() {
         guard !groups.isEmpty, !(lastResult?.failedPaths.isEmpty ?? true) else { return }
         phase = .preview
+    }
+
+    /// Return from completion summary without wiping remaining scanned items.
+    public func finishSummary() {
+        if !groups.isEmpty, hasFreshPreview {
+            phase = .preview
+        } else {
+            reset()
+        }
     }
 
     private func applySelection(_ updated: [CleanupCategoryGroup]) {

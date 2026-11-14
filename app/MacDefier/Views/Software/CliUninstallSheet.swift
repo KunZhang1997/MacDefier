@@ -5,7 +5,7 @@ import AppKit
 /// CLI tool uninstall preview (§7.3.1 C1).
 struct CliUninstallSheet: View {
     let tool: CliTool
-    var onClose: () -> Void
+    var onClose: (CliUninstallResult?) -> Void
 
     @State private var stopAgents = false
     @State private var uninstallProgram = false
@@ -71,7 +71,7 @@ struct CliUninstallSheet: View {
                 Divider()
                 HStack {
                     Spacer()
-                    Button(L10n.t("common.done")) { onClose() }
+                    Button(L10n.t("common.done")) { onClose(result) }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                 }
@@ -138,7 +138,7 @@ struct CliUninstallSheet: View {
                 }
             }
             Spacer()
-            Button(L10n.t("common.close")) { onClose() }
+            Button(L10n.t("common.close")) { onClose(result) }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(16)
@@ -370,7 +370,7 @@ struct CliUninstallSheet: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(L10n.t("common.cancel")) { onClose() }
+            Button(L10n.t("common.cancel")) { onClose(nil) }
             Button(L10n.t("software.uninstall")) {
                 confirm = true
             }

@@ -58,8 +58,8 @@ final class MonitorAIAssist: ObservableObject {
             .map { snapshot in
                 let cpu = Int((snapshot.cpu?.totalUsage ?? 0) * 20)
                 let ram = Int((snapshot.ram?.usage ?? 0) * 20)
-                let diskFree = Int((snapshot.disks.primary ?? snapshot.disks.physical.first)?.free ?? 0) / 1_073_741_824
-                let top = snapshot.topCPU.first.map { "\($0.name):\(Int($0.usage))" } ?? "-"
+                let diskFree = Int((snapshot.disks.first(where: HealthThresholds.isSystemVolume) ?? snapshot.disks.physical.first)?.free ?? 0) / 1_000_000_000
+                let top = snapshot.topCPU.first.map { "\($0.name):\(Int(($0.usage / 5).rounded()) * 5)" } ?? "-"
                 let ipChange = snapshot.networkOverview.ipHistory.first?.id.uuidString ?? "-"
                 return "\(cpu)|\(ram)|\(diskFree)|\(top)|\(ipChange)"
             }
@@ -147,27 +147,22 @@ final class MonitorAIAssist: ObservableObject {
     static func ruleDashLine(snapshot s: MonitorSnapshot) -> String {
         let cpu = s.cpuIsFresh() ? (s.cpu?.totalUsage ?? 0) : 0
         let ram = s.ramIsFresh() ? (s.ram?.usage ?? 0) : 0
-        let disk = s.systemDiskIsFresh() ? s.disks.first(where: DiagnosticScore.isSystemVolume) : nil
-        let freeGB = disk.map { $0.free / 1_073_741_824 } ?? 999
-        let diskUsage = disk?.usage ?? 0
+        let disk = s.systemDiskIsFresh() ? s.disks.first(where: HealthThresholds.isSystemVolume) : nil
         let top = s.topCPU.first
         let topName = top?.name ?? ""
         let topCPU = top?.usage ?? 0
 
-        if freeGB < 25 || diskUsage >= 0.90 {
-            let freeStr = disk.map {
-                ByteCountFormatter.string(fromByteCount: Int64($0.free), countStyle: .file)
-            } ?? "—"
+        if s.systemDiskIsFresh(), HealthThresholds.isSystemDiskTight(s.disks) {
+            let freeStr = disk.map { Format.bytes($0.free) } ?? "—"
             return L10n.t("monitor.rule.disk_full", freeStr)
         }
-        if cpu >= 0.85 {
+        if cpu >= HealthThresholds.cpuHighUsage {
             if topCPU >= 15, !topName.isEmpty {
                 return L10n.t("monitor.rule.cpu_busy_top", pct(cpu), topName)
             }
             return L10n.t("monitor.rule.cpu_busy", pct(cpu))
         }
-        if s.ramIsFresh(), let pressure = s.ram?.pressure.value,
-           pressure == .warning || pressure == .critical {
+        if s.ramIsFresh(), HealthThresholds.isMemoryPressureElevated(s.ram), let pressure = s.ram?.pressure.value {
             if let r = s.topRAM.first, r.usage >= 10 {
                 return L10n.t("monitor.rule.ram_pressure_top", L10n.t("memory.pressure.\(pressure.rawValue)"), r.name)
             }
@@ -191,8 +186,8 @@ final class MonitorAIAssist: ObservableObject {
     private func dashFingerprint(_ s: MonitorSnapshot) -> String {
         let cpu = Int((s.cpu?.totalUsage ?? 0) * 20) // 5% buckets
         let ram = Int((s.ram?.usage ?? 0) * 20)
-        let free = Int(s.disks.first(where: DiagnosticScore.isSystemVolume)?.free ?? 0) / 1_073_741_824
-        let top = s.topCPU.first.map { "\($0.name):\($0.usage)" } ?? "-"
+        let free = Int(s.disks.first(where: HealthThresholds.isSystemVolume)?.free ?? 0) / 1_000_000_000
+        let top = s.topCPU.first.map { "\($0.name):\(Int(($0.usage / 5).rounded()) * 5)" } ?? "-"
         return "\(cpu)|\(ram)|\(free)|\(top)|\(s.ram?.pressure.value.rawValue ?? "unknown")|\(s.hasFreshDiagnosticMetrics())"
     }
 

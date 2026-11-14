@@ -158,6 +158,7 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
     public let browserKind: BrowserDataKind?
     public let browserDetail: String?
     public let browserProfile: String?
+    public let isDirectory: Bool
     /// Derived only from immutable name/path/category/risk, never from selection.
     /// Calculate once, not on every SwiftUI body or bulk-selection pass.
     public private(set) var isLowRiskBulkEligible: Bool = false
@@ -189,7 +190,8 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
         sizeIsLowerBound: Bool = false,
         browserKind: BrowserDataKind? = nil,
         browserDetail: String? = nil,
-        browserProfile: String? = nil
+        browserProfile: String? = nil,
+        isDirectory: Bool? = nil
     ) {
         let explained = ItemExplainer.explain(name: name, path: path, category: category, appName: appName)
         self.id = id
@@ -204,6 +206,13 @@ public struct CleanableItem: Identifiable, Sendable, Hashable {
         self.browserKind = browserKind
         self.browserDetail = browserDetail
         self.browserProfile = browserProfile
+        if let isDirectory {
+            self.isDirectory = isDirectory
+        } else {
+            var isDir: ObjCBool = false
+            _ = FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+            self.isDirectory = isDir.boolValue
+        }
         self.displayTitle = displayTitle ?? explained.title
         self.whatIsIt = whatIsIt ?? explained.what
         self.ifCleaned = ifCleaned ?? explained.effect
@@ -310,6 +319,10 @@ public struct CleanupResult: Sendable {
     public var succeededPaths: [String]
     /// Individual source paths that failed and remain available for retry.
     public var failedPaths: [String]
+    /// Source paths rejected because their identity or ancestor symlink chain changed before deletion.
+    public var changedPaths: [String] {
+        failures.filter { $0.kind == .changed }.map(\.path)
+    }
     /// Main app is still running after a normal 5-second quit attempt.
     public var requiresForceQuit: Bool
 
@@ -336,29 +349,56 @@ public struct CleanupResult: Sendable {
 
 // MARK: - Explainer（路径 → 人话）
 
-enum ItemExplainer {
-    struct Result {
-        var title: String
-        var what: String
-        var effect: String
-        var risk: CleanupRisk
+public enum CleanupItemPatternKind: String, Sendable, CaseIterable {
+    case temp
+    case derivedData
+    case coreSimulator
+    case homebrew
+    case localModel
+    case aiHistory
+    case aiCacheOrLog
+    case wallpaper
+    case mumuSimulator
+    case colimaVM
+    case docker
+    case devDependencyCache
+    case npmCache
+    case trash
+    case appleSystemCache
+    case secrets
+    case browser
+    case chatApp
+    case devOrSystemTool
+    case log
+    case userCache
+    case categoryDefault
+}
+
+public enum ItemExplainer {
+    public struct Result: Sendable, Equatable {
+        public var title: String
+        public var what: String
+        public var effect: String
+        public var risk: CleanupRisk
+
+        public init(title: String, what: String, effect: String, risk: CleanupRisk) {
+            self.title = title
+            self.what = what
+            self.effect = effect
+            self.risk = risk
+        }
     }
 
-    static func explain(name: String, path: String, category: CleanupCategory, appName: String?) -> Result {
-        let lower = (name + " " + path).lowercased()
-        let friendly = appName ?? humanizeBundle(name)
-
+    public static func classify(name: String, path: String, category: CleanupCategory) -> CleanupItemPatternKind {
         // The scanner's category is stronger evidence than keywords in a temp
         // folder name. Build/test scratch paths such as
         // /tmp/speaksend-ollama-tests are temporary data, not AI/model data.
         if category == .temp {
-            return .init(
-                title: "临时 · \(friendly)",
-                what: "临时目录里的短命文件",
-                effect: "可能被正在运行的程序占用；请确认后再勾",
-                risk: .caution
-            )
+            return .temp
         }
+
+        let lowerName = name.lowercased()
+        let lower = (name + " " + path).lowercased()
 
         let isKnownLocalModel = lower.contains("/library/application support/speaksend/managedmodels")
             || lower.contains("/.ollama/models")
@@ -366,181 +406,232 @@ enum ItemExplainer {
             || lower.contains(".gguf")
             || lower.contains("ggml-")
 
-        // 已知模式优先
         if lower.contains("deriveddata") {
+            return .derivedData
+        }
+        if lower.contains("coresimulator") {
+            return .coreSimulator
+        }
+        if lower.contains("homebrew") || lower.contains("/brew") || category == .brew {
+            return .homebrew
+        }
+        if isKnownLocalModel {
+            return .localModel
+        }
+        if category == .aiApps || lower.contains("ollama") || lower.contains("lmstudio") || lower.contains(".lmstudio") {
+            if lower.contains("history") || lower.contains("conversation") {
+                return .aiHistory
+            }
+            return .aiCacheOrLog
+        }
+        if lower.contains("com.apple.wallpaper") || lower.contains("aerials") {
+            return .wallpaper
+        }
+        if lower.contains("com.netease.mumu.nemux") || lower.contains("/mumu") || lower.contains("nemux") {
+            return .mumuSimulator
+        }
+        if lower.contains("/.colima") || lower.contains("_lima") {
+            return .colimaVM
+        }
+        if category == .docker || lower.contains("docker") || lower.contains("buildx") {
+            return .docker
+        }
+        // Check pnpm/yarn/bun/pip BEFORE npm because "pnpm" contains substring "npm".
+        if lower.contains("pnpm") || lower.contains("yarn") || lower.contains("bun") || lower.contains("pip") {
+            return .devDependencyCache
+        }
+        if lower.contains("npm") || lower.contains("_cacache") {
+            return .npmCache
+        }
+        if lower.contains(".trash") || path.contains("/.Trash/") {
+            return .trash
+        }
+        if name.hasPrefix("com.apple.") || lower.contains("com.apple.") {
+            return .appleSystemCache
+        }
+        if lower.contains("keychain") || lower.contains("password") {
+            return .secrets
+        }
+        if lower.contains("chrome") || lower.contains("firefox") || lower.contains("edge") || lower.contains("safari") {
+            return .browser
+        }
+        if lower.contains("slack") || lower.contains("discord") || lower.contains("telegram")
+            || lower.contains("wechat") || lower.contains("whatsapp") {
+            return .chatApp
+        }
+        if lower.contains("colima") || lower.contains("swiftpm") || lowerName == "geoservices" || lower.contains("/geoservices") {
+            return .devOrSystemTool
+        }
+        if category == .userLogs || category == .systemLogs {
+            return .log
+        }
+        if category == .userCache {
+            return .userCache
+        }
+        return .categoryDefault
+    }
+
+    public static func explain(name: String, path: String, category: CleanupCategory, appName: String?) -> Result {
+        let friendly = appName ?? humanizeBundle(name)
+        switch classify(name: name, path: path, category: category) {
+        case .temp:
+            return .init(
+                title: "临时 · \(friendly)",
+                what: "临时目录里的短命文件",
+                effect: "可能被正在运行的程序占用；请确认后再勾",
+                risk: .caution
+            )
+        case .derivedData:
             return .init(
                 title: "Xcode DerivedData",
                 what: "Xcode 编译中间产物（索引、中间目标文件）",
                 effect: "清了下次编译变慢并重建；不丢工程源码",
                 risk: .rebuild
             )
-        }
-        if lower.contains("coresimulator") {
+        case .coreSimulator:
             return .init(
                 title: "iOS 模拟器缓存",
                 what: "模拟器运行时缓存/设备支持文件",
                 effect: "清了下次开模拟器可能重下组件",
                 risk: .rebuild
             )
-        }
-        if lower.contains("homebrew") || lower.contains("/brew") || category == .brew {
+        case .homebrew:
             return .init(
                 title: "Homebrew 下载缓存",
                 what: "brew 装软件时下过的安装包缓存",
                 effect: "清了下次 brew install/upgrade 可能重新下载",
                 risk: .rebuild
             )
-        }
-        if isKnownLocalModel {
+        case .localModel:
             return .init(
                 title: "本地模型文件",
                 what: "应用下载到本机的语音/大语言模型文件",
                 effect: "清了后相关功能要重新下载模型才能继续用",
                 risk: .caution
             )
-        }
-        if category == .aiApps || lower.contains("ollama") || lower.contains("lmstudio") || lower.contains(".lmstudio") {
-            if lower.contains("history") || lower.contains("conversation") {
-                return .init(
-                    title: friendly,
-                    what: "本地 AI 可选历史/对话（PureMac 默认不勾）",
-                    effect: "勾了会丢聊天/提示历史",
-                    risk: .skip
-                )
-            }
+        case .aiHistory:
+            return .init(
+                title: friendly,
+                what: "本地 AI 可选历史/对话（默认不勾，可手动选择）",
+                effect: "勾了会丢聊天/提示历史",
+                risk: .caution
+            )
+        case .aiCacheOrLog:
             return .init(
                 title: "本地 AI · \(friendly)",
                 what: "Ollama / LM Studio 日志或缓存",
                 effect: "可再生；模型权重一般不在这些路径",
                 risk: .rebuild
             )
-        }
-        if lower.contains("com.apple.wallpaper") || lower.contains("aerials") {
+        case .wallpaper:
             return .init(
                 title: "动态壁纸缓存",
                 what: "macOS 航拍动态壁纸下载到本机的资源",
                 effect: "清了后壁纸可能重新下载；建议先切到静态壁纸再清",
                 risk: .rebuild
             )
-        }
-        if lower.contains("com.netease.mumu.nemux") || lower.contains("/mumu") || lower.contains("nemux") {
+        case .mumuSimulator:
             return .init(
                 title: "MuMu 模拟器数据",
                 what: "MuMu 的实例、镜像包或运行数据",
                 effect: "清了可能需要重建或重装模拟器环境；仍在使用时建议先到 MuMu 内清",
                 risk: .caution
             )
-        }
-        if lower.contains("/.colima") || lower.contains("_lima") {
+        case .colimaVM:
             return .init(
                 title: "Colima 虚拟机磁盘",
                 what: "Colima 的 Linux VM 磁盘与运行数据",
                 effect: "清了基本等于重建 Colima / Docker 环境",
                 risk: .caution
             )
-        }
-        if category == .docker || lower.contains("docker") || lower.contains("buildx") {
+        case .docker:
             return .init(
                 title: "Docker · \(friendly)",
                 what: "Docker Desktop 可再生缓存/日志（非镜像层整库）",
                 effect: "清了下次构建/拉取可能变慢",
                 risk: .rebuild
             )
-        }
-        if lower.contains("npm") || lower.contains("_cacache") {
+        case .npmCache:
             return .init(
                 title: "npm 包缓存",
                 what: "Node 包管理器下过的依赖包",
                 effect: "清了下次 npm install 会重新下",
                 risk: .rebuild
             )
-        }
-        if lower.contains("yarn") || lower.contains("pnpm") || lower.contains("pip") {
+        case .devDependencyCache:
             return .init(
                 title: "开发依赖缓存",
                 what: "前端/Python 包管理器缓存",
                 effect: "清了下次安装依赖会重新下载",
                 risk: .rebuild
             )
-        }
-        if lower.contains(".trash") || path.contains("/.Trash/") {
+        case .trash:
             return .init(
                 title: friendly,
                 what: "已在废纸篓里的文件/文件夹",
                 effect: "勾选清理 = 清空该项（永久删除，通常更难恢复；与缓存「移入废纸篓」不同）",
                 risk: .caution
             )
-        }
-
-        // PureMac 用户缓存扫描不按 com.apple.* 默认反选；人话保留，风险跟可重建
-        if name.hasPrefix("com.apple.") || lower.contains("com.apple.") {
+        case .appleSystemCache:
             return .init(
                 title: "系统相关 · \(friendly)",
                 what: "名称像系统组件（com.apple.*）的缓存（PureMac 同样扫入用户缓存）",
                 effect: "多数可重建；短时可能影响对应系统服务",
                 risk: .rebuild
             )
-        }
-        // 仅名称强暗示凭证时保守（PureMac 无此层；保留最小保护）
-        if lower.contains("keychain") || lower.contains("password") {
+        case .secrets:
             return .init(
                 title: friendly,
                 what: "名称像钥匙串/密码相关",
                 effect: "可能影响登录态；建议保留",
                 risk: .skip
             )
-        }
-        if lower.contains("chrome") || lower.contains("firefox") || lower.contains("edge") || lower.contains("safari") {
+        case .browser:
             return .init(
                 title: "浏览器 · \(friendly)",
                 what: "浏览器缓存（网页图片/脚本等）",
                 effect: "网页首次打开变慢；一般不丢书签（书签不在 Caches）",
                 risk: .rebuild
             )
-        }
-        if lower.contains("slack") || lower.contains("discord") || lower.contains("telegram")
-            || lower.contains("wechat") || lower.contains("whatsapp") {
+        case .chatApp:
             return .init(
                 title: "聊天应用 · \(friendly)",
                 what: "即时通讯类缓存（缩略图、媒体缓存等）",
                 effect: "媒体可能重下；聊天记录通常不在 Caches 主目录",
                 risk: .caution // 仍可能在用，不进一键低风险
             )
-        }
-        if lower.contains("colima") || lower.contains("swiftpm") || lower == "geoservices" {
+        case .devOrSystemTool:
             return .init(
                 title: "开发/系统 · \(friendly)",
                 what: "开发工具或系统相关缓存，多半仍在用",
                 effect: "清了可能要重建环境或暂时影响服务",
                 risk: .caution
             )
-        }
-        if category == .userLogs || category == .systemLogs {
+        case .log:
             return .init(
                 title: "日志 · \(friendly)",
                 what: "程序运行记录，方便排查故障",
                 effect: "腾出空间；以后查历史问题少材料",
                 risk: .safe
             )
-        }
-        if category == .userCache {
+        case .userCache:
             return .init(
                 title: "缓存 · \(friendly)",
                 what: "「\(friendly)」应用的缓存文件夹（加速用）",
                 effect: "App 会自己再生成；仍在用的工具请勿当低风险一键勾",
                 risk: .rebuild
             )
+        case .categoryDefault:
+            return .init(
+                title: friendly,
+                what: category.whatIsIt,
+                effect: category.ifCleaned,
+                risk: .caution
+            )
         }
-
-        return .init(
-            title: friendly,
-            what: category.whatIsIt,
-            effect: category.ifCleaned,
-            risk: .caution
-        )
     }
 
-    private static func humanizeBundle(_ name: String) -> String {
+    public static func humanizeBundle(_ name: String) -> String {
         if name.hasPrefix("com.") || name.hasPrefix("org.") || name.hasPrefix("net.") || name.hasPrefix("io.") {
             let parts = name.split(separator: ".")
             if let last = parts.last { return String(last) }

@@ -6,8 +6,8 @@ import Foundation
 public enum AIToolCleanupExecutor {
     struct Execution: Sendable {
         var cleanupGuard: AIToolCleanupGuard = .live
-        var conversationProof: @Sendable (AICleanupCandidate, String) -> Bool = {
-            AIConversationInventory.validateConversation($0, home: $1)
+        var conversationProof: @Sendable (AICleanupCandidate, String, Set<String>) -> Bool = {
+            AIConversationInventory.validateConversation($0, home: $1, excludingMovedPaths: $2)
         }
         var modelProof: @Sendable (AICleanupCandidate, String, Set<String>) -> Bool = {
             AIOllamaInventory.validateModel($0, home: $1, excludingMovedPaths: $2)
@@ -64,9 +64,10 @@ public enum AIToolCleanupExecutor {
                           resourceStillMatches(resource) else { failure = "changed"; break }
                     // Rebind owner state after metadata/graph inspection too.
                     let owners = Set([candidate.tool] + AIToolCleanupGuard.affectedTools(path: resource.path, home: home))
-                    let states = owners.map { execution.cleanupGuard.state(for: $0) }
-                    if states.contains(.inUse) { failure = "in_use"; break }
-                    if states.contains(.unknown) { failure = "probe_unknown"; break
+                    if !(candidate.kind == .model && owners == [.ollama]) {
+                        let states = owners.map { execution.cleanupGuard.state(for: $0) }
+                        if states.contains(.inUse) { failure = "in_use"; break }
+                        if states.contains(.unknown) { failure = "probe_unknown"; break }
                     }
                     do {
                         let destination = try execution.recycle(resource)
@@ -88,7 +89,7 @@ public enum AIToolCleanupExecutor {
             if let failure {
                 result.errors.append("\(failure):\(candidate.path)")
                 result.failedPaths += resources.filter { !movedPaths.contains($0.path) }.map(\.path)
-                if candidate.kind == .model, !moved.isEmpty {
+                if (candidate.kind == .model || candidate.kind == .conversation), !moved.isEmpty {
                     var retained: [Moved] = []
                     for item in moved.reversed() {
                         if !restore(item) {
@@ -121,7 +122,7 @@ public enum AIToolCleanupExecutor {
                                  completedModels: Set<String>, execution: Execution) -> Bool {
         switch candidate.kind {
         case .cache, .oldVersion: return moved.isEmpty && AIToolCleanupScanner.validate(candidate, home: home)
-        case .conversation: return moved.isEmpty && execution.conversationProof(candidate, home)
+        case .conversation: return execution.conversationProof(candidate, home, moved)
         case .model: return execution.modelProof(candidate, home, moved.union(completedModels))
         default: return false
         }

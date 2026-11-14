@@ -72,9 +72,6 @@ struct MisterDefenderChatBody: View {
             // 头像随皮肤；强制重绘
             scrollToken &+= 1
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macDefierConversationDidClear)) { _ in
-            vm.clear()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .macDefierAISettingsDidChange)) { _ in
             vm.reloadSettings()
         }

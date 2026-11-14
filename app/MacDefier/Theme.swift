@@ -63,7 +63,6 @@ enum MDTheme {
     static let resultInset: CGFloat = 14
     /// 内容区左右边距；铺满主栏，不人为限窄列
     static let pagePadding: CGFloat = 24
-    static let contentMaxWidth: CGFloat = 10_000
     static let sidebarWidth: CGFloat = 168
     /// 列表行默认垂直内边距（密排）
     static let rowVerticalPadding: CGFloat = 6
@@ -327,62 +326,6 @@ struct MDCard<Content: View>: View {
     }
 }
 
-/// 页头：单行标题 + 可选 meta + trailing；无副标题堆砌
-struct MDPageHeader<Trailing: View>: View {
-    let title: String
-    var meta: String? = nil
-    var titleHelp: String? = nil
-    @ViewBuilder var trailing: () -> Trailing
-
-    init(
-        title: String,
-        meta: String? = nil,
-        titleHelp: String? = nil,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) {
-        self.title = title
-        self.meta = meta
-        self.titleHelp = titleHelp
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Text(title)
-                .font(.system(size: MDTheme.pageTitleSize, weight: .bold))
-                .foregroundStyle(MDTheme.label)
-                .lineLimit(1)
-                .modifier(OptionalHelp(titleHelp))
-            if let meta, !meta.isEmpty {
-                Text(meta)
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(MDTheme.tertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            trailing()
-        }
-    }
-}
-
-extension MDPageHeader where Trailing == EmptyView {
-    init(title: String, meta: String? = nil, titleHelp: String? = nil) {
-        self.init(title: title, meta: meta, titleHelp: titleHelp) { EmptyView() }
-    }
-}
-
-private struct OptionalHelp: ViewModifier {
-    let text: String?
-    init(_ text: String?) { self.text = text }
-    func body(content: Content) -> some View {
-        if let text, !text.isEmpty {
-            content.help(text)
-        } else {
-            content
-        }
-    }
-}
-
 /// 顶栏统一左右/顶/底 padding（hiddenTitleBar）
 struct MDPageBar<Content: View>: View {
     @ViewBuilder var content: () -> Content
@@ -489,46 +432,6 @@ struct MDRowMeta: View {
     }
 }
 
-/// 页内实体切换：下划线 Tab（软件 App|CLI、监控七页）
-struct MDUnderlineTabBar<Tab: Hashable>: View {
-    let tabs: [(id: Tab, title: String, badge: String?)]
-    @Binding var selection: Tab
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs, id: \.id) { tab in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.12)) { selection = tab.id }
-                } label: {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 5) {
-                            Text(tab.title)
-                                .font(.system(size: 12, weight: selection == tab.id ? .semibold : .medium))
-                                .lineLimit(1)
-                            if let badge = tab.badge, !badge.isEmpty {
-                                Text(badge)
-                                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                                    .foregroundStyle(selection == tab.id ? MDTheme.accent : MDTheme.tertiary)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(selection == tab.id ? MDTheme.accent : MDTheme.secondary)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                        Rectangle()
-                            .fill(selection == tab.id ? MDTheme.accent : Color.clear)
-                            .frame(height: 2)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
 struct MDProgressBar: View {
     var progress: Double
     var tint: Color = MDTheme.accent
@@ -573,94 +476,6 @@ struct MDRing: View {
             }
         }
         .frame(width: size, height: size)
-    }
-}
-
-struct MDPrimaryButton: View {
-    let title: String
-    var systemImage: String? = nil
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                }
-                Text(title).fontWeight(.semibold)
-            }
-            .font(.system(size: 13))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(MDTheme.accent, in: RoundedRectangle(cornerRadius: MDTheme.radiusButton, style: .continuous))
-            .foregroundStyle(.white)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct MDSecondaryButton: View {
-    let title: String
-    var systemImage: String? = nil
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                }
-                Text(title)
-            }
-            .font(.system(size: 13))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(MDTheme.surfaceInset, in: RoundedRectangle(cornerRadius: MDTheme.radiusButton, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: MDTheme.radiusButton, style: .continuous)
-                    .stroke(MDTheme.border, lineWidth: 0.5)
-            )
-            .foregroundStyle(MDTheme.label)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct MDKPICard: View {
-    let title: String
-    let value: String
-    var unit: String = ""
-    var footer: String = ""
-    var progress: Double
-    var tint: Color = MDTheme.accent
-
-    var body: some View {
-        MDCard(padding: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(value)
-                        .font(.system(size: 22, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(MDTheme.label)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    if !unit.isEmpty {
-                        Text(unit)
-                            .font(.system(size: 12))
-                            .foregroundStyle(MDTheme.secondary)
-                    }
-                }
-                MDProgressBar(progress: progress, tint: tint, height: 3)
-                if !footer.isEmpty {
-                    Text(footer)
-                        .font(.system(size: 10))
-                        .foregroundStyle(MDTheme.tertiary)
-                        .lineLimit(1)
-                }
-            }
-        }
     }
 }
 
@@ -786,24 +601,6 @@ struct MDEqualSplit<Left: View, Right: View>: View {
 }
 
 extension View {
-    func mdContentCanvas() -> some View {
-        self
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(MDTheme.content)
-    }
-
-    /// 主内容：铺满主栏（不再缩成窄列居中）
-    func mdContentColumn(maxWidth: CGFloat = MDTheme.contentMaxWidth) -> some View {
-        self
-            .frame(maxWidth: maxWidth == MDTheme.contentMaxWidth ? .infinity : maxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// 页面统一水平内边距
-    func mdPagePadding() -> some View {
-        self.padding(.horizontal, MDTheme.pagePadding)
-    }
-
     /// Scroll 内容区顶距（整页进 Scroll 时用，与 MDPageBar 顶距一致）
     func mdScrollPageTop() -> some View {
         self

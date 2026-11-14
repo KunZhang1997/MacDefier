@@ -59,12 +59,33 @@ public struct InstalledApp: Identifiable, Sendable, Hashable {
         ByteCountFormatter.string(fromByteCount: Int64(clamping: totalBytes), countStyle: .file)
     }
 
-    /// e.g. "应用 12 GB · 数据 90 GB" when related data is significant.
-    public var formattedSizeDetail: String? {
-        guard relatedBytes >= 50 * 1_048_576 else { return nil } // ≥ 50 MB
+    /// Formatted `(app, data)` byte strings when related data is significant (≥ 50 MB).
+    public var formattedSizeComponents: (app: String, data: String)? {
+        guard relatedBytes >= 50 * 1_048_576 else { return nil }
         let app = ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)
         let data = ByteCountFormatter.string(fromByteCount: Int64(clamping: relatedBytes), countStyle: .file)
-        return "应用 \(app) · 数据 \(data)"
+        return (app, data)
+    }
+
+    public func formattedSizeDetail(english: Bool) -> String? {
+        guard let parts = formattedSizeComponents else { return nil }
+        return english
+            ? "App \(parts.app) · Data \(parts.data)"
+            : "应用 \(parts.app) · 数据 \(parts.data)"
+    }
+
+    /// Respects the app's persisted `app.language` setting so English UI is never polluted by hardcoded Chinese.
+    public var formattedSizeDetail: String? {
+        let raw = UserDefaults.standard.string(forKey: "app.language")
+        let isEnglish: Bool
+        if raw == "en" {
+            isEnglish = true
+        } else if raw == "zh-Hans" {
+            isEnglish = false
+        } else {
+            isEnglish = Locale.preferredLanguages.first?.lowercased().hasPrefix("en") == true
+        }
+        return formattedSizeDetail(english: isEnglish)
     }
 
     public var icon: NSImage {
@@ -80,7 +101,7 @@ public enum AppInventory {
     public static let nonRemovableBundleIDs: Set<String> = [
         "com.apple.Safari", "com.apple.finder", "com.apple.AppStore",
         "com.apple.systempreferences", "com.apple.SystemSettings",
-        "com.apple.Terminal", "com.apple.ActivityMonitor", "com.apple.dt.Xcode",
+        "com.apple.Terminal", "com.apple.ActivityMonitor",
         "com.apple.mail", "com.apple.iCal", "com.apple.AddressBook",
         "com.apple.Preview", "com.apple.TextEdit", "com.apple.calculator",
         "com.apple.MobileSMS", "com.apple.FaceTime", "com.apple.Music",
