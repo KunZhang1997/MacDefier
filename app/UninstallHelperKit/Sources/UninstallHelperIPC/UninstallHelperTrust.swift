@@ -64,6 +64,44 @@ public enum UninstallHelperTrust {
         return "anchor apple generic and identifier \"\(identifier)\" and certificate leaf[subject.OU] = \"\(teamIdentifier)\""
     }
 
+    /// Verify the bundled helper binary on disk matches our Team and expected
+    /// helper signing identifier across all slices, rejecting ad-hoc signatures.
+    public static func validateBundledHelper(endpoint: UninstallHelperEndpoint,
+                                             bundleURL: URL = Bundle.main.bundleURL) throws {
+        let root = bundleURL.resolvingSymlinksInPath().standardizedFileURL
+        let executable = root.appendingPathComponent("Contents/MacOS/MacDefier-UninstallHelper")
+        guard executable.resolvingSymlinksInPath().standardizedFileURL == executable,
+              let values = try? executable.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw UninstallHelperFailure("uninstall_helper_configuration_missing")
+        }
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(executable as CFURL, [], &staticCode) == errSecSuccess,
+              let staticCode else {
+            throw UninstallHelperFailure("uninstall_helper_signature_invalid")
+        }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+              let info = information as? [String: Any],
+              let identifier = info[kSecCodeInfoIdentifier as String] as? String,
+              let team = info[kSecCodeInfoTeamIdentifier as String] as? String,
+              let flags = info[kSecCodeInfoFlags as String] as? NSNumber,
+              flags.uint32Value & SecCodeSignatureFlags.adhoc.rawValue == 0,
+              identifier == endpoint.helperIdentifier,
+              team == endpoint.teamIdentifier else {
+            throw UninstallHelperFailure("uninstall_helper_signature_invalid")
+        }
+        let expression = try requirement(teamIdentifier: endpoint.teamIdentifier,
+                                         identifier: endpoint.helperIdentifier)
+        var secRequirement: SecRequirement?
+        let checkFlags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate)
+        guard SecRequirementCreateWithString(expression as CFString, [], &secRequirement) == errSecSuccess,
+              let secRequirement,
+              SecStaticCodeCheckValidityWithErrors(staticCode, checkFlags, secRequirement, nil) == errSecSuccess else {
+            throw UninstallHelperFailure("uninstall_helper_signature_invalid")
+        }
+    }
+
     /// Must be installed before activate/resume. The client must then complete a
     /// non-secret hello on this same connection before sending authorization data.
     public static func configureClient(_ connection: NSXPCConnection, endpoint: UninstallHelperEndpoint) throws {

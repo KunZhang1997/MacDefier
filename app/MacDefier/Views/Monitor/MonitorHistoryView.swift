@@ -81,16 +81,51 @@ struct MonitorHistoryPane: View {
                     VStack(alignment: .leading) { recordingToggle; markButton }
                 }
                 Text(L10n.t("history.explanation")).font(.caption).foregroundStyle(MDTheme.secondary)
-                HStack {
-                    Picker(L10n.t("history.retention"), selection: Binding(get: { history.archive.retentionHours }, set: history.setRetentionHours)) {
-                        ForEach([6, 24, 72], id: \.self) { Text(L10n.t("history.hours", $0)).tag($0) }
-                    }.fixedSize()
+                HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text(L10n.t("history.retention"))
+                            .font(.caption)
+                            .foregroundStyle(MDTheme.secondary)
+                        retentionSegmented
+                    }
                     Spacer()
                     Button(L10n.t("history.clear")) { confirmClear = true }
                         .disabled(!history.ready || history.archive.events.isEmpty && history.archive.recent.isEmpty)
                 }
             }
         }
+    }
+
+    private var retentionSegmented: some View {
+        HStack(spacing: 2) {
+            ForEach([6, 24, 72], id: \.self) { hours in
+                let selected = history.archive.retentionHours == hours
+                Button {
+                    history.setRetentionHours(hours)
+                } label: {
+                    Text(L10n.t("history.hours", hours))
+                        .font(.system(size: 11, weight: selected ? .semibold : .regular).monospacedDigit())
+                        .foregroundStyle(selected ? MDTheme.label : MDTheme.secondary)
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 22)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(MDTheme.surface)
+                                    .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(MDTheme.surfaceInset, in: Capsule())
+        .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.t("history.retention"))
     }
     private var recordingToggle: some View {
         Toggle(L10n.t("history.record"), isOn: Binding(get: { history.enabled }, set: history.setEnabled))
@@ -102,21 +137,139 @@ struct MonitorHistoryPane: View {
         }.disabled(!history.enabled).accessibilityIdentifier("monitor.history.mark")
     }
     private var trends: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let currentFrame = frame
+        return VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
-                HistoryTrend(title: "CPU · %", frames: frames, selection: $selectedTime, color: MDTheme.chart1) { $0.cpu.map { $0 * 100 } }
-                HistoryTrend(title: L10n.t("history.disk_rate"), frames: frames, selection: $selectedTime, color: MDTheme.chart3) { $0.disk.map { ($0.read + $0.write) / 1_048_576 } }
-                HistoryTrend(title: L10n.t("history.swap_rate"), frames: frames, selection: $selectedTime, color: MDTheme.chart4) { $0.swapRate.map { ($0.read + $0.write) / 1_048_576 } }
-                HistoryTrend(title: "GPU · %", frames: frames, selection: $selectedTime, color: MDTheme.chart2) { $0.gpu.compactMap(\.utilization).max().map { $0 * 100 } }
-                HistoryTrend(title: L10n.t("history.temperature"), frames: frames, selection: $selectedTime, color: MDTheme.chart3) { $0.sensors.filter { $0.unit == "°C" }.map(\.value).max() }
-                HistoryTrend(title: L10n.t("history.fan"), frames: frames, selection: $selectedTime, color: MDTheme.chart1) { $0.sensors.filter { $0.unit.lowercased() == "rpm" }.map(\.value).max() }
+                HistoryTrend(
+                    title: "CPU · %",
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart1,
+                    readout: currentFrame?.cpu.map { String(format: "%.1f%%", $0 * 100) },
+                    zeroFloor: 100
+                ) { $0.cpu.map { $0 * 100 } }
+                HistoryTrend(
+                    title: L10n.t("history.disk_rate"),
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart3,
+                    readout: currentFrame?.disk.map { String(format: "%.1f MiB/s", ($0.read + $0.write) / 1_048_576) },
+                    zeroFloor: 10
+                ) { $0.disk.map { ($0.read + $0.write) / 1_048_576 } }
+                HistoryTrend(
+                    title: L10n.t("history.swap_rate"),
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart4,
+                    readout: currentFrame?.swapRate.map { String(format: "%.1f MiB/s", ($0.read + $0.write) / 1_048_576) },
+                    zeroFloor: 10
+                ) { $0.swapRate.map { ($0.read + $0.write) / 1_048_576 } }
+                HistoryTrend(
+                    title: "GPU · %",
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart2,
+                    readout: currentFrame.flatMap { $0.gpu.compactMap(\.utilization).max().map { String(format: "%.1f%%", $0 * 100) } },
+                    zeroFloor: 100
+                ) { $0.gpu.compactMap(\.utilization).max().map { $0 * 100 } }
+                HistoryTrend(
+                    title: L10n.t("history.temperature"),
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart3,
+                    readout: currentFrame.flatMap { $0.sensors.filter { $0.unit == "°C" }.map(\.value).max().map { String(format: "%.1f °C", $0) } },
+                    zeroFloor: 100
+                ) { $0.sensors.filter { $0.unit == "°C" }.map(\.value).max() }
+                HistoryTrend(
+                    title: L10n.t("history.fan"),
+                    frames: frames,
+                    selection: $selectedTime,
+                    color: MDTheme.chart1,
+                    readout: currentFrame.flatMap { $0.sensors.filter { $0.unit.lowercased() == "rpm" }.map(\.value).max().map { String(format: "%.0f RPM", $0) } },
+                    zeroFloor: 1000
+                ) { $0.sensors.filter { $0.unit.lowercased() == "rpm" }.map(\.value).max() }
             }
             Text(L10n.t("history.chart_help")).font(.caption).foregroundStyle(MDTheme.secondary)
-            Picker(L10n.t("history.sample"), selection: Binding(get: { frame?.time ?? Date.distantPast }, set: { selectedTime = $0 })) {
-                ForEach(frames) { item in
-                    Text(item.time.formatted(date: .omitted, time: .standard) + (item.gap ? " · " + L10n.t("history.gap") : "")).tag(item.time)
+            sampleStepperBar
+        }
+    }
+
+    private var sampleStepperBar: some View {
+        let current = frame
+        let currentIndex = current.flatMap { cur in frames.firstIndex(where: { $0.time == cur.time }) }
+        let canPrev = (currentIndex ?? 0) > 0
+        let canNext = currentIndex.map { $0 < frames.count - 1 } ?? false
+
+        return MDCard(padding: 10) {
+            HStack(spacing: 10) {
+                Text(L10n.t("history.sample"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MDTheme.secondary)
+
+                HStack(spacing: 4) {
+                    Button {
+                        if let idx = currentIndex, idx > 0 {
+                            selectedTime = frames[idx - 1].time
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!canPrev)
+                    .help(L10n.t("history.prev_frame"))
+                    .accessibilityLabel(L10n.t("history.prev_frame"))
+
+                    Menu {
+                        ForEach(frames) { item in
+                            Button {
+                                selectedTime = item.time
+                            } label: {
+                                Text(item.time.formatted(date: .omitted, time: .standard) + (item.gap ? " · " + L10n.t("history.gap") : ""))
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(current.map { $0.time.formatted(date: .omitted, time: .standard) } ?? "—")
+                                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                            if let idx = currentIndex {
+                                Text("\(idx + 1)/\(frames.count)")
+                                    .font(.system(size: 10).monospacedDigit())
+                                    .foregroundStyle(MDTheme.tertiary)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .accessibilityIdentifier("monitor.history.sample")
+
+                    Button {
+                        if let idx = currentIndex, idx < frames.count - 1 {
+                            selectedTime = frames[idx + 1].time
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!canNext)
+                    .help(L10n.t("history.next_frame"))
+                    .accessibilityLabel(L10n.t("history.next_frame"))
                 }
-            }.pickerStyle(.menu).fixedSize().accessibilityIdentifier("monitor.history.sample")
+
+                Spacer(minLength: 8)
+
+                Button(L10n.t("history.latest_frame")) {
+                    selectedTime = nil
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(selectedTime == nil || frames.last(where: { !$0.gap }) == nil)
+            }
         }
     }
     private func sampleDetails(_ sample: MonitorHistoryFrame) -> some View {
@@ -174,7 +327,33 @@ struct MonitorHistoryPane: View {
                     }.buttonStyle(.link)
                 }
             } else { Text(L10n.t("history.identity_missing")).font(.caption).foregroundStyle(MDTheme.secondary) }
-        }.padding(.vertical, 4)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .mdRowHover(cornerRadius: 6)
+        .contextMenu {
+            if let identity {
+                if let path = identity.appPath {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    } label: {
+                        Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                    }
+                    Button {
+                        AppNavigator.shared.focusSoftware(path: path, bundleID: identity.bundleID, name: identity.ownerName)
+                    } label: {
+                        Label(L10n.t("history.software"), systemImage: "square.grid.2x2")
+                    }
+                }
+                Divider()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("\(identity.ownerName) (PID \(identity.pid))", forType: .string)
+                } label: {
+                    Label(L10n.t("context.copy_pid"), systemImage: "doc.on.doc")
+                }
+            }
+        }
     }
     private var events: some View {
         MDCard {
@@ -190,7 +369,11 @@ struct MonitorHistoryPane: View {
                             Spacer()
                             Text(L10n.t("history.state.\(event.state.rawValue)"))
                             Image(systemName: "chevron.right")
-                        }.padding(.vertical, 5).contentShape(Rectangle())
+                        }
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 6)
+                        .contentShape(Rectangle())
+                        .mdRowHover(cornerRadius: 6)
                     }.buttonStyle(.plain)
                     Divider()
                 }
@@ -237,6 +420,8 @@ private struct HistoryTrend: View {
     let frames: [MonitorHistoryFrame]
     @Binding var selection: Date?
     let color: Color
+    var readout: String? = nil
+    var zeroFloor: Double = 100
     let value: (MonitorHistoryFrame) -> Double?
     private struct Point: Identifiable { let time: Date; let value: Double; let segment: Int; var id: Date { time } }
     private var points: [Point] {
@@ -250,10 +435,19 @@ private struct HistoryTrend: View {
         }
         return result
     }
+    private var maxPointValue: Double {
+        points.map(\.value).max() ?? 0
+    }
     var body: some View {
         MDCard {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.subheadline.weight(.semibold))
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 4)
+                    Text(readout ?? L10n.t("history.no_data_short"))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(readout == nil ? MDTheme.tertiary : color)
+                }
                 if points.isEmpty {
                     Text(L10n.t("history.metric_unavailable")).font(.caption).foregroundStyle(MDTheme.secondary).frame(height: 90)
                 } else {
@@ -265,7 +459,8 @@ private struct HistoryTrend: View {
                         }
                         if let selection { RuleMark(x: .value("Time", selection)).foregroundStyle(.secondary.opacity(0.4)) }
                     }
-                    .chartXSelection(value: $selection).chartYScale(domain: .automatic(includesZero: true))
+                    .chartXSelection(value: $selection)
+                    .chartYScale(domain: maxPointValue <= 0 ? 0...zeroFloor : 0...max(maxPointValue * 1.15, 1))
                     .frame(height: 100).accessibilityLabel(title)
                 }
             }

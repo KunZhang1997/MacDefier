@@ -78,10 +78,11 @@ final class DiagnosticMemoryTests: XCTestCase {
             cleanup: .init(junkBytes: partial.junkBytes, trashBytes: partial.trashBytes, largestAppBytes: 0, isPartial: true),
             now: now
         )
-        XCTAssertNil(partialScore.total)
-        XCTAssertNil(partialScore.spaceScore)
-        XCTAssertTrue(partialScore.deductions.isEmpty)
-        XCTAssertNil(DiagnosticScore.evaluateLive(snapshot: snapshot(), report: partial, hasFreshScan: false).total)
+        XCTAssertEqual(partialScore.spaceScore, 86, "Fresh system disk + lower-bound junk/trash must still produce a real space score")
+        XCTAssertEqual(partialScore.total, 86)
+        XCTAssertFalse(partialScore.includesCleanupScan, "Partial cleanup must not claim full cleanup coverage")
+        XCTAssertFalse(partialScore.deductions.isEmpty)
+        XCTAssertEqual(DiagnosticScore.evaluateLive(snapshot: snapshot(), report: partial, hasFreshScan: false).spaceScore, 86)
         XCTAssertNil(score(.init(cpu: cpu, ram: ram)).spaceScore)
 
         let usb = DiskVolume(name: "USB", path: "/Volumes/USB", total: 16 * 1_073_741_824, free: 8 * 1_073_741_824, kind: .external)

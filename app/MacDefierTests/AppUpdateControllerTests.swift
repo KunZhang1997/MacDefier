@@ -78,6 +78,9 @@ final class AppUpdateControllerTests: XCTestCase {
             now: { clock }
         )
         let sdk = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: probe, delegate: probe)
+        XCTAssertTrue(probe.responds(to: NSSelectorFromString("feedURLStringForUpdater:")))
+        XCTAssertEqual(probe.feedURLString(for: sdk), "https://kun97.tech/macdefier/releases/appcast.xml")
+        XCTAssertEqual(AppUpdateController.officialWebsiteURL.absoluteString, "https://kun97.tech/macdefier/")
         XCTAssertTrue(probe.responds(to: NSSelectorFromString("updater:didFindValidUpdate:")))
         XCTAssertTrue(probe.responds(to: NSSelectorFromString("updater:didFinishUpdateCycleForUpdateCheck:error:")))
 
@@ -111,7 +114,7 @@ final class AppUpdateControllerTests: XCTestCase {
         let next = try XCTUnwrap(SUAppcastItem(dictionary: [
             "sparkle:version": "0.18",
             "enclosure": [
-                "url": "https://example.invalid/MacDefier-0.18.zip",
+                "url": "https://kun97.tech/macdefier/releases/MacDefier-0.18.dmg",
                 "sparkle:version": "0.18",
                 "length": "100"
             ]
@@ -146,6 +149,72 @@ final class AppUpdateControllerTests: XCTestCase {
         devProbe.checkForUpdateIfNeeded()
         XCTAssertEqual(probes, 4)
         XCTAssertFalse(devProbe.stage.showsControl)
+    }
+
+    func testOfficialWebsiteOriginEnforcementRejectsGitHubAndInsecureURLs() throws {
+        XCTAssertTrue(AppUpdateController.isOfficialUpdateURL(
+            URL(string: "https://kun97.tech/macdefier/releases/MacDefier-0.20.dmg")!
+        ))
+        XCTAssertTrue(AppUpdateController.isOfficialUpdateURL(
+            URL(string: "https://kun97.tech/macdefier/releases/MacDefier-0.20.zip")!
+        ))
+        for rejected in [
+            "https://github.com/KunZhang1997/MacDefier/releases/download/v0.20/MacDefier-0.20.dmg",
+            "http://kun97.tech/macdefier/releases/MacDefier-0.20.dmg",
+            "https://kun97.tech/dl/macdefier",
+            "https://kun97.tech/speaksend/releases/MacDefier-0.20.dmg",
+            "https://kun97.tech:8443/macdefier/releases/MacDefier-0.20.dmg",
+            "https://user@kun97.tech/macdefier/releases/MacDefier-0.20.dmg",
+            "https://kun97.tech/macdefier/releases/nested/MacDefier-0.20.dmg",
+            "https://kun97.tech/macdefier/releases/appcast.xml"
+        ] {
+            XCTAssertFalse(
+                AppUpdateController.isOfficialUpdateURL(URL(string: rejected)!),
+                "Expected non-official update URL to be rejected: \(rejected)"
+            )
+        }
+
+        let githubItem = try XCTUnwrap(SUAppcastItem(dictionary: [
+            "sparkle:version": "0.20",
+            "enclosure": [
+                "url": "https://github.com/KunZhang1997/MacDefier/releases/download/v0.20/MacDefier-0.20.dmg",
+                "sparkle:version": "0.20",
+                "length": "100"
+            ]
+        ]))
+
+        let probe = AppUpdateController(
+            isProductionBuild: true,
+            startUpdate: { _ in },
+            startInformationCheck: { _ in }
+        )
+        let sdk = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: probe, delegate: probe)
+        probe.checkForUpdateIfNeeded()
+        probe.updater(sdk, didFindValidUpdate: githubItem)
+        probe.updater(sdk, didFinishUpdateCycleFor: .updateInformation, error: nil)
+        XCTAssertEqual(probe.stage, .idle)
+        XCTAssertFalse(probe.stage.showsControl)
+
+        let download = makeController()
+        download.downloadAndInstall()
+        var choices: [SPUUserUpdateChoice] = []
+        download.handleUpdateFound(githubItem, isInstalling: false) { choices.append($0) }
+        XCTAssertEqual(choices, [.dismiss])
+        XCTAssertEqual(download.stage, .unavailable)
+
+        let officialItem = try XCTUnwrap(SUAppcastItem(dictionary: [
+            "sparkle:version": "0.20",
+            "enclosure": [
+                "url": "https://kun97.tech/macdefier/releases/MacDefier-0.20.dmg",
+                "sparkle:version": "0.20",
+                "length": "100"
+            ]
+        ]))
+        let officialDownload = makeController()
+        officialDownload.downloadAndInstall()
+        var officialChoices: [SPUUserUpdateChoice] = []
+        officialDownload.handleUpdateFound(officialItem, isInstalling: false) { officialChoices.append($0) }
+        XCTAssertEqual(officialChoices, [.install])
     }
 
     func testDownloadCancellationAndErrorMapping() {

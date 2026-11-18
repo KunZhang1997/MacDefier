@@ -3,7 +3,7 @@
 **Bundle ID：** `com.macdefier.app`（禁止 `eu.exelban.*`）  
 **唯一应用路径：** `/Applications/MacDefier.app`（全链路单一构建，不并存 Dev/Trial/备份 `.app`）  
 **开源许可：** MIT（第三方开源署名见 `app/NOTICE`：Stats、PureMac、ZIPFoundation、Sparkle）  
-**现行直装基线：** `v0.19`（Developer ID 签名 + Apple 公证 DMG + Sparkle 2.9.4 签名更新源）
+**现行直装基线：** `v0.21`（Developer ID 签名 + Apple 公证 DMG + Sparkle 2.9.4 官网签名更新源）
 
 ---
 
@@ -88,14 +88,15 @@ bash scripts/ci.sh
 
 ---
 
-## 顶栏一键更新（Sparkle 2.9.4）
+## 顶栏标签旁一键更新（Sparkle 2.9.4 · 官网唯一主源）
 
-- **按需显示**：七个页面共用标题栏右上角下载图标；仅在主窗启动或 App 回到前台触发 `checkForUpdateInformation` 静默读取签名元数据且确认有可安装新版时才创建按钮（无后台定时轮询；成功最短间隔 15 分钟，失败最短间隔 1 分钟）。最新版、查询中、离线或失败态完全隐藏入口，不显示「已是最新版」。
-- **原位下载与互斥安装**：仅在用户点击图标后才开始下载，原位展示进度并支持取消；准备安装时先获取 `ResourceMutationCoordinator` 互斥锁，等待当前正在执行的清理或卸载完成后再替换重启，不强杀进行中的文件操作。
-- **签名与发布规范**：
-  - 固定更新源：`https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml`。
+- **按需显示（七页共用标签栏右侧）**：七个一级页面共用顶部胶囊标签栏右侧紧邻的 `34×34 pt` 圆形下载按钮；仅在主窗启动或 App 回到前台触发 `checkForUpdateInformation` 静默读取官网签名元数据且确认有可安装新版时才创建按钮（无后台定时轮询；成功最短间隔 15 分钟，失败最短间隔 1 分钟）。最新版、查询中、离线或失败态完全隐藏入口，不显示「已是最新版」。
+- **原位下载与互斥安装**：仅在用户点击圆形下载按钮后才开始下载，原位展示圆环下载进度并支持取消；准备安装时先获取 `ResourceMutationCoordinator` 互斥锁，等待当前正在执行的清理或卸载完成后再自动替换并重启，不强杀进行中的文件操作。
+- **官网唯一主源与签名发布规范**：
+  - 官网介绍页（应用内唯一外链入口）：`https://kun97.tech/macdefier/`（设置页「关于 → 官方网站」、菜单栏「帮助 → 官方网站」及 `⌘K` 命令面板均直跳该页面，应用内不展示 GitHub 链接）。
+  - 固定更新源：`https://kun97.tech/macdefier/releases/appcast.xml`（无论用户最初从官网还是 GitHub Releases 下载安装包，客户端均统一以官网 `kun97.tech` 为唯一更新源，并在运行时拒绝非 `https://kun97.tech/macdefier/releases/` 的安装包地址）。
   - EdDSA 私钥仅存于发布机登录钥匙串账户 `com.macdefier.app.sparkle`（严禁入库或随包分发），仓库仅保留公钥。
-  - 每次发版必须递增包内真实版本号并保持 `com.macdefier.app` 与同一 Developer ID 签名身份；运行 `scripts/package-release.sh VERSION` 后，将原始 `MacDefier-VERSION.dmg` 与签名生成的 `appcast.xml` 一并上传至同一 GitHub Release（设为 latest），上传后严禁二次改动文件。
+  - 每次发版必须递增包内真实版本号并保持 `com.macdefier.app` 与同一 Developer ID 签名身份；运行 `scripts/package-release.sh VERSION` 后，将原始 `MacDefier-VERSION.dmg` 与签名生成的 `appcast.xml` 一并发布至官网 `https://kun97.tech/macdefier/releases/`（GitHub Releases 仅作额外分发镜像，不再承载 `appcast.xml`），上传后严禁二次改动文件。
   - 只读检查本机更新签名配置：`scripts/generate-update-feed.sh --check-signing`。
 
 ---
@@ -110,7 +111,7 @@ bash scripts/ci.sh
 
 ### 受限 LaunchDaemon 实现与门禁
 
-- **分层与双向验签**：`UninstallHelperKit` 分离 `Core`、`IPC`、`Client`；内嵌 `SMAppService` LaunchDaemon 与主应用执行同 Team 与精确签名标识双向校验。首次使用须在设置页或提示中显式启用（必要时经「系统设置 → 通用 → 登录项与扩展」批准）。
+- **分层与双向验签**：`UninstallHelperKit` 分离 `Core`、`IPC`、`Client`；内嵌 `SMAppService` LaunchDaemon 与主应用执行同 Team 与精确签名标识双向校验。首次使用须在设置页或提示中显式启用（必要时经「系统设置 → 通用 → 登录项与扩展」批准）；Helper 空闲后自动退出，且应用原位重装或更新（`SHA256 + dev/ino` 指纹变化或 XPC `4102` 失配）时自动执行 `unregister` + 退避 `register` 回收旧守护进程并重绑新二进制。
 - **v2 跨进程凭据核验**：使用私有授权规则 `com.macdefier.app.uninstall.trash.v2`（委托系统 `authenticate-admin-nonshared`，admin、30 秒有效期、非共享）；客户端前台实际获取授权后交由禁止 UI 的 helper 核验，连接断开即失效。
 - **同卷私有暂存与恢复日志**：RPC 不接受调用方传入的 UID、home、废纸篓路径或任意命令；App 跨授权等待保持原对象文件描述符，helper 先写入恢复 journal，将目标原子移入同卷 root 私有 staging 目录复核身份后，再提交至调用用户的废纸篓（冲突或异常时保留现场并阻断后续关联清理）。
 - **发布校验门禁**：正式发布包必须通过逐架构结构与签名门禁校验：

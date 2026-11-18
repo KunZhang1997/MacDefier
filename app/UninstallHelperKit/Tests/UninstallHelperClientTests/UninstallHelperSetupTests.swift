@@ -299,4 +299,258 @@ import UninstallHelperIPC
         try FileManager.default.createSymbolicLink(at: original, withDestinationURL: moved)
         XCTAssertFalse(fixture.isAvailable)
     }
+
+    func testSynchronizeEnabledRegistrationCyclesWhenFingerprintChanged() async {
+        var status: SMAppService.Status = .enabled
+        var events: [String] = []
+        var saved: String? = "v1:old:1:100"
+
+        await UninstallHelperSetup.synchronizeEnabledRegistration(
+            status: { status },
+            unregister: {
+                events.append("unregister")
+                status = .notRegistered
+            },
+            register: {
+                events.append("register")
+                status = .enabled
+            },
+            configurationAvailable: true,
+            currentFingerprint: "v1:new:1:200",
+            storedFingerprint: saved,
+            saveFingerprint: { saved = $0 }
+        )
+
+        XCTAssertEqual(events, ["unregister", "register"])
+        XCTAssertEqual(status, .enabled)
+        XCTAssertEqual(saved, "v1:new:1:200")
+    }
+
+    func testSynchronizeEnabledRegistrationIsNoOpWhenFingerprintMatches() async {
+        var events: [String] = []
+        var saved: String? = "v1:same:1:100"
+
+        await UninstallHelperSetup.synchronizeEnabledRegistration(
+            status: { .enabled },
+            unregister: { events.append("unregister") },
+            register: { events.append("register") },
+            configurationAvailable: true,
+            currentFingerprint: "v1:same:1:100",
+            storedFingerprint: saved,
+            saveFingerprint: { saved = $0 }
+        )
+
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(saved, "v1:same:1:100")
+    }
+
+    func testSynchronizeEnabledRegistrationNeverRegistersDisabledOrUnapprovedService() async {
+        for initial in [SMAppService.Status.notRegistered, .notFound, .requiresApproval] {
+            var events: [String] = []
+            var saved: String? = "v1:stale:1:100"
+
+            await UninstallHelperSetup.synchronizeEnabledRegistration(
+                status: { initial },
+                unregister: { events.append("unregister") },
+                register: { events.append("register") },
+                configurationAvailable: true,
+                currentFingerprint: "v1:new:1:200",
+                storedFingerprint: saved,
+                saveFingerprint: { saved = $0 }
+            )
+
+            XCTAssertTrue(events.isEmpty, "Unexpected registration activity for \(initial)")
+            if initial == .requiresApproval {
+                XCTAssertEqual(saved, "v1:stale:1:100")
+            } else {
+                XCTAssertNil(saved)
+            }
+        }
+    }
+
+    func testPrepareRegistrationCyclesEnabledServiceWhenFingerprintChanged() async throws {
+        var status: SMAppService.Status = .enabled
+        var events: [String] = []
+        var saved: String? = nil
+
+        try await UninstallHelperSetup.prepareRegistration(
+            status: { status },
+            unregister: {
+                events.append("unregister")
+                status = .notRegistered
+            },
+            register: {
+                events.append("register")
+                status = .enabled
+            },
+            configurationAvailable: true,
+            currentFingerprint: "v1:fresh:1:300",
+            storedFingerprint: saved,
+            saveFingerprint: { saved = $0 },
+            confirmEnable: {
+                events.append("confirmEnable")
+                return false
+            },
+            confirmApproval: {
+                events.append("confirmApproval")
+                return false
+            }
+        )
+
+        XCTAssertEqual(events, ["unregister", "register"])
+        XCTAssertEqual(saved, "v1:fresh:1:300")
+    }
+
+    func testBundledServiceFingerprintChangesOnExecutableContentOrInodeChange() throws {
+        let fixture = try BundleFixture()
+        defer { fixture.cleanUp() }
+
+        let first = try XCTUnwrap(UninstallHelperSetup.bundledServiceFingerprint(
+            serviceName: fixture.serviceName, bundleURL: fixture.bundle
+        ))
+        let same = try XCTUnwrap(UninstallHelperSetup.bundledServiceFingerprint(
+            serviceName: fixture.serviceName, bundleURL: fixture.bundle
+        ))
+        XCTAssertEqual(first, same)
+
+        // Replace with identical bytes via atomic new file -> inode changes!
+        let originalBytes = try Data(contentsOf: fixture.executable)
+        let replacement = fixture.root.appendingPathComponent("replacement-helper")
+        try originalBytes.write(to: replacement)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: replacement.path)
+        _ = try FileManager.default.replaceItemAt(fixture.executable, withItemAt: replacement)
+
+        let afterInodeSwap = try XCTUnwrap(UninstallHelperSetup.bundledServiceFingerprint(
+            serviceName: fixture.serviceName, bundleURL: fixture.bundle
+        ))
+        XCTAssertNotEqual(first, afterInodeSwap)
+
+        // Modify content -> digest changes too!
+        try Data("updated-helper-binary\n".utf8).write(to: fixture.executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.executable.path)
+        let afterContentChange = try XCTUnwrap(UninstallHelperSetup.bundledServiceFingerprint(
+            serviceName: fixture.serviceName, bundleURL: fixture.bundle
+        ))
+        XCTAssertNotEqual(afterInodeSwap, afterContentChange)
+    }
+
+    func testEstablishVerifiedSessionHealsCodeSigning4102ByReinstallingOnce() async throws {
+        var events: [String] = []
+        var greets = 0
+
+        let session = try await UninstallHelperClient.establishVerifiedSession(
+            prepare: { events.append("prepare") },
+            openAndGreet: {
+                greets += 1
+                events.append("greet-\(greets)")
+                if greets == 1 {
+                    throw HelperHandshakeError.xpcFailure(domain: NSCocoaErrorDomain, code: 4102)
+                }
+                return "verified-session"
+            },
+            reinstall: { events.append("reinstall") },
+            sleepMilliseconds: { ms in events.append("sleep-\(ms)") }
+        )
+
+        XCTAssertEqual(session, "verified-session")
+        XCTAssertEqual(events, ["prepare", "greet-1", "reinstall", "greet-2"])
+    }
+
+    func testEstablishVerifiedSessionRetriesTransientInterruptionWithoutReinstall() async throws {
+        var events: [String] = []
+        var greets = 0
+
+        let session = try await UninstallHelperClient.establishVerifiedSession(
+            prepare: { events.append("prepare") },
+            openAndGreet: {
+                greets += 1
+                events.append("greet-\(greets)")
+                if greets == 1 {
+                    throw HelperHandshakeError.xpcFailure(domain: NSCocoaErrorDomain, code: 4097)
+                }
+                return "verified-session"
+            },
+            reinstall: { events.append("reinstall") },
+            sleepMilliseconds: { ms in events.append("sleep-\(ms)") }
+        )
+
+        XCTAssertEqual(session, "verified-session")
+        XCTAssertEqual(events, ["prepare", "greet-1", "sleep-150", "greet-2"])
+    }
+
+    func testEstablishVerifiedSessionStopsAfterSingleReinstallAndSurfacesPublicFailure() async {
+        var events: [String] = []
+        var greets = 0
+
+        do {
+            _ = try await UninstallHelperClient.establishVerifiedSession(
+                prepare: { events.append("prepare") },
+                openAndGreet: { () -> String in
+                    greets += 1
+                    events.append("greet-\(greets)")
+                    throw HelperHandshakeError.protocolMismatch("uninstall_helper_update_required")
+                },
+                reinstall: { events.append("reinstall") },
+                sleepMilliseconds: { ms in events.append("sleep-\(ms)") }
+            )
+            XCTFail("Expected handshake to fail after single reinstall")
+        } catch let failure as UninstallHelperFailure {
+            XCTAssertEqual(failure.code, "uninstall_helper_update_required")
+            XCTAssertEqual(events, ["prepare", "greet-1", "reinstall", "greet-2"])
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testEstablishVerifiedSessionNeverReinstallsOnCancellation() async {
+        var events: [String] = []
+
+        do {
+            _ = try await UninstallHelperClient.establishVerifiedSession(
+                prepare: {
+                    events.append("prepare")
+                    throw UninstallHelperFailure("uninstall_authorization_cancelled")
+                },
+                openAndGreet: { () -> String in
+                    events.append("greet")
+                    return "unused"
+                },
+                reinstall: { events.append("reinstall") },
+                sleepMilliseconds: { _ in events.append("sleep") }
+            )
+            XCTFail("Expected cancellation")
+        } catch let failure as UninstallHelperFailure {
+            XCTAssertEqual(failure.code, "uninstall_authorization_cancelled")
+            XCTAssertEqual(events, ["prepare"])
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testRegisterAfterUnregisterRetriesAcrossTransientBTMSettlingWindow() async {
+        var status: SMAppService.Status = .enabled
+        var registerAttempts = 0
+        var saved: String? = "v1:old:1:100"
+
+        await UninstallHelperSetup.synchronizeEnabledRegistration(
+            status: { status },
+            unregister: { status = .notRegistered },
+            register: {
+                registerAttempts += 1
+                if registerAttempts < 3 {
+                    throw NSError(domain: "SMAppServiceErrorDomain", code: 1)
+                }
+                status = .enabled
+            },
+            configurationAvailable: true,
+            currentFingerprint: "v1:new:1:200",
+            storedFingerprint: saved,
+            saveFingerprint: { saved = $0 },
+            retryDelaysMs: [0, 0, 0]
+        )
+
+        XCTAssertEqual(registerAttempts, 3)
+        XCTAssertEqual(status, .enabled)
+        XCTAssertEqual(saved, "v1:new:1:200")
+    }
 }

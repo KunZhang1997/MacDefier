@@ -244,6 +244,24 @@ struct CliUninstallSheet: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .disabled(!canUninstall)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .mdRowHover(cornerRadius: 4)
+                            .contextMenu {
+                                if FileManager.default.fileExists(atPath: dir.path) {
+                                    Button {
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: dir.path)])
+                                    } label: {
+                                        Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                                    }
+                                }
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(dir.path, forType: .string)
+                                } label: {
+                                    Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+                                }
+                            }
                             .accessibilityIdentifier("cliUninstall.data.\(dir.path)")
                         }
                     }
@@ -300,18 +318,16 @@ struct CliUninstallSheet: View {
     }
 
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let built = content()
+        return VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-            content()
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MDTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(MDTheme.border, lineWidth: 0.5)
-                )
+            MDCard(padding: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    built
+                }
+            }
         }
     }
 

@@ -27,12 +27,13 @@ Dir.mktmpdir('MacDefier-update-tests.', '/private/tmp') do |scratch|
     require 'cgi'
     output = ARGV[ARGV.index('-o') + 1]
     prefix = ARGV[ARGV.index('--download-url-prefix') + 1]
+    link = ARGV[ARGV.index('--link') + 1]
     archive = Dir[File.join(ARGV.last, '*.zip')].fetch(0)
     version = ENV.fetch('FIXTURE_FEED_BUILD', '0.16')
     short = ENV.fetch('FIXTURE_FEED_SHORT', '0.16')
     length = File.size(archive) + ENV.fetch('FIXTURE_LENGTH_OFFSET', '0').to_i
     signature = ENV['FIXTURE_UNSIGNED'] == '1' ? '' : 'fixture-archive-signature'
-    File.write(output, %(<?xml version="1.0"?><rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item><sparkle:version>#{version}</sparkle:version><sparkle:shortVersionString>#{short}</sparkle:shortVersionString><enclosure url="#{CGI.escapeHTML(prefix + File.basename(archive))}" length="#{length}" sparkle:edSignature="#{signature}"/></item></channel></rss>))
+    File.write(output, %(<?xml version="1.0"?><rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item><link>#{CGI.escapeHTML(link)}</link><sparkle:version>#{version}</sparkle:version><sparkle:shortVersionString>#{short}</sparkle:shortVersionString><enclosure url="#{CGI.escapeHTML(prefix + File.basename(archive))}" length="#{length}" sparkle:edSignature="#{signature}"/></item></channel></rss>))
   SCRIPT
   File.write(File.join(bin, 'sign_update'), <<~'SCRIPT')
     #!/usr/bin/env ruby
@@ -61,7 +62,7 @@ Dir.mktmpdir('MacDefier-update-tests.', '/private/tmp') do |scratch|
       'CFBundleIdentifier' => 'com.macdefier.app', 'CFBundleVersion' => '0.16',
       'CFBundleShortVersionString' => '0.16', 'SUPublicEDKey' => key,
       'SURequireSignedFeed' => true, 'SUVerifyUpdateBeforeExtraction' => true,
-      'SUFeedURL' => 'https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml'
+      'SUFeedURL' => 'https://kun97.tech/macdefier/releases/appcast.xml'
     }.merge(overrides)
     entries = values.map { |k, v| "<key>#{k}</key>" + (v == true ? '<true/>' : v == false ? '<false/>' : "<string>#{v}</string>") }.join
     File.write(File.join(app, 'Contents', 'Info.plist'), "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>#{entries}</dict></plist>")
@@ -72,14 +73,17 @@ Dir.mktmpdir('MacDefier-update-tests.', '/private/tmp') do |scratch|
     digest = Digest::SHA256.file(archive).hexdigest
     env = {
       'PATH' => "#{bin}:#{ENV.fetch('PATH')}", 'MACDEFIER_SPARKLE_TOOLS_DIR' => bin,
-      'FIXTURE_PUBLIC_KEY' => key, 'MACDEFIER_RELEASE_TAG' => 'v0.16',
-      'MACDEFIER_UPDATE_REPOSITORY' => 'KunZhang1997/MacDefier'
+      'FIXTURE_PUBLIC_KEY' => key,
+      'MACDEFIER_UPDATE_BASE_URL' => 'https://kun97.tech/macdefier'
     }.merge(extra_env)
     stdout, stderr, status = Open3.capture3(env, '/bin/bash', generator, archive, '0.16')
     raise "#{name}: unexpected result\n#{stdout}\n#{stderr}" unless status.success? == success
     raise "#{name}: archive was modified" unless Digest::SHA256.file(archive).hexdigest == digest
     if success
-      raise "#{name}: feed was not signed" unless File.read(output).include?('fixture-feed-signed')
+      feed_body = File.read(output)
+      raise "#{name}: feed was not signed" unless feed_body.include?('fixture-feed-signed')
+      raise "#{name}: feed missing official release URL" unless feed_body.include?('https://kun97.tech/macdefier/releases/MacDefier-0.16.zip')
+      raise "#{name}: feed missing official product page link" unless feed_body.include?('<link>https://kun97.tech/macdefier/</link>')
     else
       raise "#{name}: previous feed changed on failure" unless File.read(output) == 'previous-feed'
     end
@@ -94,7 +98,8 @@ Dir.mktmpdir('MacDefier-update-tests.', '/private/tmp') do |scratch|
   fixture.call('unsigned-feed-flag', { 'SURequireSignedFeed' => false })
   fixture.call('unverified-extraction', { 'SUVerifyUpdateBeforeExtraction' => false })
   fixture.call('wrong-feed-url', { 'SUFeedURL' => 'https://example.invalid/appcast.xml' })
-  fixture.call('non-github-repository', {}, { 'MACDEFIER_UPDATE_REPOSITORY' => 'https://example.invalid/repo' })
+  fixture.call('github-feed-rejected', { 'SUFeedURL' => 'https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml' })
+  fixture.call('non-official-base-url', {}, { 'MACDEFIER_UPDATE_BASE_URL' => 'https://github.com/KunZhang1997/MacDefier' })
   fixture.call('wrong-feed-build', {}, { 'FIXTURE_FEED_BUILD' => '0.15' })
   fixture.call('wrong-length', {}, { 'FIXTURE_LENGTH_OFFSET' => '1' })
   fixture.call('missing-archive-signature', {}, { 'FIXTURE_UNSIGNED' => '1' })

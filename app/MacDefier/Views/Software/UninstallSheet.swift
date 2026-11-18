@@ -106,6 +106,7 @@ struct UninstallSheet: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .interactiveDismissDisabled(isWorking)
         .task {
+            await UninstallHelperClient.shared.synchronizeRegistrationIfNeeded()
             await loadResiduals()
         }
         .confirmationDialog(
@@ -352,6 +353,22 @@ struct UninstallSheet: View {
             .accessibilityHint(retentionMessage ?? item.note)
             .accessibilityIdentifier("uninstall.item.\(item.id)")
         }
+        .mdRowHover()
+        .contextMenu {
+            if FileManager.default.fileExists(atPath: item.path) {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                } label: {
+                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                }
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.path, forType: .string)
+            } label: {
+                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private var footer: some View {
@@ -361,6 +378,7 @@ struct UninstallSheet: View {
             }
             Spacer()
             Button(L10n.t("uninstall.cancel")) { onClose(nil) }
+                .keyboardShortcut(.cancelAction)
             Button(isWorking ? L10n.t("uninstall.sheet.working") : (app.canTrashAppBundle ? L10n.t("uninstall.move_trash") : L10n.t("uninstall.verb_residual"))) {
                 confirm = true
             }

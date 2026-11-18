@@ -4,10 +4,10 @@ import SwiftUI
 /// 现代 macOS 窗口壳：透明标题栏 + fullSizeContentView
 /// 红绿灯位于横向工作台标题栏，整窗保留系统圆角与自由缩放。
 enum WindowChrome {
-    /// 旧页面兼容值；新页头不再重复预留标题栏空间。
-    static let trafficLightsTop: CGFloat = 52
-    /// 红绿灯水平占位（侧栏顶部若并排放控件时用）
-    static let trafficLightsLeading: CGFloat = 78
+    /// 统一顶栏高度（红绿灯与七入口横向导航严格同轴共行，centerY = 24pt）
+    static let trafficLightsTop: CGFloat = 48
+    /// 红绿灯水平净空（右缘 72pt + 14pt 留白）
+    static let trafficLightsLeading: CGFloat = 86
 
     /// 首次打开的默认尺寸；用户可自由拉伸，后续恢复上次大小。
     static let defaultWidth: CGFloat = 960
@@ -32,7 +32,11 @@ enum WindowChrome {
         window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.standardWindowButton(.zoomButton)?.isEnabled = true
         window.isMovableByWindowBackground = true
-        window.toolbarStyle = .unified
+        // Do NOT attach an NSToolbar: on macOS 26 Tahoe, NSToolbar inserts an opaque
+        // NSGlassContainerView above contentView that covers custom SwiftUI header controls.
+        if window.toolbar != nil {
+            window.toolbar = nil
+        }
         window.titlebarSeparatorStyle = .none
         // 宠物跟眼依赖 mouseMoved；默认窗口不产生该事件
         window.acceptsMouseMovedEvents = true
@@ -50,15 +54,46 @@ enum WindowChrome {
             frame.size = NSSize(width: defaultWidth, height: defaultHeight)
             window.setFrame(frame, display: false)
         }
+        alignTrafficLights(in: window)
+    }
+
+    static func alignTrafficLights(in window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let xs: [CGFloat] = [18, 38, 58]
+        for (idx, type) in types.enumerated() {
+            guard let button = window.standardWindowButton(type),
+                  let superview = button.superview else { continue }
+            superview.wantsLayer = true
+            superview.layer?.masksToBounds = false
+            let targetY = superview.isFlipped
+                ? (trafficLightsTop - button.frame.height) / 2.0
+                : superview.bounds.height - (trafficLightsTop + button.frame.height) / 2.0
+            if abs(button.frame.origin.x - xs[idx]) > 0.5 || abs(button.frame.origin.y - targetY) > 0.5 {
+                button.setFrameOrigin(NSPoint(x: xs[idx], y: targetY))
+            }
+        }
     }
 }
 
 struct WindowChromeInstaller: NSViewRepresentable {
     func makeNSView(context: Context) -> InstallerView { InstallerView() }
-    func updateNSView(_ nsView: InstallerView, context: Context) {}
+    func updateNSView(_ nsView: InstallerView, context: Context) {
+        if let win = nsView.window {
+            WindowChrome.alignTrafficLights(in: win)
+        }
+    }
 
     final class InstallerView: NSView {
         private weak var configuredWindow: NSWindow?
+        private var observers: [NSObjectProtocol] = []
+        private var isAligning = false
+
+        deinit {
+            for obs in observers {
+                NotificationCenter.default.removeObserver(obs)
+            }
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -68,6 +103,45 @@ struct WindowChromeInstaller: NSViewRepresentable {
                       self.configuredWindow !== window else { return }
                 self.configuredWindow = window
                 WindowChrome.apply(to: window)
+                self.installTrafficLightObservers(for: window)
+            }
+        }
+
+        override func layout() {
+            super.layout()
+            realignIfNeeded()
+        }
+
+        private func realignIfNeeded() {
+            guard !isAligning, let win = configuredWindow else { return }
+            isAligning = true
+            WindowChrome.alignTrafficLights(in: win)
+            isAligning = false
+        }
+
+        private func installTrafficLightObservers(for window: NSWindow) {
+            for obs in observers {
+                NotificationCenter.default.removeObserver(obs)
+            }
+            observers.removeAll()
+            let nc = NotificationCenter.default
+            let names: [Notification.Name] = [
+                NSWindow.didResizeNotification,
+                NSWindow.didEndLiveResizeNotification,
+                NSWindow.didExitFullScreenNotification,
+                NSWindow.didBecomeKeyNotification,
+                NSWindow.didDeminiaturizeNotification
+            ]
+            for name in names {
+                observers.append(nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.realignIfNeeded()
+                })
+            }
+            if let titlebarSuperview = window.standardWindowButton(.closeButton)?.superview {
+                titlebarSuperview.postsFrameChangedNotifications = true
+                observers.append(nc.addObserver(forName: NSView.frameDidChangeNotification, object: titlebarSuperview, queue: .main) { [weak self] _ in
+                    self?.realignIfNeeded()
+                })
             }
         }
     }

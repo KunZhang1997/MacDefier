@@ -1,5 +1,6 @@
 import AppKit
 import CleanupKit
+import QuickLook
 import SwiftUI
 
 struct AIToolCleanupView: View {
@@ -10,6 +11,7 @@ struct AIToolCleanupView: View {
     @State private var limits: [String: Int] = [:]
     @State private var confirmation: Confirmation?
     @State private var cliTarget: CliTool?
+    @State private var quickLookURL: URL?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Confirmation: Identifiable {
@@ -46,6 +48,11 @@ struct AIToolCleanupView: View {
         }
         .background(MDTheme.content)
         .onDisappear { model.cancelScan() }
+        .onReceive(NotificationCenter.default.publisher(for: .macDefierRefreshCurrentRoute)) { _ in
+            guard model.phase != .scanning, model.phase != .cleaning else { return }
+            startNewScan()
+        }
+        .quickLookPreview($quickLookURL)
         .sheet(item: $confirmation) { frozen in
             confirmationSheet(frozen)
         }
@@ -422,6 +429,44 @@ struct AIToolCleanupView: View {
         }
         .opacity(isCleaned ? 0.68 : 1.0)
         .padding(.horizontal, 12).padding(.vertical, 10)
+        .mdRowHover()
+        .contextMenu {
+            if !isCleaned && item.canSelect && model.phase == .preview && !model.requiresRescan {
+                Button {
+                    model.toggle(item)
+                } label: {
+                    Label(L10n.t("context.toggle_select"), systemImage: "checkmark.square")
+                }
+            }
+            if let tool = item.cliTool, !isCleaned, !SoftwareService.shared.isCLIToolCleaned(tool), model.phase != .cleaning {
+                Button {
+                    cliTarget = tool
+                } label: {
+                    Label(L10n.t("aitools.manage"), systemImage: "terminal")
+                }
+            }
+            if !isCleaned {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                } label: {
+                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                }
+                if FileManager.default.fileExists(atPath: item.path) {
+                    Button {
+                        quickLookURL = URL(fileURLWithPath: item.path)
+                    } label: {
+                        Label(L10n.t("context.quick_look"), systemImage: "eye")
+                    }
+                }
+            }
+            Divider()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.path, forType: .string)
+            } label: {
+                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private func groupSummary(_ group: AIToolCleanupGroup) -> String {
@@ -460,15 +505,43 @@ struct AIToolCleanupView: View {
             Text(L10n.t("aitools.confirm_body", frozen.items.count, AIToolCleanupCopy.bytes(Double(frozen.bytes))))
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 7) {
+                LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(frozen.resources, id: \.path) { resource in
                         HStack(alignment: .top) {
-                            Text(relative(resource.path)).font(.caption).textSelection(.enabled)
+                            Text(relative(resource.path))
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
                             Spacer()
-                            Text(AIToolCleanupCopy.bytes(Double(resource.bytes))).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            Text(AIToolCleanupCopy.bytes(Double(resource.bytes)))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .mdRowHover(cornerRadius: 4)
+                        .contextMenu {
+                            if FileManager.default.fileExists(atPath: resource.path) {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: resource.path)])
+                                } label: {
+                                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                                }
+                            }
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(resource.path, forType: .string)
+                            } label: {
+                                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+                            }
                         }
                     }
                 }
+                .padding(8)
+            }
+            .background(MDTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5)
             }
             Text(L10n.t("aitools.trash_note")).font(.caption).foregroundStyle(.secondary)
             HStack {

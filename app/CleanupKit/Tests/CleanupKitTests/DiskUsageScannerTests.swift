@@ -159,4 +159,96 @@ final class DiskUsageScannerTests: XCTestCase {
         XCTAssertEqual(missingSum.allocatedBytes, 0)
         XCTAssertFalse(missingSum.isComplete)
     }
+
+    func testScanInteractiveMatchesFullAccountingAcrossHardLinksSymlinksSparseAndDeepTrees() throws {
+        let a = try write("Library/Application Support/Demo/cache.bin", bytes: 98_304)
+        _ = try write("Downloads/archive.pkg", bytes: 131_072)
+        _ = try write(".hidden/config.json", bytes: 8_192)
+        let hard = root.appendingPathComponent("Library/Application Support/Demo/cache-hardlink.bin")
+        XCTAssertEqual(link(a.path, hard.path), 0)
+
+        let symlink = root.appendingPathComponent("Downloads/loop")
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: root)
+
+        let sparse = try write("Downloads/sparse.img", bytes: 0)
+        let sfd = open(sparse.path, O_WRONLY)
+        defer { close(sfd) }
+        XCTAssertEqual(ftruncate(sfd, 16 * 1024 * 1024), 0)
+
+        let baseline = DiskUsageScanner.scan(root: root)
+        let interactive = DiskUsageScanner.scanInteractive(root: root)
+
+        XCTAssertEqual(interactive.root?.allocatedBytes, baseline.root?.allocatedBytes)
+        XCTAssertEqual(interactive.root?.logicalBytes, baseline.root?.logicalBytes)
+        XCTAssertEqual(interactive.root?.hardLinkBytesCountedElsewhere, baseline.root?.hardLinkBytesCountedElsewhere)
+        XCTAssertEqual(interactive.root?.isComplete, true)
+        XCTAssertEqual(interactive.nodes[symlink.path]?.isSymbolicLink, true)
+    }
+
+    func testScanInteractivePreservesExactBytesWhenPruningDeepSmallLeavesAndExpandsSubtree() throws {
+        // Depth 6 leaf files (< 64 KB) omit individual leaf nodes from the global map
+        // while preserving 100% of allocated & logical bytes on every ancestor.
+        let deepDirRel = "L1/L2/L3/L4/L5/L6"
+        for idx in 0..<40 {
+            _ = try write("\(deepDirRel)/tiny-\(idx).txt", bytes: 4_096)
+        }
+        let baseline = DiskUsageScanner.scan(root: root)
+        let interactive = DiskUsageScanner.scanInteractive(root: root)
+
+        XCTAssertEqual(interactive.root?.allocatedBytes, baseline.root?.allocatedBytes)
+        XCTAssertEqual(interactive.root?.logicalBytes, baseline.root?.logicalBytes)
+        XCTAssertEqual(interactive.root?.isComplete, true)
+
+        // Expand deepDir on demand and merge into root snapshot while keeping rootPath.
+        let deepURL = root.appendingPathComponent(deepDirRel)
+        let expanded = DiskUsageScanner.scanInteractive(
+            root: deepURL,
+            options: DiskInteractiveScanOptions(
+                maxDepth: 6,
+                minRetainedChildBytesAfterShallowDepth: 0,
+                shallowFullRetentionDepth: 4,
+                maxRetainedSmallChildrenPerDirectory: 256,
+                workerCount: 2
+            )
+        )
+        let merged = interactive.mergingExpandedSubtree(expanded)
+        XCTAssertEqual(merged.rootPath, interactive.rootPath)
+        XCTAssertEqual(merged.children(of: deepURL.path).count, 40)
+    }
+
+    func testScanInteractiveCancellationAndVolumeOverview() throws {
+        for idx in 0..<12 {
+            _ = try write("branch-\(idx)/sub/item.dat", bytes: 8_192)
+        }
+        let cancelled = DiskUsageScanner.scanInteractive(root: root, isCancelled: { true })
+        XCTAssertTrue(cancelled.root?.issues.contains(.cancelled) == true)
+        XCTAssertFalse(cancelled.root?.isComplete ?? true)
+
+        let overview = try XCTUnwrap(DiskUsageScanner.volumeOverview(for: URL(fileURLWithPath: "/")))
+        XCTAssertGreaterThan(overview.totalBytes, 0)
+        XCTAssertLessThanOrEqual(overview.usedBytes, overview.totalBytes)
+        XCTAssertLessThanOrEqual(overview.availableBytes, overview.totalBytes)
+        XCTAssertTrue(overview.isRootFileSystem)
+        XCTAssertFalse(overview.volumeName.isEmpty)
+    }
+
+    func testSeedSubtreesAndSubtreeExtractionPreserveExactAccounting() throws {
+        let userAData = try write("Users/alice/Library/Caches/big.bin", bytes: 196_608)
+        _ = try write("Users/alice/Downloads/pkg.dmg", bytes: 131_072)
+        _ = try write("Applications/Demo.app/Contents/MacOS/Demo", bytes: 98_304)
+        _ = try write("System/core.dat", bytes: 65_536)
+
+        let aliceURL = root.appendingPathComponent("Users/alice")
+        let aliceSeed = DiskUsageScanner.scanInteractive(root: aliceURL)
+        let fullCold = DiskUsageScanner.scanInteractive(root: root)
+        let fullSeeded = DiskUsageScanner.scanInteractive(root: root, seedSubtrees: [aliceSeed])
+
+        XCTAssertEqual(fullSeeded.root?.allocatedBytes, fullCold.root?.allocatedBytes)
+        XCTAssertEqual(fullSeeded.root?.logicalBytes, fullCold.root?.logicalBytes)
+        XCTAssertNotNil(fullSeeded.nodes[PathGate.standardizeOnly(userAData.path)])
+
+        let projected = try XCTUnwrap(fullSeeded.extractingSubtree(at: aliceURL.path))
+        XCTAssertEqual(projected.root?.allocatedBytes, aliceSeed.root?.allocatedBytes)
+        XCTAssertNotNil(projected.nodes[PathGate.standardizeOnly(userAData.path)])
+    }
 }

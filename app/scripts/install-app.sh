@@ -30,21 +30,31 @@ if ! codesign --verify --deep --strict "$STAGE" 2>/dev/null; then
     SIGN_ID="${RESOLVED_HASH:--}"
   fi
   xattr -cr "$STAGE"
+  codesign_local() {
+    local attempt
+    for attempt in 1 2 3; do
+      if codesign "$@"; then
+        return 0
+      fi
+      sleep "$attempt"
+    done
+    codesign --timestamp=none "$@"
+  }
   # Preserve Sparkle's nested entitlements; the privileged helper gets its own
   # signing identifier and no inherited main-app entitlements.
   while IFS= read -r -d '' bin; do
     [[ "$bin" != "$STAGE/Contents/MacOS/MacDefier" ]] || continue
     [[ "$(file -b "$bin")" == *Mach-O* ]] || continue
     if [[ "$bin" == "$STAGE/Contents/MacOS/MacDefier-UninstallHelper" ]]; then
-      codesign --force --options runtime --identifier com.macdefier.app.uninstall-helper --sign "$SIGN_ID" "$bin"
+      codesign_local --force --options runtime --identifier com.macdefier.app.uninstall-helper --sign "$SIGN_ID" "$bin"
     else
-      codesign --force --options runtime --preserve-metadata=entitlements --sign "$SIGN_ID" "$bin"
+      codesign_local --force --options runtime --preserve-metadata=entitlements --sign "$SIGN_ID" "$bin"
     fi
   done < <(find "$STAGE/Contents" -type f \( -perm -111 -o -name '*.dylib' \) -print0)
   while IFS= read -r -d '' bundle; do
-    codesign --force --options runtime --preserve-metadata=entitlements --sign "$SIGN_ID" "$bundle"
+    codesign_local --force --options runtime --preserve-metadata=entitlements --sign "$SIGN_ID" "$bundle"
   done < <(find "$STAGE/Contents" -depth -type d \( -name '*.framework' -o -name '*.xpc' -o -name '*.app' -o -name '*.appex' \) -print0)
-  codesign --force --options runtime --entitlements "$APP_DIR/MacDefier/MacDefier.entitlements" --sign "$SIGN_ID" "$STAGE"
+  codesign_local --force --options runtime --entitlements "$APP_DIR/MacDefier/MacDefier.entitlements" --sign "$SIGN_ID" "$STAGE"
 fi
 codesign --verify --deep --strict "$STAGE"
 python3 "$LIFECYCLE" install "$STAGE" "${@:2}"

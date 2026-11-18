@@ -1,3 +1,4 @@
+import CleanupKit
 import CoreGraphics
 import Foundation
 import XCTest
@@ -118,6 +119,144 @@ final class DiskTreemapLayoutTests: XCTestCase {
             verify(generated, in: CGRect(x: 13, y: 17, width: 640, height: 360))
             verify(generated, in: CGRect(x: -23, y: -11, width: 360, height: 640))
         }
+    }
+
+    func testWholeDiskPresentationIncludesUnaccountedVolumeSpaceAndDenominator() {
+        let users = CleanupKit.DiskUsageNode(
+            path: "/Users", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 300_000_000_000, logicalBytes: 300_000_000_000,
+            hardLinkBytesCountedElsewhere: 0, children: [], issues: [.cloudPlaceholder, .otherVolume]
+        )
+        let apps = CleanupKit.DiskUsageNode(
+            path: "/Applications", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 80_000_000_000, logicalBytes: 80_000_000_000,
+            hardLinkBytesCountedElsewhere: 0, children: [], issues: [.inProgress]
+        )
+        let root = CleanupKit.DiskUsageNode(
+            path: "/", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 380_000_000_000, logicalBytes: 380_000_000_000,
+            hardLinkBytesCountedElsewhere: 0, children: ["/Users", "/Applications"], issues: [.cloudPlaceholder, .otherVolume]
+        )
+        let snapshot = CleanupKit.DiskUsageSnapshot(
+            rootPath: "/",
+            nodes: ["/": root, "/Users": users, "/Applications": apps],
+            scannedAt: Date(),
+            elapsed: 1.2
+        )
+        let unaccounted: UInt64 = 45_000_000_000
+        let presentation = DiskMapPresentation(
+            parent: root,
+            children: [users, apps],
+            snapshot: snapshot,
+            unaccountedVolumeBytes: unaccounted
+        )
+        XCTAssertEqual(presentation.unaccountedBytes, unaccounted)
+        XCTAssertEqual(presentation.denominatorBytes, 425_000_000_000)
+        XCTAssertTrue(presentation.entries.contains { $0.id == "__system_unaccounted__" && $0.isSystemUnaccounted })
+        XCTAssertEqual(presentation.entries.first { $0.id == "/Users" }?.isPartial, false)
+        XCTAssertEqual(presentation.entries.first { $0.id == "/Applications" }?.isPartial, true)
+    }
+
+    func testMultiLevelNestedPresentationCollapsesWrapperChainsAndKeepsAtomicPackages() {
+        let caches = CleanupKit.DiskUsageNode(
+            path: "/Users/alice/Library/Caches", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 80_000_000_000, logicalBytes: 80_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let appSupport = CleanupKit.DiskUsageNode(
+            path: "/Users/alice/Library/Application Support", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 50_000_000_000, logicalBytes: 50_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let library = CleanupKit.DiskUsageNode(
+            path: "/Users/alice/Library", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 130_000_000_000, logicalBytes: 130_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [caches.path, appSupport.path], issues: []
+        )
+        let desktop = CleanupKit.DiskUsageNode(
+            path: "/Users/alice/Desktop", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 100_000_000_000, logicalBytes: 100_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let ollama = CleanupKit.DiskUsageNode(
+            path: "/Users/alice/.ollama", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 69_000_000_000, logicalBytes: 69_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let alice = CleanupKit.DiskUsageNode(
+            path: "/Users/alice", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 299_000_000_000, logicalBytes: 299_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [library.path, desktop.path, ollama.path], issues: []
+        )
+        let shared = CleanupKit.DiskUsageNode(
+            path: "/Users/Shared", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 1_000_000_000, logicalBytes: 1_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let users = CleanupKit.DiskUsageNode(
+            path: "/Users", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 300_000_000_000, logicalBytes: 300_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [alice.path, shared.path], issues: []
+        )
+        let xcodeContents = CleanupKit.DiskUsageNode(
+            path: "/Applications/Xcode.app/Contents", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 40_000_000_000, logicalBytes: 40_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let xcode = CleanupKit.DiskUsageNode(
+            path: "/Applications/Xcode.app", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 40_000_000_000, logicalBytes: 40_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [xcodeContents.path], issues: []
+        )
+        let docker = CleanupKit.DiskUsageNode(
+            path: "/Applications/Docker.app", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 20_000_000_000, logicalBytes: 20_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [], issues: []
+        )
+        let apps = CleanupKit.DiskUsageNode(
+            path: "/Applications", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 60_000_000_000, logicalBytes: 60_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [xcode.path, docker.path], issues: []
+        )
+        let root = CleanupKit.DiskUsageNode(
+            path: "/", isDirectory: true, isSymbolicLink: false, isHardLinkDuplicate: false,
+            allocatedBytes: 360_000_000_000, logicalBytes: 360_000_000_000, hardLinkBytesCountedElsewhere: 0,
+            children: [users.path, apps.path], issues: []
+        )
+        let snapshot = CleanupKit.DiskUsageSnapshot(
+            rootPath: "/",
+            nodes: [
+                "/": root, "/Users": users, "/Users/alice": alice, "/Users/Shared": shared,
+                library.path: library, caches.path: caches, appSupport.path: appSupport,
+                desktop.path: desktop, ollama.path: ollama,
+                apps.path: apps, xcode.path: xcode, xcodeContents.path: xcodeContents, docker.path: docker
+            ],
+            scannedAt: Date(),
+            elapsed: 1.0
+        )
+
+        let presentation = DiskMapPresentation(parent: root, children: [users, apps], snapshot: snapshot)
+
+        let usersEntry = presentation.entries.first { $0.id == "/Users" }
+        XCTAssertEqual(usersEntry?.title, "Users / alice")
+        XCTAssertEqual(usersEntry?.effectiveNode?.path, "/Users/alice")
+        XCTAssertEqual(usersEntry?.usesNeutralWrapperFrame, true)
+        let usersChildrenSum = (usersEntry?.childrenEntries ?? []).reduce(0.0) { $0 + $1.weight }
+        XCTAssertEqual(usersChildrenSum, 300_000_000_000, accuracy: 1.0)
+        let childHues = Set((usersEntry?.childrenEntries ?? []).filter { $0.node != nil }.map(\.hueIndex))
+        XCTAssertGreaterThanOrEqual(childHues.count, 3)
+
+        // Depth 2 nested child (`Caches`) is indexed in entriesByID with full breadcrumb context.
+        let cachesEntry = presentation.entriesByID[caches.path]
+        XCTAssertNotNil(cachesEntry)
+        XCTAssertEqual(cachesEntry?.depth, 2)
+        XCTAssertEqual(cachesEntry?.parentContext, "Users / alice › Library")
+
+        // `.app` bundles stay atomic leaf tiles on the overview rather than exploding into `Contents`.
+        let xcodeEntry = presentation.entriesByID[xcode.path]
+        XCTAssertNotNil(xcodeEntry)
+        XCTAssertEqual(xcodeEntry?.symbol, "app.fill")
+        XCTAssertTrue(xcodeEntry?.childrenEntries.isEmpty == true)
     }
 
     private func items(_ weights: [Double]) -> [DiskTreemapItem] {

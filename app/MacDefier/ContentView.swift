@@ -9,14 +9,14 @@ struct ContentView: View {
     @ObservedObject private var guide = UsageGuideState.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
+    @State private var commandPalettePresented = false
     private let routes: [AppRoute] = [.diagnostic, .cleanup, .aiTools, .diskMap, .software, .monitor, .settings]
 
     var body: some View {
         ZStack {
             ZStack {
                 VStack(spacing: 0) {
-                    titleBar
-                    navigationBar
+                    unifiedNavigationBar
                     detail.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .background(MDTheme.content)
@@ -26,7 +26,7 @@ struct ContentView: View {
                 // This is an initial/reset position, not a restriction on user dragging.
                 MisterDefenderOverlay(isOpen: $nav.misterOpen, dockInset: 76)
                     .environmentObject(MonitorService.shared)
-                    .padding(.top, 36)
+                    .padding(.top, WindowChrome.trafficLightsTop)
                     .ignoresSafeArea()
             }
             .disabled(guide.isPresented)
@@ -38,6 +38,13 @@ struct ContentView: View {
                     nav.route = .settings
                 }
             }
+        }
+        .sheet(isPresented: $commandPalettePresented) {
+            CommandPaletteView(isPresented: $commandPalettePresented)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macDefierOpenCommandPalette)) { _ in
+            guard !guide.isPresented else { return }
+            commandPalettePresented = true
         }
         .environment(\.layoutDirection, .leftToRight)
         .environment(\.locale, L10n.locale)
@@ -59,37 +66,62 @@ struct ContentView: View {
         }
     }
 
-    private var titleBar: some View {
-        HStack {
-            Text("MacDefier").font(.system(size: 14, weight: .semibold))
-                .padding(.leading, WindowChrome.trafficLightsLeading)
-            Spacer()
-            UpdateDownloadControl()
+    private var unifiedNavigationBar: some View {
+        let sideReserve = WindowChrome.trafficLightsLeading
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                Color.clear
+                    .frame(minWidth: sideReserve, maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+
+                navigationTabsPill
+
+                HStack(spacing: 0) {
+                    UpdateDownloadControl()
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.leading, 8)
+                    Spacer(minLength: 14)
+                }
+                .frame(minWidth: 14, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+            .frame(height: WindowChrome.trafficLightsTop)
+
+            HStack(spacing: 8) {
+                scrollableNavigationTabsPill
+                UpdateDownloadControl()
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.leading, sideReserve)
+            .padding(.trailing, 14)
+            .frame(height: WindowChrome.trafficLightsTop)
         }
-        .padding(.trailing, 20).frame(height: 36)
+        .frame(maxWidth: .infinity)
+        .frame(height: WindowChrome.trafficLightsTop)
         .background(MDTheme.content)
     }
 
-    private var navigationBar: some View {
-        GeometryReader { geometry in
-            ScrollViewReader { reader in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    MDGlassTabs(tabs: routes.map { (id: $0, title: $0.title) }, selection: $nav.route)
-                        .id(appLanguageRaw)
-                        .accessibilityIdentifier("workbench.navigation")
-                        .fixedSize(horizontal: true, vertical: false)
-                        .frame(minWidth: geometry.size.width, minHeight: 46)
-                }
-                .onChange(of: nav.route) { _, route in
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
-                        reader.scrollTo(route, anchor: .center)
-                    }
-                }
-                .onAppear { reader.scrollTo(nav.route, anchor: .center) }
+    private var scrollableNavigationTabsPill: some View {
+        ScrollViewReader { reader in
+            ScrollView(.horizontal, showsIndicators: false) {
+                navigationTabsPill
+                    .padding(.horizontal, 4)
+                    .frame(height: WindowChrome.trafficLightsTop)
             }
+            .onChange(of: nav.route) { _, route in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                    reader.scrollTo(route, anchor: .center)
+                }
+            }
+            .onAppear { reader.scrollTo(nav.route, anchor: .center) }
         }
-        .padding(.horizontal, 20).frame(maxWidth: .infinity).frame(height: 46)
-        .background(MDTheme.content)
+        .frame(maxWidth: .infinity, maxHeight: WindowChrome.trafficLightsTop)
+    }
+
+    private var navigationTabsPill: some View {
+        MDGlassTabs(tabs: routes.map { (id: $0, title: $0.title) }, selection: $nav.route)
+            .id(appLanguageRaw)
+            .accessibilityIdentifier("workbench.navigation")
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder

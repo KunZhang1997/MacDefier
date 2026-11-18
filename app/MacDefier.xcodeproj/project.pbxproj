@@ -40,6 +40,7 @@
 		5457A59BAC95E95F5575DC26 /* AIProfileIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F022794796957D5234F0BFE9 /* AIProfileIsolationTests.swift */; };
 		5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969BC3B9DBAEDBDB983E88F6 /* CliUninstallSheet.swift */; };
 		5E837AEFDED8D4A849E54331 /* CleanupKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3D9F256BD40F86E4699F9979 /* CleanupKit */; };
+		5EBCC1ACD5780CFACFEBADCC /* CommandPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0974A887A31BD3E9573197 /* CommandPaletteView.swift */; };
 		60C13DDE1D590C037FFECC1E /* AIChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7275089DC9E0E7ACC367B899 /* AIChatViewModel.swift */; };
 		655EFAC22D64F90FFE608D0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 2E35D3F9BE13174FD01BB23D /* Sparkle */; };
 		687E340ABC021FAEC9CE5747 /* PetTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C999D2D5815F2EB9C8B71FC /* PetTypes.swift */; };
@@ -234,6 +235,7 @@
 		DF8DC35B841704883EB547C2 /* UninstallErrorText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallErrorText.swift; sourceTree = "<group>"; };
 		E75FB40693BCA00DD69B05F1 /* UninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSheet.swift; sourceTree = "<group>"; };
 		E85C18A0B16DCD9A0D3FA513 /* AIRequestTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRequestTransport.swift; sourceTree = "<group>"; };
+		EC0974A887A31BD3E9573197 /* CommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteView.swift; sourceTree = "<group>"; };
 		EEC25A3FA442BE1E3A2DD174 /* DiagnosticMemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticMemoryTests.swift; sourceTree = "<group>"; };
 		F022794796957D5234F0BFE9 /* AIProfileIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProfileIsolationTests.swift; sourceTree = "<group>"; };
 		F04A9069924A57AAC347AA18 /* OllamaRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaRuntime.swift; sourceTree = "<group>"; };
@@ -319,6 +321,7 @@
 				06F105B7EA1E239424D39A16 /* CleanupAIScan.swift */,
 				B7467D33B9BC772C88283994 /* CleanupConfirmSheet.swift */,
 				A786D8E6483C8A3886C2246F /* CleanupView.swift */,
+				EC0974A887A31BD3E9573197 /* CommandPaletteView.swift */,
 				3BDCE94219A3F891D6EDB116 /* DiagnosticView.swift */,
 				A6DB6BD7CD4F96E90B8B22DF /* DiskMapView.swift */,
 				4CA4D9C5B25524D74EDADF31 /* DiskTreemapLayout.swift */,
@@ -713,6 +716,7 @@
 				0A78BB3011F649B786F0C26D /* CleanupConfirmSheet.swift in Sources */,
 				95575B8DE5C8ADD636711254 /* CleanupView.swift in Sources */,
 				5906FEE821ED1E07062B396D /* CliUninstallSheet.swift in Sources */,
+				5EBCC1ACD5780CFACFEBADCC /* CommandPaletteView.swift in Sources */,
 				9A3412A709B82EC40449A909 /* ContentView.swift in Sources */,
 				EE2CFEE838BAF2965A0C84F6 /* DefierAction.swift in Sources */,
 				D4FE83D37B94685CA93EE575 /* DefierChatModels.swift in Sources */,
@@ -843,7 +847,7 @@
 				CODE_SIGN_ENTITLEMENTS = MacDefier/MacDefier.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0.21;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
@@ -853,7 +857,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © MacDefier. Monitor sampling adapted from Stats (MIT).";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app;
 				PRODUCT_MODULE_NAME = MacDefier;
 				PRODUCT_NAME = MacDefier;
@@ -1032,7 +1036,7 @@
 				CODE_SIGN_ENTITLEMENTS = MacDefier/MacDefier.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0.21;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1043,7 +1047,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © MacDefier. Monitor sampling adapted from Stats (MIT).";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.21;
 				PRODUCT_BUNDLE_IDENTIFIER = com.macdefier.app.dev;
 				PRODUCT_MODULE_NAME = MacDefier;
 				PRODUCT_NAME = "MacDefier-Dev";

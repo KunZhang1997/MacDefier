@@ -45,6 +45,21 @@ enum MDTheme {
         light: 0x000000, dark: 0xFFFFFF,
         lightAlpha: 0.08, darkAlpha: 0.16
     )
+    /// Restrained top inner edge highlight (System Settings / Things 3 card depth).
+    static let cardTopHighlight = Color.adaptive(
+        light: 0xFFFFFF, dark: 0xFFFFFF,
+        lightAlpha: 0.72, darkAlpha: 0.07
+    )
+    /// Subtle ambient card shadow (kept low-spread so adjacent cards stay crisp).
+    static let cardShadow = Color.adaptive(
+        light: 0x000000, dark: 0x000000,
+        lightAlpha: 0.035, darkAlpha: 0.16
+    )
+    /// Subtle row hover tint (zero layout shift).
+    static let rowHover = Color.adaptive(
+        light: 0x000000, dark: 0xFFFFFF,
+        lightAlpha: 0.032, darkAlpha: 0.055
+    )
     static let accent = Color.adaptive(light: 0x007AFF, dark: 0x0A84FF)
     static let success = Color.adaptive(light: 0x34C759, dark: 0x30D158)
     static let warning = Color.adaptive(light: 0xFF9500, dark: 0xFF9F0A)
@@ -53,6 +68,7 @@ enum MDTheme {
     static let chart2 = Color.adaptive(light: 0x34C759, dark: 0x30D158)
     static let chart3 = Color.adaptive(light: 0xFF9500, dark: 0xFF9F0A)
     static let chart4 = Color.adaptive(light: 0xAF52DE, dark: 0xBF5AF2)
+    static let chart5 = Color.adaptive(light: 0x5AC8FA, dark: 0x64D2FF)
     static let chart6 = Color.adaptive(light: 0x8E8E93, dark: 0x98989D)
 
     static let radiusCard: CGFloat = 12
@@ -306,6 +322,7 @@ struct MDCard<Content: View>: View {
     /// 在双列等高容器内为 true 时，背景铺满行高
     var fillHeight: Bool = false
     @ViewBuilder var content: () -> Content
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         content()
@@ -318,10 +335,27 @@ struct MDCard<Content: View>: View {
             .background(
                 RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
                     .fill(MDTheme.surface)
+                    .shadow(color: contrast == .increased ? .clear : MDTheme.cardShadow, radius: 3, y: 1)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
-                    .stroke(MDTheme.border.opacity(0.5), lineWidth: 0.5)
+                    .strokeBorder(
+                        contrast == .increased ? MDTheme.border : MDTheme.subtleBorder,
+                        lineWidth: contrast == .increased ? 1 : 0.5
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
+                    .inset(by: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [contrast == .increased ? .clear : MDTheme.cardTopHighlight, .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        ),
+                        lineWidth: 0.5
+                    )
+                    .allowsHitTesting(false)
             )
     }
 }
@@ -544,6 +578,7 @@ struct MDRowSeparator: View {
 struct MDGroupedList<Content: View>: View {
     var cornerRadius: CGFloat = MDTheme.radiusCard
     @ViewBuilder var content: () -> Content
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         VStack(spacing: 0) {
@@ -553,11 +588,28 @@ struct MDGroupedList<Content: View>: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(MDTheme.surface)
         )
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(MDTheme.border.opacity(0.5), lineWidth: 0.5)
+                .strokeBorder(
+                    contrast == .increased ? MDTheme.border : MDTheme.subtleBorder,
+                    lineWidth: contrast == .increased ? 1 : 0.5
+                )
         )
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .inset(by: 0.5)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [contrast == .increased ? .clear : MDTheme.cardTopHighlight, .clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    ),
+                    lineWidth: 0.5
+                )
+                .allowsHitTesting(false)
+        )
+        .shadow(color: contrast == .increased ? .clear : MDTheme.cardShadow, radius: 3, y: 1)
     }
 }
 
@@ -755,9 +807,41 @@ extension MDCheckbox where Label == EmptyView {
     }
 }
 
+extension Notification.Name {
+    static let macDefierOpenCommandPalette = Notification.Name("MacDefier.OpenCommandPalette")
+    static let macDefierRefreshCurrentRoute = Notification.Name("MacDefier.RefreshCurrentRoute")
+    static let macDefierFocusSearch = Notification.Name("MacDefier.FocusSearch")
+}
+
+private struct MDRowHoverModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if hovered {
+                    if cornerRadius > 0 {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(MDTheme.rowHover)
+                    } else {
+                        Rectangle().fill(MDTheme.rowHover)
+                    }
+                }
+            }
+            .onHover { hovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
+    }
+}
+
 // A copy action keeps paths available without embedding native selectable-text
 // overlays in frequently updated cleanup rows (a macOS layout-recursion path).
 extension View {
+    func mdRowHover(cornerRadius: CGFloat = 0) -> some View {
+        modifier(MDRowHoverModifier(cornerRadius: cornerRadius))
+    }
+
     func mdCopyPathMenu(_ path: String) -> some View {
         contextMenu {
             Button {

@@ -13,6 +13,9 @@ struct MisterDefenderChatBody: View {
 
     @State private var draft = ""
     @State private var scrollToken = 0
+    @State private var hoveredMessageID: UUID?
+    @State private var copiedMessageID: UUID?
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     /// When false, intensity + clear live in panel header (overlay) — avoid double chrome.
     var showsToolbar: Bool = true
@@ -34,16 +37,13 @@ struct MisterDefenderChatBody: View {
             messageArea
             inputBar
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .windowBackgroundColor).opacity(0.9),
-                    Color(nsColor: .controlBackgroundColor).opacity(0.5)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background {
+            if reduceTransparency {
+                MDTheme.content
+            } else {
+                Rectangle().fill(.regularMaterial)
+            }
+        }
         .onAppear {
             vm.reloadSettings()
             draft = vm.input
@@ -224,6 +224,30 @@ struct MisterDefenderChatBody: View {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(isUser ? Color.clear : MDTheme.subtleBorder.opacity(0.75), lineWidth: 0.5)
                         )
+                        .overlay(alignment: .topTrailing) {
+                            if !isUser && hoveredMessageID == msg.id {
+                                Button {
+                                    copy(msg.content)
+                                    copiedMessageID = msg.id
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                        if copiedMessageID == msg.id { copiedMessageID = nil }
+                                    }
+                                } label: {
+                                    Image(systemName: copiedMessageID == msg.id ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(copiedMessageID == msg.id ? MDTheme.success : MDTheme.secondary)
+                                        .padding(5)
+                                        .background(MDTheme.surface, in: Circle())
+                                        .overlay(Circle().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5))
+                                }
+                                .buttonStyle(.plain)
+                                .help(L10n.t(copiedMessageID == msg.id ? "chat.copied" : "chat.copy"))
+                                .padding(6)
+                            }
+                        }
+                        .onHover { hovering in
+                            hoveredMessageID = hovering ? msg.id : (hoveredMessageID == msg.id ? nil : hoveredMessageID)
+                        }
                         .shadow(color: .black.opacity(isUser ? 0.12 : 0.06), radius: isUser ? 4 : 2, y: 1)
                         .contextMenu {
                             Button {

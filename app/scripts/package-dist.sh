@@ -9,7 +9,7 @@ if [[ "${SINGLE_APP_PRODUCT:-}" != MacDefier ]]; then
 fi
 APP_DIR="$ROOT/app"
 DIST_TRIAL="$ROOT/dist/trial"
-VER="${1:-0.1.0}"
+VER="${1:-0.19}"
 PRODUCT="$APP_DIR/build/DerivedData/Build/Products/Release/MacDefier.app"
 TRIAL_TAG="unsigned"
 ZIP_OUT="$DIST_TRIAL/MacDefier-${VER}-${TRIAL_TAG}.zip"

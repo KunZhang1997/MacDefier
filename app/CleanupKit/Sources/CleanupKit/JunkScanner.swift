@@ -384,10 +384,12 @@ public actor JunkScanner {
     }
 
     private func scanTemp() -> [CleanableItem] {
-        // PureMac systemJunk includes /tmp + /private/var/tmp
+        // PureMac systemJunk includes /tmp + /private/var/tmp; skip root-owned entries current user cannot trash.
         var items: [CleanableItem] = []
         for p in ["/tmp", "/private/var/tmp", NSTemporaryDirectory()] {
-            items.append(contentsOf: listImmediateChildren(of: p, category: .temp, maxItems: 80))
+            items.append(contentsOf: listImmediateChildren(of: p, category: .temp, maxItems: 80) { _, path in
+                CleanupEligibility.canMoveToTrash(path)
+            })
         }
         return dedupe(items)
     }
@@ -439,16 +441,16 @@ public actor JunkScanner {
         // 废纸篓清空走 removeItem，不要求 isSafeToTrash；其余项必须执行闸可通过
         if category != .trash, !PathGate.isSafeToTrash(path) { return nil }
         if category == .trash, !PathGate.isUnderUserTrash(path) { return nil }
+        let aiGuard = activeAIGuard ?? AIToolCleanupGuard.withCapturedProcessSnapshot()
+        let aiReason = category == .trash ? nil : aiGuard.previewBlockingReason(for: path, home: home)
+        if aiReason == "dedicated_preview_required" {
+            // Owned by the dedicated AI Tools workbench; do not walk or duplicate as a dead locked row here.
+            return nil
+        }
         let size = directorySize(at: path)
         if size < minimumBytes && category != .trash { return nil }
         let appName = friendlyAppName(from: name)
-        let aiGuard = activeAIGuard ?? AIToolCleanupGuard.withCapturedProcessSnapshot()
         let browserGuard = activeBrowserGuard ?? BrowserCleanupGuard.withCapturedProcessSnapshot()
-        let aiReason = category == .trash ? nil : aiGuard.previewBlockingReason(for: path, home: home)
-        if aiReason == "dedicated_preview_required" {
-            // Owned by the dedicated AI Tools workbench; do not duplicate as a dead locked row here.
-            return nil
-        }
         let eligibility = CleanupEligibility.previewBlock(for: path, home: home, browser: browserGuard)
         return CleanableItem(
             name: name,

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 正式发版：Developer ID 签名 → 公证 → staple → DMG/ZIP
 # 用法：
-#   ./scripts/package-release.sh                 # 默认 0.1.0
-#   ./scripts/package-release.sh 0.1.1
+#   ./scripts/package-release.sh                 # 默认 0.19
+#   ./scripts/package-release.sh 0.20
 # 前置：
 #   xcrun notarytool store-credentials "macdefier-notary" ...
 #   MACDEFIER_SPARKLE_TOOLS_DIR=/path/to/pinned/Sparkle/bin
@@ -10,7 +10,7 @@
 # 工程在 iCloud Desktop 时，在本地缓存目录构建，避免 xcodebuild 卡死。
 set -euo pipefail
 
-VER="${1:-0.1.0}"
+VER="${1:-0.21}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LIFECYCLE="$ROOT/app/scripts/single_app_build.py"
 if [[ "${SINGLE_APP_PRODUCT:-}" != MacDefier ]]; then

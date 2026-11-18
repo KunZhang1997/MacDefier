@@ -123,12 +123,33 @@ struct CleanupConfirmSheet: View {
                     Text(homeRelative(paths[index]))
                         .font(.system(size: 11).monospaced())
                         .foregroundStyle(MDTheme.secondary)
-                        .mdCopyPathMenu(paths[index])
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .mdRowHover(cornerRadius: 4)
+                        .contextMenu {
+                            if FileManager.default.fileExists(atPath: paths[index]) {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: paths[index])])
+                                } label: {
+                                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                                }
+                            }
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(paths[index], forType: .string)
+                            } label: {
+                                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+                            }
+                        }
                 }
             }
             .padding(8)
             .background(MDTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5)
+            }
         }
     }
 

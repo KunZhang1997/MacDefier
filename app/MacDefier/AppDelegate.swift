@@ -2,6 +2,7 @@
 
 import AppKit
 import MonitorKit
+import UninstallHelperClient
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let mainWindowID = "main"
@@ -29,6 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rawValue: UserDefaults.standard.string(forKey: AppAppearance.storageKey)
                 ?? AppAppearance.system.rawValue
         )
+        if !ProcessInfo.processInfo.arguments.contains("--export-app-icon") {
+            Task { await UninstallHelperClient.shared.synchronizeRegistrationIfNeeded() }
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

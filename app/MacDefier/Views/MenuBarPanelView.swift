@@ -10,7 +10,9 @@ struct MenuBarPanelView: View {
     let navigate: (AppRoute, MonitorTab?) -> Void
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.chinese.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var processMetric = ProcessMetric.memory
+    @State private var hoveredTab: MonitorTab?
     @State private var openedAt = Date()
 
     private enum ProcessMetric: String, CaseIterable { case memory, cpu }
@@ -20,7 +22,13 @@ struct MenuBarPanelView: View {
             panel(snapshot: monitor.snapshot, now: context.date)
         }
         .frame(width: 360, height: height)
-        .background(MDTheme.content)
+        .background {
+            if reduceTransparency {
+                MDTheme.content
+            } else {
+                Rectangle().fill(.regularMaterial)
+            }
+        }
         .preferredColorScheme((AppAppearance(rawValue: appearance) ?? .system).colorScheme)
         .environment(\.locale, L10n.locale)
         .id(language)
@@ -261,8 +269,38 @@ struct MenuBarPanelView: View {
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
                         .font(.system(size: 11))
+                        .padding(.horizontal, 4)
                         .frame(height: 21)
+                        .mdRowHover(cornerRadius: 4)
                         .help("\(process.name) · PID \(process.pid)")
+                        .contextMenu {
+                            Button {
+                                navigate(.monitor, processMetric == .memory ? .ram : .cpu)
+                            } label: {
+                                Label(L10n.t("menupanel.open_monitor"), systemImage: "gauge.with.dots.needle.67percent")
+                            }
+                            if DefierActionGuard.isSafeToQuit(pid: process.pid) {
+                                Button {
+                                    AppNavigator.shared.handle(
+                                        DefierAction(
+                                            kind: .quitProcess,
+                                            title: process.name,
+                                            detail: "PID \(process.pid)",
+                                            processPID: process.pid
+                                        )
+                                    )
+                                } label: {
+                                    Label(L10n.t("diag.quit_process"), systemImage: "xmark.circle")
+                                }
+                            }
+                            Divider()
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString("\(process.name) (PID \(process.pid))", forType: .string)
+                            } label: {
+                                Label(L10n.t("context.copy_pid"), systemImage: "doc.on.doc")
+                            }
+                        }
                         .accessibilityElement(children: .combine)
                     }
                 }
@@ -318,10 +356,26 @@ struct MenuBarPanelView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MDTheme.surface)
+                    .overlay {
+                        if hoveredTab == tab {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(MDTheme.rowHover)
+                        }
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(hoveredTab == tab ? MDTheme.border : MDTheme.subtleBorder, lineWidth: 0.5)
+                    }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
+        }
         .help(L10n.t("menupanel.open_detail", title))
         .accessibilityElement(children: .combine)
         .accessibilityHint(L10n.t("menupanel.open_detail", title))

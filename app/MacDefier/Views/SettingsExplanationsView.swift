@@ -43,19 +43,13 @@ struct SettingsExplanationsView: View {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(MDTheme.label)
-            Text(body)
-                .font(.system(size: 12))
-                .foregroundStyle(MDTheme.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MDTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
-                        .stroke(MDTheme.border.opacity(0.55), lineWidth: 0.5)
-                )
+            MDCard(padding: 12) {
+                Text(body)
+                    .font(.system(size: 12))
+                    .foregroundStyle(MDTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
         }
     }
 }

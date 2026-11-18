@@ -7,20 +7,22 @@ struct MonitorCenterView: View {
     @ObservedObject private var nav = AppNavigator.shared
     @Binding var selectedTab: MonitorTab
     @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             MDPageBar {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 20) {
-                        detailPicker
-                        Spacer(minLength: 12)
-                        if selectedTab != .history { historyButton; intervalPicker }
+                    HStack(spacing: 12) {
+                        tabStrip
+                        Spacer(minLength: 8)
+                        intervalSegmented
                     }
-                    VStack(alignment: .leading, spacing: 10) {
-                        detailPicker
-                        if selectedTab != .history {
-                            HStack(spacing: 12) { historyButton; intervalPicker }
+                    VStack(alignment: .leading, spacing: 8) {
+                        tabStrip
+                        HStack {
+                            Spacer(minLength: 0)
+                            intervalSegmented
                         }
                     }
                 }
@@ -32,7 +34,11 @@ struct MonitorCenterView: View {
             ScrollView {
                 Group {
                     switch selectedTab {
-                    case .dashboard: MonitorDashboardPane(onOpenNetwork: { selectedTab = .network })
+                    case .dashboard:
+                        MonitorDashboardPane(
+                            onOpenNetwork: { selectedTab = .network },
+                            onSelectTab: { selectedTab = $0 }
+                        )
                     case .cpu: MonitorCPUPane()
                     case .gpu: MonitorGPUPane()
                     case .ram: MonitorRAMPane()
@@ -55,35 +61,133 @@ struct MonitorCenterView: View {
         }
     }
 
-    private var historyButton: some View {
-        Button { selectedTab = .history } label: {
-            Label(L10n.t("monitor.tab.history"), systemImage: "clock.arrow.circlepath")
-        }.accessibilityIdentifier("monitor.history.open")
+    private var tabStrip: some View {
+        ScrollViewReader { reader in
+            ScrollView(.horizontal, showsIndicators: false) {
+                MonitorTabStrip(selection: $selectedTab)
+                    .id("tabs.\(appLanguageRaw)")
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("monitor.detailScope")
+            }
+            .onChange(of: selectedTab) { _, tab in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                    reader.scrollTo(tab, anchor: .center)
+                }
+            }
+            .onAppear { reader.scrollTo(selectedTab, anchor: .center) }
+        }
     }
 
-    private var intervalPicker: some View {
-        Picker(L10n.t("workbench.refresh_interval"), selection: Binding(
-            get: { monitor.refreshInterval },
-            set: { monitor.setRefreshInterval($0) }
-        )) {
+    private var intervalSegmented: some View {
+        HStack(spacing: 2) {
             ForEach([1, 5, 30], id: \.self) { seconds in
-                Text(L10n.t("workbench.refresh_seconds", seconds)).tag(seconds)
+                let selected = monitor.refreshInterval == seconds
+                Button {
+                    monitor.setRefreshInterval(seconds)
+                } label: {
+                    Text(L10n.t("workbench.refresh_seconds", seconds))
+                        .font(.system(size: 11, weight: selected ? .semibold : .regular).monospacedDigit())
+                        .foregroundStyle(selected ? MDTheme.label : MDTheme.secondary)
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 24)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(MDTheme.surface)
+                                    .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
             }
         }
-        .pickerStyle(.menu).fixedSize()
+        .padding(3)
+        .background(MDTheme.surfaceInset, in: Capsule())
+        .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+        .fixedSize()
         .id("interval.\(appLanguageRaw)")
+        .help(L10n.t("workbench.refresh_interval"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.t("workbench.refresh_interval"))
         .accessibilityIdentifier("monitor.refreshInterval")
     }
+}
 
-    private var detailPicker: some View {
-        Picker(L10n.t("workbench.monitor_detail"), selection: $selectedTab) {
+private struct MonitorTabStrip: View {
+    @Binding var selection: MonitorTab
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @FocusState private var focusedTab: MonitorTab?
+    @State private var hoveredTab: MonitorTab?
+
+    var body: some View {
+        HStack(spacing: 2) {
             ForEach(MonitorTab.allCases) { tab in
-                Label(tab.title, systemImage: tab.systemImage).tag(tab)
+                let isSelected = selection == tab
+                Button {
+                    selection = tab
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: tab.systemImage)
+                            .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium))
+                            .symbolRenderingMode(.hierarchical)
+                        Text(tab.title)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                    }
+                    .foregroundStyle(isSelected ? MDTheme.label : MDTheme.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 28)
+                    .background {
+                        if isSelected {
+                            selectionSurface
+                        } else if hoveredTab == tab {
+                            Capsule().fill(MDTheme.label.opacity(0.06))
+                        }
+                    }
+                    .overlay {
+                        if focusedTab == tab {
+                            Capsule().strokeBorder(MDTheme.accent, lineWidth: 2)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .focused($focusedTab, equals: tab)
+                .onHover { hoveredTab = $0 ? tab : (hoveredTab == tab ? nil : hoveredTab) }
+                .id(tab)
+                .accessibilityIdentifier("monitor.tab.\(tab.rawValue)")
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
-        .pickerStyle(.menu).fixedSize()
-        .id("detail.\(appLanguageRaw)")
-        .accessibilityIdentifier("monitor.detailScope")
+        .padding(3)
+        .background(MDTheme.surfaceInset, in: Capsule())
+        .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredTab)
+        .onMoveCommand { direction in
+            let tabs = MonitorTab.allCases
+            guard let focusedTab, let index = tabs.firstIndex(of: focusedTab) else { return }
+            let next: Int
+            switch direction {
+            case .left: next = max(0, index - 1)
+            case .right: next = min(tabs.count - 1, index + 1)
+            default: return
+            }
+            selection = tabs[next]
+            self.focusedTab = tabs[next]
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var selectionSurface: some View {
+        if #available(macOS 26.0, *), !reduceTransparency, contrast != .increased {
+            Capsule().fill(.clear).glassEffect(.regular, in: Capsule())
+        } else {
+            Capsule().fill(MDTheme.surface)
+                .overlay { Capsule().strokeBorder(MDTheme.subtleBorder, lineWidth: 0.5) }
+        }
     }
 }
 
@@ -644,6 +748,62 @@ struct TripleLineChart: View {
     }
 }
 
+/// Normalized [0...1] live trend line for CPU, GPU, and RAM detail panes.
+struct SingleLineChart: View {
+    var values: [Double]
+    var color: Color
+    var height: CGFloat = 110
+
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+            guard w > 1, h > 1 else { return }
+
+            for i in 1...3 {
+                let y = h * CGFloat(i) / 4
+                var grid = Path()
+                grid.move(to: CGPoint(x: 0, y: y))
+                grid.addLine(to: CGPoint(x: w, y: y))
+                context.stroke(grid, with: .color(MDTheme.separator), lineWidth: 0.8)
+            }
+
+            let pts = Array(values.suffix(60))
+            guard pts.count > 1 else { return }
+
+            var line = Path()
+            for (i, raw) in pts.enumerated() {
+                let clamped = min(1, max(0, raw.isFinite ? raw : 0))
+                let x = w * CGFloat(i) / CGFloat(pts.count - 1)
+                let y = h - (CGFloat(clamped) * (h - 10) + 5)
+                if i == 0 { line.move(to: CGPoint(x: x, y: y)) }
+                else { line.addLine(to: CGPoint(x: x, y: y)) }
+            }
+
+            var fill = line
+            fill.addLine(to: CGPoint(x: w, y: h))
+            fill.addLine(to: CGPoint(x: 0, y: h))
+            fill.closeSubpath()
+            context.fill(
+                fill,
+                with: .linearGradient(
+                    Gradient(colors: [color.opacity(0.22), color.opacity(0.02)]),
+                    startPoint: .zero,
+                    endPoint: CGPoint(x: 0, y: h)
+                )
+            )
+            context.stroke(
+                line,
+                with: .color(color),
+                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .clipped()
+    }
+}
+
 // MARK: - Other panes (keep denser chrome)
 
 // MARK: - Shared process list with native hairlines
@@ -653,15 +813,69 @@ private struct MDTopProcessList<P: Identifiable>: View {
     let name: (P) -> String
     let detail: (P) -> String
     let value: (P) -> String
+    var pid: ((P) -> Int)? = nil
     var highlight: (P) -> Bool = { _ in false }
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(processes.enumerated()), id: \.element.id) { idx, p in
-                MDProcessRow(name: name(p), detail: detail(p), value: value(p))
+                let procName = name(p)
+                let procPID = pid?(p)
+                MDProcessRow(name: procName, detail: detail(p), value: value(p))
                     .padding(.horizontal, 4)
                     .background(highlight(p) ? MDTheme.surfaceSelected : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .mdRowHover(cornerRadius: 6)
+                    .contextMenu {
+                        if let procPID {
+                            if let pid32 = pid_t(exactly: procPID),
+                               let app = NSRunningApplication(processIdentifier: pid32),
+                               let bundleURL = app.bundleURL {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([bundleURL])
+                                } label: {
+                                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                                }
+                                Button {
+                                    AppNavigator.shared.focusSoftware(
+                                        path: bundleURL.path,
+                                        bundleID: app.bundleIdentifier,
+                                        name: app.localizedName ?? procName
+                                    )
+                                } label: {
+                                    Label(L10n.t("history.software"), systemImage: "square.grid.2x2")
+                                }
+                            }
+                            if DefierActionGuard.isSafeToQuit(pid: procPID) {
+                                Button {
+                                    AppNavigator.shared.handle(
+                                        DefierAction(
+                                            kind: .quitProcess,
+                                            title: procName,
+                                            detail: "PID \(procPID)",
+                                            processPID: procPID
+                                        )
+                                    )
+                                } label: {
+                                    Label(L10n.t("diag.quit_process"), systemImage: "xmark.circle")
+                                }
+                            }
+                            Divider()
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString("\(procName) (PID \(procPID))", forType: .string)
+                            } label: {
+                                Label(L10n.t("context.copy_pid"), systemImage: "doc.on.doc")
+                            }
+                        } else {
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(procName, forType: .string)
+                            } label: {
+                                Label(L10n.t("chat.copy"), systemImage: "doc.on.doc")
+                            }
+                        }
+                    }
                 if idx < processes.count - 1 {
                     MDRowSeparator(leading: 38)
                 }
@@ -674,7 +888,9 @@ struct MonitorDashboardPane: View {
     @EnvironmentObject private var monitor: MonitorService
     @ObservedObject private var monitorAI = MonitorAIAssist.shared
     var onOpenNetwork: () -> Void = {}
+    var onSelectTab: (MonitorTab) -> Void = { _ in }
     @AppStorage("ip.history.window.days") private var windowDays: Int = 3
+    @State private var hoveredKPI: MonitorTab?
 
     private var s: MonitorSnapshot { monitor.snapshot }
     private var cpu: CPULoad? { s.cpuIsFresh() ? s.cpu : nil }
@@ -701,35 +917,39 @@ struct MonitorDashboardPane: View {
             // 0) 状态一句：规则秒出；配 AI 可润色（AI 盘点）
             dashStatusStrip
 
-            // 1) KPI 四卡 — 对齐线框 kpi-grid + footer · 同行等高
+            // 1) KPI 四卡 — 点击直达对应监控详情页
             HStack(alignment: .top, spacing: 12) {
                 dashKPI(
                     "CPU",
                     Format.percent(cpu?.totalUsage),
                     cpu?.totalUsage,
                     MDTheme.chart1,
-                    footer: cpuFooter
+                    footer: cpuFooter,
+                    tab: .cpu
                 )
                 dashKPI(
                     "GPU",
                     s.gpus.first?.utilization.map { Format.percent($0) } ?? "—",
                     s.gpus.first?.utilization,
                     MDTheme.chart3,
-                    footer: gpuFooter
+                    footer: gpuFooter,
+                    tab: .gpu
                 )
                 dashKPI(
                     L10n.t("diag.kpi.memory"),
                     ramValueLabel,
                     ram?.usage,
                     MDTheme.chart2,
-                    footer: ramFooter
+                    footer: ramFooter,
+                    tab: .ram
                 )
                 dashKPI(
                     L10n.t("monitor.kpi.disk_used"),
                     diskValueLabel,
                     systemDisk?.usage,
                     MDTheme.chart3,
-                    footer: diskFooter
+                    footer: diskFooter,
+                    tab: .disk
                 )
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -747,12 +967,20 @@ struct MonitorDashboardPane: View {
             // 4) Top 进程
             MDCard {
                 VStack(alignment: .leading, spacing: 8) {
-                    MDSectionTitle(title: L10n.t("monitor.top_cpu"), meta: L10n.t("monitor.top_by_cpu"))
+                    HStack {
+                        MDSectionTitle(title: L10n.t("monitor.top_cpu"), meta: L10n.t("monitor.top_by_cpu"))
+                        Button(L10n.t("monitor.tab.cpu")) { onSelectTab(.cpu) }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(MDTheme.accent)
+                    }
                     MDTopProcessList(
                         processes: Array(s.topCPU.prefix(8)),
                         name: { $0.name },
                         detail: { "PID \($0.pid)" },
-                        value: { String(format: "%.1f%%", $0.usage) }
+                        value: { String(format: "%.1f%%", $0.usage) },
+                        pid: { $0.pid }
                     )
                 }
             }
@@ -1062,31 +1290,56 @@ struct MonitorDashboardPane: View {
         .padding(.vertical, 8)
     }
 
-    private func dashKPI(_ title: String, _ value: String, _ progress: Double?, _ tint: Color, footer: String) -> some View {
-        MDCard(padding: 14, fillHeight: true) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MDTheme.secondary)
-                Text(value)
-                    .font(.system(size: 18, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(MDTheme.label)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                if let progress {
-                    MDProgressBar(progress: progress, tint: tint)
-                } else {
-                    MDProgressBar(progress: 0, tint: MDTheme.tertiary)
-                        .opacity(0.35)
+    private func dashKPI(_ title: String, _ value: String, _ progress: Double?, _ tint: Color, footer: String, tab: MonitorTab) -> some View {
+        let isHovered = hoveredKPI == tab
+        return Button {
+            onSelectTab(tab)
+        } label: {
+            MDCard(padding: 14, fillHeight: true) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(MDTheme.secondary)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(isHovered ? MDTheme.accent : MDTheme.tertiary)
+                    }
+                    Text(value)
+                        .font(.system(size: 18, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(MDTheme.label)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    if let progress {
+                        MDProgressBar(progress: progress, tint: tint)
+                    } else {
+                        MDProgressBar(progress: 0, tint: MDTheme.tertiary)
+                            .opacity(0.35)
+                    }
+                    Text(footer)
+                        .font(.system(size: 10))
+                        .foregroundStyle(MDTheme.tertiary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
                 }
-                Text(footer)
-                    .font(.system(size: 10))
-                    .foregroundStyle(MDTheme.tertiary)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .overlay {
+                if isHovered {
+                    RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
+                        .strokeBorder(MDTheme.accent.opacity(0.35), lineWidth: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredKPI = hovering ? tab : (hoveredKPI == tab ? nil : hoveredKPI)
+        }
+        .help(L10n.t("menupanel.open_detail", title))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(L10n.t("menupanel.open_detail", title))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -1103,12 +1356,20 @@ struct MonitorCPUPane: View {
                 MDCard(fillHeight: true) {
                     VStack(alignment: .leading, spacing: 12) {
                         MDSectionTitle(title: L10n.t("monitor.cpu.overall"))
-                        HStack {
-                            MDRing(progress: cpu?.totalUsage ?? 0, size: 110, tint: MDTheme.chart1, center: Format.percent(cpu?.totalUsage), caption: L10n.t("monitor.cpu.usage"))
+                        HStack(spacing: 14) {
+                            MDRing(progress: cpu?.totalUsage ?? 0, size: 104, tint: MDTheme.chart1, center: Format.percent(cpu?.totalUsage), caption: L10n.t("monitor.cpu.usage"))
                             VStack(alignment: .leading, spacing: 8) {
                                 row(L10n.t("monitor.cpu.system"), Format.percent(cpu?.systemLoad))
                                 row(L10n.t("monitor.cpu.user"), Format.percent(cpu?.userLoad))
                                 row(L10n.t("monitor.cpu.idle"), Format.percent(cpu?.idleLoad))
+                            }
+                        }
+                        if monitor.snapshot.dashCPUSeries.count > 1 {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(L10n.t("monitor.cpu.trend"))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(MDTheme.secondary)
+                                SingleLineChart(values: monitor.snapshot.dashCPUSeries, color: MDTheme.chart1, height: 68)
                             }
                         }
                         Spacer(minLength: 0)
@@ -1154,6 +1415,7 @@ struct MonitorCPUPane: View {
                         name: { $0.name },
                         detail: { "PID \($0.pid)" },
                         value: { String(format: "%.1f%%", $0.usage) },
+                        pid: { $0.pid },
                         highlight: { nav.monitorFocusPID == $0.pid }
                     )
                 }
@@ -1181,24 +1443,63 @@ struct MonitorRAMPane: View {
     @ObservedObject private var nav = AppNavigator.shared
     private var ram: RAMUsage? { monitor.snapshot.ramIsFresh() ? monitor.snapshot.ram : nil }
 
+    private var pressureTone: Color {
+        guard monitor.snapshot.ramIsFresh(), let p = ram?.pressure.value else { return MDTheme.secondary }
+        switch p {
+        case .normal: return MDTheme.success
+        case .warning: return MDTheme.warning
+        case .critical: return MDTheme.danger
+        case .unknown: return MDTheme.secondary
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            MDCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    MDSectionTitle(title: L10n.t("monitor.ram.title"))
-                    HStack {
-                        MDRing(progress: ram?.usage ?? 0, size: 110, tint: MDTheme.chart2, center: Format.percent(ram?.usage), caption: L10n.t("monitor.ram.used"))
-                        VStack(alignment: .leading, spacing: 8) {
-                            row(L10n.t("monitor.ram.used"), Format.memoryBytes(ram?.used))
-                            row(L10n.t("monitor.ram.total"), Format.memoryBytes(ram?.total))
-                            row(L10n.t("workbench.memory_app"), Format.memoryBytes(ram?.app))
-                            row(L10n.t("workbench.memory_wired"), Format.memoryBytes(ram?.wired))
-                            row(L10n.t("workbench.memory_compressed"), Format.memoryBytes(ram?.compressed))
-                            row(L10n.t("monitor.ram.pressure"), L10n.t("memory.pressure.\(monitor.snapshot.ramIsFresh() ? (ram?.pressure.value.rawValue ?? "unknown") : "unknown")"))
-                            row(L10n.t("workbench.memory_swap"), monitor.snapshot.ramIsFresh() && ram?.swap.isAvailable == true
-                                ? Format.memoryBytes(ram?.swap.used) : "—")
+            MDEqualSplit {
+                MDCard(fillHeight: true) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            MDSectionTitle(title: L10n.t("monitor.ram.title"))
+                            Text(L10n.t("memory.pressure.\(monitor.snapshot.ramIsFresh() ? (ram?.pressure.value.rawValue ?? "unknown") : "unknown")"))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(pressureTone)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(pressureTone.opacity(0.12), in: Capsule())
                         }
+                        HStack(spacing: 14) {
+                            MDRing(progress: ram?.usage ?? 0, size: 108, tint: MDTheme.chart2, center: Format.percent(ram?.usage), caption: L10n.t("monitor.ram.used"))
+                            VStack(alignment: .leading, spacing: 7) {
+                                row(L10n.t("monitor.ram.used"), Format.memoryBytes(ram?.used))
+                                row(L10n.t("monitor.ram.total"), Format.memoryBytes(ram?.total))
+                                row(L10n.t("workbench.memory_app"), Format.memoryBytes(ram?.app))
+                                row(L10n.t("workbench.memory_wired"), Format.memoryBytes(ram?.wired))
+                                row(L10n.t("workbench.memory_compressed"), Format.memoryBytes(ram?.compressed))
+                                row(L10n.t("workbench.memory_swap"), monitor.snapshot.ramIsFresh() && ram?.swap.isAvailable == true
+                                    ? Format.memoryBytes(ram?.swap.used) : "—")
+                            }
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            } right: {
+                MDCard(fillHeight: true) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        MDSectionTitle(title: L10n.t("monitor.ram.trend"))
+                        if monitor.snapshot.dashRAMSeries.count > 1 {
+                            SingleLineChart(values: monitor.snapshot.dashRAMSeries, color: MDTheme.chart2, height: 126)
+                        } else {
+                            SingleLineChart(values: [], color: MDTheme.chart2, height: 126)
+                        }
+                        HStack {
+                            Text("-60s").font(.system(size: 10)).foregroundStyle(MDTheme.tertiary)
+                            Spacer()
+                            Text(L10n.t("monitor.chart.now")).font(.system(size: 10)).foregroundStyle(MDTheme.tertiary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
             MDCard {
@@ -1209,6 +1510,7 @@ struct MonitorRAMPane: View {
                         name: { $0.name },
                         detail: { "PID \($0.pid)" },
                         value: { Format.memoryBytes($0.usage) },
+                        pid: { $0.pid },
                         highlight: { nav.monitorFocusPID == $0.pid }
                     )
                 }
@@ -1241,6 +1543,9 @@ struct MonitorDiskPane: View {
                 MDCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
+                            Image(systemName: d.kind.isVirtual ? "opticaldisc" : "internaldrive")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(d.kind.isVirtual ? MDTheme.tertiary : MDTheme.accent)
                             Text(d.name).font(.system(size: 15, weight: .semibold))
                             Text(d.localizedKindLabel)
                                 .font(.system(size: 10, weight: .semibold))
@@ -1276,6 +1581,19 @@ struct MonitorDiskPane: View {
                         }
                     }
                 }
+                .contextMenu {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: d.path)])
+                    } label: {
+                        Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                    }
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(d.path, forType: .string)
+                    } label: {
+                        Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+                    }
+                }
             }
             if monitor.snapshot.disks.isEmpty {
                 MDCard { Text(L10n.t("monitor.disk.empty")).foregroundStyle(MDTheme.secondary).padding(.vertical, 20) }
@@ -1304,17 +1622,65 @@ struct MonitorDiskPane: View {
 struct MonitorGPUPane: View {
     @EnvironmentObject private var monitor: MonitorService
 
+    private var primaryGPU: GPUInfo? {
+        monitor.snapshot.gpusAreFresh() ? monitor.snapshot.gpus.first : nil
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             if monitor.snapshot.gpus.isEmpty {
                 MDCard { Text(L10n.t("monitor.gpu.empty")).foregroundStyle(MDTheme.secondary).padding(.vertical, 20) }
             } else {
-                ForEach(monitor.snapshot.gpus) { g in
-                    MDCard {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(g.model).font(.system(size: 15, weight: .semibold))
-                            row(L10n.t("monitor.gpu.vendor"), g.vendor ?? "—")
-                            row(L10n.t("monitor.gpu.util"), g.utilization.map { Format.percent($0) } ?? "—")
+                MDEqualSplit {
+                    MDCard(fillHeight: true) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MDSectionTitle(title: primaryGPU?.model ?? monitor.snapshot.gpus.first?.model ?? "GPU")
+                            HStack(spacing: 16) {
+                                MDRing(
+                                    progress: primaryGPU?.utilization ?? 0,
+                                    size: 104,
+                                    tint: MDTheme.chart3,
+                                    center: primaryGPU?.utilization.map { Format.percent($0) } ?? "—",
+                                    caption: L10n.t("monitor.gpu.util")
+                                )
+                                VStack(alignment: .leading, spacing: 8) {
+                                    row(L10n.t("monitor.gpu.vendor"), primaryGPU?.vendor ?? "—")
+                                    row(L10n.t("monitor.gpu.util"), primaryGPU?.utilization.map { Format.percent($0) } ?? "—")
+                                    if let cores = primaryGPU?.cores {
+                                        row(L10n.t("monitor.gpu.cores"), "\(cores)")
+                                    } else if monitor.snapshot.host.gpuCoreLabel != "—" {
+                                        row(L10n.t("monitor.gpu.cores"), monitor.snapshot.host.gpuCoreLabel)
+                                    }
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                } right: {
+                    MDCard(fillHeight: true) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            MDSectionTitle(title: L10n.t("monitor.gpu.trend"))
+                            SingleLineChart(values: monitor.snapshot.dashGPUSeries, color: MDTheme.chart3, height: 118)
+                            HStack {
+                                Text("-60s").font(.system(size: 10)).foregroundStyle(MDTheme.tertiary)
+                                Spacer()
+                                Text(L10n.t("monitor.chart.now")).font(.system(size: 10)).foregroundStyle(MDTheme.tertiary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                }
+
+                if monitor.snapshot.gpus.count > 1 {
+                    ForEach(monitor.snapshot.gpus.dropFirst()) { g in
+                        MDCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(g.model).font(.system(size: 15, weight: .semibold))
+                                row(L10n.t("monitor.gpu.vendor"), g.vendor ?? "—")
+                                row(L10n.t("monitor.gpu.util"), g.utilization.map { Format.percent($0) } ?? "—")
+                            }
                         }
                     }
                 }
@@ -1326,13 +1692,27 @@ struct MonitorGPUPane: View {
         HStack {
             Text(k).font(.system(size: 12)).foregroundStyle(MDTheme.secondary)
             Spacer()
-            Text(v).font(.system(size: 12).monospacedDigit())
+            Text(v).font(.system(size: 12, weight: .semibold).monospacedDigit())
         }
     }
 }
 
 struct MonitorSensorsPane: View {
     @EnvironmentObject private var monitor: MonitorService
+
+    private var tempSensors: [SensorReading] {
+        monitor.snapshot.sensors.filter { $0.unit.contains("°") || $0.unit == "C" }
+    }
+
+    private var fanSensors: [SensorReading] {
+        monitor.snapshot.sensors.filter { $0.unit.lowercased() == "rpm" }
+    }
+
+    private var otherSensors: [SensorReading] {
+        monitor.snapshot.sensors.filter { s in
+            !s.unit.contains("°") && s.unit != "C" && s.unit.lowercased() != "rpm"
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1353,28 +1733,50 @@ struct MonitorSensorsPane: View {
                     .padding(.vertical, 12)
                 }
             } else {
-                MDCard {
-                    VStack(alignment: .leading, spacing: 8) {
-                        MDSectionTitle(title: L10n.t("monitor.sensors.temp_title"), meta: L10n.t("monitor.sensors.count", monitor.snapshot.sensors.count))
-                        ForEach(monitor.snapshot.sensors) { s in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(s.name).font(.system(size: 13, weight: .medium))
-                                    Text("\(s.group) · \(s.key)")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(MDTheme.tertiary)
-                                }
-                                Spacer()
-                                Text(String(format: "%.1f %@", s.value, s.unit))
-                                    .font(.system(size: 13).monospacedDigit())
-                            }
-                            if s.id != monitor.snapshot.sensors.last?.id {
-                                MDRowSeparator(leading: 0)
-                            }
+                if !fanSensors.isEmpty {
+                    sensorGroupCard(title: L10n.t("monitor.sensors.fan_title"), sensors: fanSensors, isTemperature: false)
+                }
+                if !tempSensors.isEmpty {
+                    sensorGroupCard(title: L10n.t("monitor.sensors.temp_group"), sensors: tempSensors, isTemperature: true)
+                }
+                if !otherSensors.isEmpty {
+                    sensorGroupCard(title: L10n.t("monitor.sensors.other_title"), sensors: otherSensors, isTemperature: false)
+                }
+            }
+        }
+    }
+
+    private func sensorGroupCard(title: String, sensors: [SensorReading], isTemperature: Bool) -> some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 8) {
+                MDSectionTitle(title: title, meta: L10n.t("monitor.sensors.count", sensors.count))
+                ForEach(sensors) { s in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.name).font(.system(size: 13, weight: .medium))
+                            Text("\(s.group) · \(s.key)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(MDTheme.tertiary)
                         }
+                        Spacer()
+                        Text(String(format: isTemperature ? "%.1f %@" : "%.0f %@", s.value, s.unit))
+                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(isTemperature ? temperatureTint(s.value) : MDTheme.label)
+                    }
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 4)
+                    .mdRowHover(cornerRadius: 6)
+                    if s.id != sensors.last?.id {
+                        MDRowSeparator(leading: 0)
                     }
                 }
             }
         }
+    }
+
+    private func temperatureTint(_ celsius: Double) -> Color {
+        if celsius >= 90 { return MDTheme.danger }
+        if celsius >= 75 { return MDTheme.warning }
+        return MDTheme.label
     }
 }

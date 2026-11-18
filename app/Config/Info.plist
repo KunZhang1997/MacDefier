@@ -23,7 +23,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<false/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/KunZhang1997/MacDefier/releases/latest/download/appcast.xml</string>
+	<string>https://kun97.tech/macdefier/releases/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>R36J2RavRtdGzHefhmsjG9ZrUYcpOw45/bKeLRqg5Iw=</string>
 	<key>SURequireSignedFeed</key>

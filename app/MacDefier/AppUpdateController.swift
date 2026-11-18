@@ -4,10 +4,38 @@ import Combine
 import Sparkle
 import SwiftUI
 
-/// Sparkle owns signed downloads and replacement; its UI stays in our header.
+/// Sparkle owns signed downloads and replacement; its UI stays next to the top tab bar.
+/// All update checks, feeds, and packages strictly use the official website (kun97.tech).
 @MainActor
 final class AppUpdateController: NSObject, ObservableObject, SPUUserDriver, SPUUpdaterDelegate {
     static let shared = AppUpdateController()
+    static let officialWebsiteURL = URL(string: "https://kun97.tech/macdefier/")!
+    static let officialWebsiteDisplay = "kun97.tech/macdefier/"
+    static let officialFeedURL = URL(string: "https://kun97.tech/macdefier/releases/appcast.xml")!
+    static let officialHost = "kun97.tech"
+    static let officialReleasesPathPrefix = "/macdefier/releases/"
+
+    nonisolated static func isOfficialUpdateURL(_ url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == officialHost,
+              components.port == nil,
+              components.user == nil,
+              components.password == nil else {
+            return false
+        }
+        let path = components.percentEncodedPath
+        guard path.hasPrefix(officialReleasesPathPrefix),
+              !path.contains(".."),
+              !path.contains("//") else {
+            return false
+        }
+        let asset = String(path.dropFirst(officialReleasesPathPrefix.count))
+        guard !asset.isEmpty, !asset.contains("/") else { return false }
+        let lower = asset.lowercased()
+        return lower.hasSuffix(".dmg") || lower.hasSuffix(".zip")
+    }
+
     @Published private(set) var stage: AppUpdateStage = .idle
     @Published private(set) var errorDetail: String?
     private var transfer = AppUpdateState()
@@ -161,6 +189,9 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUserDriver, SPUU
         }
     }
 
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        Self.officialFeedURL.absoluteString
+    }
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         switch (intent, updateCheck) {
         case (.information, .updateInformation), (.download, .updates): return
@@ -170,11 +201,12 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUserDriver, SPUU
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard intent == .information else { return }
         guard !item.isInformationOnlyUpdate, !item.isMajorUpgrade,
-              item.fileURL != nil, !item.versionString.isEmpty else {
+              let fileURL = item.fileURL, Self.isOfficialUpdateURL(fileURL),
+              !item.versionString.isEmpty else {
             probedVersion = nil
             return
         }
-        probedVersion = item.versionString
+        probedVersion = item.displayVersionString.isEmpty ? item.versionString : item.displayVersionString
     }
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
                  error: Error?) {
@@ -193,13 +225,18 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUserDriver, SPUU
     }
     func showUpdateFound(with appcastItem: SUAppcastItem, state: SPUUserUpdateState,
                          reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        handleUpdateFound(appcastItem, isInstalling: state.stage == .installing, reply: reply)
+    }
+    func handleUpdateFound(_ appcastItem: SUAppcastItem, isInstalling: Bool,
+                           reply: @escaping (SPUUserUpdateChoice) -> Void) {
         guard userRequested else { reply(.dismiss); return }
-        guard !appcastItem.isInformationOnlyUpdate, !appcastItem.isMajorUpgrade else {
+        guard !appcastItem.isInformationOnlyUpdate, !appcastItem.isMajorUpgrade,
+              let fileURL = appcastItem.fileURL, Self.isOfficialUpdateURL(fileURL) else {
             finish(.unavailable)
             reply(.dismiss)
             return
         }
-        if state.stage == .installing {
+        if isInstalling {
             installWhenIdle(reply: reply)
         } else {
             cancellation = nil
@@ -257,49 +294,147 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUserDriver, SPUU
 
 struct UpdateDownloadControl: View {
     @ObservedObject private var updates = AppUpdateController.shared
+    @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+    @State private var cancelHovering = false
+
+    private var availableVersion: String? {
+        if case .available(let version) = updates.stage, !version.isEmpty {
+            return version
+        }
+        return nil
+    }
+
+    private var progressFraction: Double? {
+        switch updates.stage {
+        case .downloading(let percent), .preparing(let percent):
+            return percent.map { min(1.0, max(0.0, Double($0) / 100.0)) }
+        default:
+            return nil
+        }
+    }
+
+    private var isFailed: Bool {
+        updates.stage == .failed
+    }
+
+    private var tintColor: Color {
+        isFailed ? MDTheme.warning : MDTheme.accent
+    }
+
     private var status: String? {
+        let _ = appLanguageRaw
         switch updates.stage {
         case .idle, .probing, .available, .current, .unavailable, .cancelled, .development: return nil
         case .checking: return L10n.t("update.connecting")
         case .downloading(let percent):
             return L10n.t("update.downloading") + (percent.map { " \($0)%" } ?? "")
-        case .preparing: return L10n.t("update.preparing")
+        case .preparing(let percent):
+            return L10n.t("update.preparing") + (percent.map { " \($0)%" } ?? "")
         case .waitingToInstall: return L10n.t("update.waiting")
         case .installing: return L10n.t("update.installing")
         case .failed: return L10n.t("update.failed")
         }
     }
+
+    private var helpText: String {
+        let _ = appLanguageRaw
+        if let errorDetail = updates.errorDetail, !errorDetail.isEmpty {
+            return errorDetail
+        }
+        if let version = availableVersion {
+            return L10n.t("update.download_install_version_hint", version)
+        }
+        if let status {
+            return status
+        }
+        return L10n.t("update.download_install_hint")
+    }
+
+    private var accessibilityLabelText: String {
+        let _ = appLanguageRaw
+        if let version = availableVersion {
+            return L10n.t("update.download_install_version", version)
+        }
+        return L10n.t("update.download_install")
+    }
+
     var body: some View {
         if updates.stage.showsControl {
-          HStack(spacing: 6) {
-            if let status {
-                Text(status).font(.system(size: 11).monospacedDigit())
-                    .foregroundStyle(MDTheme.secondary).lineLimit(1)
-            }
-            Button { updates.downloadAndInstall() } label: {
-                ZStack {
-                    if updates.stage.isBusy {
-                        ProgressView().controlSize(.small).scaleEffect(0.75)
-                    } else {
-                        Image(systemName: "arrow.down.circle").font(.system(size: 16, weight: .medium))
+            HStack(spacing: 6) {
+                Button { updates.downloadAndInstall() } label: {
+                    ZStack {
+                        Circle()
+                            .fill(tintColor.opacity(hovering && !updates.stage.isBusy ? 0.18 : 0.10))
+                        if updates.stage.isBusy {
+                            Circle()
+                                .strokeBorder(MDTheme.accent.opacity(0.22), lineWidth: 2.2)
+                            if let fraction = progressFraction {
+                                Circle()
+                                    .inset(by: 1.1)
+                                    .trim(from: 0, to: max(0.05, fraction))
+                                    .stroke(MDTheme.accent, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                    .rotationEffect(.degrees(-90))
+                                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: fraction)
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(MDTheme.accent)
+                            } else {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .scaleEffect(0.72)
+                            }
+                        } else {
+                            Circle()
+                                .strokeBorder(
+                                    tintColor.opacity(contrast == .increased ? 1.0 : 0.78),
+                                    lineWidth: contrast == .increased ? 2.0 : 1.25
+                                )
+                            Image(systemName: isFailed ? "arrow.clockwise" : "arrow.down.to.line")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(tintColor)
+                        }
                     }
-                }.frame(width: 28, height: 28).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).disabled(updates.stage.isBusy)
-            .help(updates.errorDetail ?? L10n.t("update.download_install_hint"))
-            .accessibilityLabel(L10n.t("update.download_install"))
-            .accessibilityValue(status ?? "")
-            .accessibilityIdentifier("app.downloadUpdate")
-            if updates.stage.isCancellable {
-                Button { updates.cancel() } label: {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
-                        .frame(width: 24, height: 28).contentShape(Rectangle())
+                    .frame(width: 34, height: 34)
+                    .contentShape(Circle())
                 }
-                .buttonStyle(.plain).help(L10n.t("update.cancel"))
-                .accessibilityLabel(L10n.t("update.cancel"))
-                .accessibilityIdentifier("app.cancelUpdate")
+                .buttonStyle(.plain)
+                .disabled(updates.stage.isBusy)
+                .onHover { hovering = $0 }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+                .help(helpText)
+                .accessibilityLabel(accessibilityLabelText)
+                .accessibilityValue(status ?? "")
+                .accessibilityIdentifier("app.downloadUpdate")
+
+                if let status {
+                    Text(status)
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(isFailed ? MDTheme.warning : MDTheme.secondary)
+                        .lineLimit(1)
+                }
+
+                if updates.stage.isCancellable {
+                    Button { updates.cancel() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MDTheme.secondary)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                Circle().fill(MDTheme.label.opacity(cancelHovering ? 0.10 : 0.05))
+                            )
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { cancelHovering = $0 }
+                    .help(L10n.t("update.cancel"))
+                    .accessibilityLabel(L10n.t("update.cancel"))
+                    .accessibilityIdentifier("app.cancelUpdate")
+                }
             }
-          }
+            .id(appLanguageRaw)
         }
     }
 }

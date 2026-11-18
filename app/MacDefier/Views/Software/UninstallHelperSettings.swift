@@ -44,9 +44,15 @@ struct UninstallHelperSettings: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task { state = UninstallHelperSetup.state }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .task {
+            await UninstallHelperClient.shared.synchronizeRegistrationIfNeeded()
             state = UninstallHelperSetup.state
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task {
+                await UninstallHelperClient.shared.synchronizeRegistrationIfNeeded()
+                state = UninstallHelperSetup.state
+            }
         }
     }
 

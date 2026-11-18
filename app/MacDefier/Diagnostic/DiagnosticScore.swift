@@ -103,8 +103,9 @@ enum DiagnosticScore {
 
         // —— 磁盘：仅系统根卷参与「系统空间危急」主扣分 ——
         let disks = snapshot.disks.physical.isEmpty ? snapshot.disks : snapshot.disks.physical
-        let diskAvailable = snapshot.systemDiskIsFresh(at: now)
-        if diskAvailable, let sys = disks.first(where: isSystemVolume) {
+        let sysDisk = snapshot.systemDiskIsFresh(at: now) ? disks.first(where: isSystemVolume) : nil
+        let diskAvailable = sysDisk != nil
+        if let sys = sysDisk {
             if sys.usage >= diskHighUsage || sys.free < diskFreeHighBytes {
                 spacePts += 35
                 items.append(.init(domain: .space, points: 35, reasonKey: "disk_high"))
@@ -153,10 +154,9 @@ enum DiagnosticScore {
         }
         loadPts = min(loadCap, cpuPts)
 
-        // —— 清理扫描：可解释分档扣分 + 上限（产品：保留清理部分但 breakdown 诚实）——
-        var includesCleanup = false
-        includesCleanup = cleanup != nil
-        if let cleanup, !cleanup.isPartial {
+        // —— 清理扫描：可解释分档扣分 + 上限（部分读取时仍采用真实已测下限扣分，不把已知系统盘空间抹成无数据）——
+        let includesCleanup = cleanup != nil && cleanup?.isPartial != true
+        if let cleanup {
             var cleanupPts = 0
             let junk = cleanup.junkBytes
             if junk >= HealthThresholds.junkHighBytes {
@@ -187,9 +187,9 @@ enum DiagnosticScore {
         let total = max(0, min(100, 100 - totalDeduction))
 
         return DiagnosticScoreBreakdown(
-            total: cpuAvailable && ramAvailable && diskAvailable && cleanup?.isPartial != true ? total : nil,
+            total: cpuAvailable && ramAvailable && diskAvailable ? total : nil,
             loadScore: cpuAvailable ? max(0, min(100, 100 - loadPts)) : nil,
-            spaceScore: diskAvailable && cleanup?.isPartial != true ? max(0, min(100, 100 - spacePts)) : nil,
+            spaceScore: diskAvailable ? max(0, min(100, 100 - spacePts)) : nil,
             memoryScore: ramAvailable ? max(0, min(100, 100 - memPts)) : nil,
             includesCleanupScan: includesCleanup,
             deductions: items.sorted { $0.points > $1.points }

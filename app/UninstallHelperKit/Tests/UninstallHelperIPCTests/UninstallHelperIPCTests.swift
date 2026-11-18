@@ -214,4 +214,31 @@ final class UninstallHelperIPCTests: XCTestCase {
         XCTAssertThrowsError(try UninstallHelperCaller.validateHome(homePath, userUID: geteuid()))
         XCTAssertThrowsError(try UninstallHelperCaller.validateHome("/", userUID: geteuid()))
     }
+
+    func testValidateBundledHelperRejectsMissingSymlinkedOrUnsignedHelper() throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("UninstallHelperTrust-\(UUID().uuidString)")
+        let bundle = root.appendingPathComponent("Fixture.app")
+        let executable = bundle.appendingPathComponent("Contents/MacOS/MacDefier-UninstallHelper")
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertThrowsError(try UninstallHelperTrust.validateBundledHelper(endpoint: endpoint, bundleURL: bundle)) { error in
+            XCTAssertEqual((error as? UninstallHelperFailure)?.code, "uninstall_helper_configuration_missing")
+        }
+
+        try Data("not-a-signed-macho\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        XCTAssertThrowsError(try UninstallHelperTrust.validateBundledHelper(endpoint: endpoint, bundleURL: bundle)) { error in
+            XCTAssertEqual((error as? UninstallHelperFailure)?.code, "uninstall_helper_signature_invalid")
+        }
+
+        let moved = root.appendingPathComponent("moved-helper")
+        try FileManager.default.moveItem(at: executable, to: moved)
+        try FileManager.default.createSymbolicLink(at: executable, withDestinationURL: moved)
+        XCTAssertThrowsError(try UninstallHelperTrust.validateBundledHelper(endpoint: endpoint, bundleURL: bundle)) { error in
+            XCTAssertEqual((error as? UninstallHelperFailure)?.code, "uninstall_helper_configuration_missing")
+        }
+    }
 }

@@ -1,12 +1,14 @@
 import SwiftUI
 import CleanupKit
 import AppKit
+import QuickLook
 
 struct CleanupView: View {
     @StateObject private var cleanup = CleanupService.shared
     @StateObject private var scanAnimation = MDScanAnimationClock()
     @ObservedObject private var nav = AppNavigator.shared
     @State private var confirmTrash = false
+    @State private var quickLookURL: URL?
     @State private var expanded: Set<CleanupCategory> = []
     @State private var expandedItemPaths: Set<String> = []
     @State private var itemDisplayLimits: [CleanupCategory: Int] = [:]
@@ -100,6 +102,12 @@ struct CleanupView: View {
             // result remains available through the category's "show more" row.
             itemDisplayLimits.removeAll()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .macDefierRefreshCurrentRoute)) { _ in
+            guard cleanup.scanJourney.status != .running else { return }
+            if case .cleaning = cleanup.phase { return }
+            runScan(force: true)
+        }
+        .quickLookPreview($quickLookURL)
         .sheet(isPresented: $confirmTrash) {
             CleanupConfirmSheet(
                 revocableItems: selectedRevocableItems,
@@ -535,6 +543,7 @@ struct CleanupView: View {
 
             }
             .mdResultHeader()
+            .mdRowHover(cornerRadius: isOpen ? 0 : MDTheme.resultCardRadius)
             .background(groupRowBackground(first: true, last: !isOpen))
             .padding(.bottom, isOpen ? 0 : MDTheme.resultCardGap)
     }
@@ -631,6 +640,35 @@ struct CleanupView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, MDTheme.rowVerticalPadding)
+        .mdRowHover()
+        .contextMenu {
+            if item.risk != .skip && canSelectPreview {
+                Button {
+                    cleanup.setSelected(itemID: item.id, selected: !cleanup.isItemSelected(id: item.id))
+                } label: {
+                    Label(L10n.t("context.toggle_select"), systemImage: "checkmark.square")
+                }
+            }
+            Button {
+                cleanup.revealInFinder(path: item.path)
+            } label: {
+                Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+            }
+            if FileManager.default.fileExists(atPath: item.path) {
+                Button {
+                    quickLookURL = URL(fileURLWithPath: item.path)
+                } label: {
+                    Label(L10n.t("context.quick_look"), systemImage: "eye")
+                }
+            }
+            Divider()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.path, forType: .string)
+            } label: {
+                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private func itemDescription(_ item: CleanableItem) -> some View {

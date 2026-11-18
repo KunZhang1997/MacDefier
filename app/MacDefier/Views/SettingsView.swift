@@ -6,6 +6,7 @@ import PetArchiveKit
 /// 设置：每行底部分隔线（最后一行除外）；云端/本地切换；云端多配置弹窗
 struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var showMenuBar = UserDefaults.standard.object(forKey: MenuBarController.defaultsKey) as? Bool ?? true
     @AppStorage(MenuBarController.showCPUKey) private var menuBarShowCPU = false
     @AppStorage(MenuBarController.showRAMKey) private var menuBarShowRAM = false
@@ -427,20 +428,20 @@ struct SettingsView: View {
                             .foregroundStyle(MDTheme.accent)
                             .accessibilityHint(L10n.t("settings.email_hint"))
                     }
-                    settingsRow(L10n.t("settings.github"), showLine: false) {
-                        Link(destination: URL(string: "https://github.com/KunZhang1997/MacDefier")!) {
+                    settingsRow(L10n.t("settings.website"), showLine: false) {
+                        Link(destination: AppUpdateController.officialWebsiteURL) {
                             HStack(spacing: 5) {
-                                Text("GitHub · KunZhang1997/MacDefier")
+                                Text(AppUpdateController.officialWebsiteDisplay)
                                 Image(systemName: "arrow.up.right")
                                     .accessibilityHidden(true)
                             }
                         }
                         .font(.system(size: 12))
                         .foregroundStyle(MDTheme.accent)
-                        .help("https://github.com/KunZhang1997/MacDefier")
-                        .accessibilityLabel(L10n.t("settings.github") + ", KunZhang1997/MacDefier")
-                        .accessibilityHint(L10n.t("settings.github_hint"))
-                        .accessibilityIdentifier("settings.github")
+                        .help(AppUpdateController.officialWebsiteURL.absoluteString)
+                        .accessibilityLabel(L10n.t("settings.website") + ", " + AppUpdateController.officialWebsiteDisplay)
+                        .accessibilityHint(L10n.t("settings.website_hint"))
+                        .accessibilityIdentifier("settings.website")
                     }
                 }
                 .id("settings.about")
@@ -673,11 +674,28 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
                     .fill(MDTheme.surface)
             )
+            .clipShape(RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
-                    .stroke(MDTheme.border.opacity(0.5), lineWidth: 0.5)
+                    .strokeBorder(
+                        contrast == .increased ? MDTheme.border : MDTheme.subtleBorder,
+                        lineWidth: contrast == .increased ? 1 : 0.5
+                    )
             )
-            .clipShape(RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: MDTheme.radiusCard, style: .continuous)
+                    .inset(by: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [contrast == .increased ? .clear : MDTheme.cardTopHighlight, .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        ),
+                        lineWidth: 0.5
+                    )
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: contrast == .increased ? .clear : MDTheme.cardShadow, radius: 3, y: 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -700,6 +718,7 @@ struct SettingsView: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 36)
             .contentShape(Rectangle())
+            .mdRowHover()
         }
         .buttonStyle(.plain)
     }

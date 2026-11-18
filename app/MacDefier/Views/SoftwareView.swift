@@ -20,6 +20,7 @@ struct SoftwareView: View {
     @State private var showDeepLinkPicker = false
     @State private var focusedAppID: String?
     @State private var scrollTargetAppID: String?
+    @FocusState private var searchFieldFocused: Bool
     @StateObject private var scanAnimation = MDScanAnimationClock()
 
     private var aiConfigured: Bool { SoftwareAIScan.isConfigured }
@@ -37,7 +38,7 @@ struct SoftwareView: View {
             && service.apps.contains { $0.sizeState == .pending }
     }
 
-    var body: some View {
+    private var workbenchBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             MDScanWorkbench(journey: scanJourney, stages: service.listKind == .apps
@@ -124,22 +125,38 @@ struct SoftwareView: View {
         .onChange(of: nav.softwareFocusName) { _, _ in
             tryFocusPendingSoftware()
         }
-        .onDisappear {
-            service.cancelInventoryWork()
-        }
-        .sheet(item: $target) { app in
-            UninstallSheet(app: app) { result in
-                target = nil
-                nav.clearPendingUninstall()
-                if let result {
-                    service.markAppCleaned(app, result: result)
+    }
+
+    var body: some View {
+        workbenchBody
+            .onDisappear {
+                service.cancelInventoryWork()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .macDefierFocusSearch)) { _ in
+                guard !showsEntry else { return }
+                searchFieldFocused = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .macDefierRefreshCurrentRoute)) { _ in
+                guard !isScanning else { return }
+                if service.listKind == .apps {
+                    runInventory(force: true)
+                } else {
+                    ensureCLIInventory()
                 }
             }
-        }
-        .confirmationDialog(
-            L10n.t("software.deep_link.pick_title"),
-            isPresented: $showDeepLinkPicker,
-            titleVisibility: .visible
+            .sheet(item: $target) { app in
+                UninstallSheet(app: app) { result in
+                    target = nil
+                    nav.clearPendingUninstall()
+                    if let result {
+                        service.markAppCleaned(app, result: result)
+                    }
+                }
+            }
+            .confirmationDialog(
+                L10n.t("software.deep_link.pick_title"),
+                isPresented: $showDeepLinkPicker,
+                titleVisibility: .visible
         ) {
             ForEach(deepLinkCandidates) { app in
                 Button("\(app.name) · \(app.bundleIdentifier)") {
@@ -334,6 +351,7 @@ struct SoftwareView: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .focused($searchFieldFocused)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -602,6 +620,32 @@ struct SoftwareView: View {
             .opacity(appGone ? 0.65 : 1.0)
         }
         .background(focusedAppID == app.id ? MDTheme.surfaceSelected : Color.clear)
+        .mdRowHover()
+        .contextMenu {
+            if !appGone {
+                Button(app.canTrashAppBundle ? L10n.t("software.uninstall") : L10n.t("software.residuals")) {
+                    target = app
+                }
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
+                } label: {
+                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                }
+                Divider()
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(app.bundleIdentifier, forType: .string)
+            } label: {
+                Label(L10n.t("context.copy_bundle_id"), systemImage: "doc.on.doc")
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(app.path, forType: .string)
+            } label: {
+                Label(L10n.t("common.copy_path"), systemImage: "folder.badge.gearshape")
+            }
+        }
         .id(app.id)
     }
 
@@ -707,6 +751,28 @@ struct SoftwareView: View {
                 }
             }
             .opacity(isCleaned ? 0.65 : 1.0)
+        }
+        .mdRowHover()
+        .contextMenu {
+            if !isCleaned && !tool.protected {
+                Button(L10n.t("software.uninstall")) {
+                    cliTarget = tool
+                }
+            }
+            if let firstPath = tool.programPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: firstPath)])
+                } label: {
+                    Label(L10n.t("diskmap.reveal"), systemImage: "folder")
+                }
+            }
+            Divider()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(tool.packageId, forType: .string)
+            } label: {
+                Label(L10n.t("common.copy_path"), systemImage: "doc.on.doc")
+            }
         }
     }
 

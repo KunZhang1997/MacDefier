@@ -59,6 +59,10 @@ struct DiagnosticView: View {
             // Age existing samples without keeping background samplers or directory walks alive.
             if !scan.isScanning { scan.relocalizeForCurrentLanguage(monitor: monitor) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .macDefierRefreshCurrentRoute)) { _ in
+            guard !scan.isScanning else { return }
+            Task { await scan.scan(monitor: monitor, useAI: false, force: true) }
+        }
         .alert(L10n.t("diag.quit_process"), isPresented: Binding(
             get: { quitMessage != nil },
             set: { if !$0 { quitMessage = nil } }
@@ -298,6 +302,31 @@ struct DiagnosticView: View {
 
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .mdRowHover(cornerRadius: 6)
+        .contextMenu {
+            if f.action != .none {
+                Button(f.actionTitle) { runAction(f.action, finding: f) }
+            }
+            ForEach(rowSecondaryActions(f)) { item in
+                Button(item.title) { runAction(item.action, finding: f) }
+            }
+            Divider()
+            Button {
+                let summary = [f.title, f.metric, f.detail]
+                    .compactMap { $0 }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · ")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(summary, forType: .string)
+            } label: {
+                Label(L10n.t("context.copy_finding"), systemImage: "doc.on.doc")
+            }
+            Button {
+                onOpenMister()
+            } label: {
+                Label(L10n.t("context.ask_mister"), systemImage: "sparkles")
+            }
+        }
     }
 
     private struct RowAction: Identifiable {

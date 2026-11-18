@@ -41,10 +41,12 @@ struct LocalModelsPicker: View {
                     .keyboardShortcut(.cancelAction)
             }
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(choices) { choice in
+                MDGroupedList {
+                    ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
                         modelRow(choice)
-                        Divider()
+                        if index < choices.count - 1 {
+                            MDRowSeparator(leading: 14)
+                        }
                     }
                 }
             }
@@ -120,7 +122,9 @@ struct LocalModelsPicker: View {
             }
             if active { downloadProgress }
         }
+        .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .mdRowHover()
     }
 
     @ViewBuilder private var downloadProgress: some View {

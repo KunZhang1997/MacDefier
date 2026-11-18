@@ -40,7 +40,10 @@ DerivedData/
 /research/
 /workspace/
 /reports/
-/docs/
+/docs/*
+!/docs/images/
+/docs/images/*
+!/docs/images/showcase/
 /design-qa.md
 
 # 退役的重复 Xcode 工程

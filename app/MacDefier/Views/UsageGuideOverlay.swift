@@ -6,6 +6,7 @@ struct UsageGuideOverlay: View {
     @ObservedObject var guide: UsageGuideState
     var onOpenSettings: () -> Void
     @AppStorage(PetSkinStore.appStorageKey) private var skinRaw = PetSkinStore.defaultSkin.rawValue
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AccessibilityFocusState private var headingFocused: Bool
     @FocusState private var primaryFocused: Bool
     @State private var fdaOpenFailed = false
@@ -25,7 +26,13 @@ struct UsageGuideOverlay: View {
             .padding(24)
             .frame(width: min(600, max(0, geometry.size.width - 40)),
                    height: min(480, max(0, geometry.size.height - 40)))
-            .background(MDTheme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background {
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(MDTheme.surface)
+                } else {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.thickMaterial)
+                }
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(MDTheme.subtleBorder, lineWidth: 1)

@@ -7,7 +7,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 app_dir="$(cd -- "$script_dir/.." && pwd)"
 signing_account="com.macdefier.app.sparkle"
-update_repo="${MACDEFIER_UPDATE_REPOSITORY:-KunZhang1997/MacDefier}"
+official_base_url="${MACDEFIER_UPDATE_BASE_URL:-https://kun97.tech/macdefier}"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -20,6 +20,9 @@ resolve_tools() {
     candidate="$app_dir/build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$candidate/generate_appcast" ]]; then
       candidate="${MACDEFIER_BUILD_CACHE:-$HOME/Library/Caches/MacDefier-build}/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin"
+    fi
+    if [[ ! -x "$candidate/generate_appcast" ]]; then
+      candidate="${MACDEFIER_BUILD_DIR:-$HOME/Library/Caches/MacDefier-build}/build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin"
     fi
   fi
   for tool in generate_keys generate_appcast sign_update; do
@@ -61,10 +64,8 @@ fi
 archive_input="$1"
 expected_version="$2"
 [[ "$expected_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || fail "VERSION must be a numeric release version."
-[[ "$update_repo" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] \
-  || fail "MACDEFIER_UPDATE_REPOSITORY must be a GitHub owner/repository, not a URL."
-release_tag="${MACDEFIER_RELEASE_TAG:-v${expected_version}}"
-[[ "$release_tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "MACDEFIER_RELEASE_TAG contains unsupported characters."
+[[ "$official_base_url" == "https://kun97.tech/macdefier" ]] \
+  || fail "MACDEFIER_UPDATE_BASE_URL must be https://kun97.tech/macdefier (official website is the sole update source)."
 archive_dir="$(cd -- "$(dirname -- "$archive_input")" && pwd -P)"
 archive_name="$(basename -- "$archive_input")"
 archive="$archive_dir/$archive_name"
@@ -125,7 +126,7 @@ bundle_public_key="$(read_info SUPublicEDKey)"
   || fail "Final app SUPublicEDKey does not match the Keychain account $signing_account. Rebuild with the matching public key; do not publish."
 [[ "$(read_info SURequireSignedFeed)" == true && "$(read_info SUVerifyUpdateBeforeExtraction)" == true ]] \
   || fail "Final app must enable SURequireSignedFeed and SUVerifyUpdateBeforeExtraction as booleans."
-expected_feed_url="https://github.com/$update_repo/releases/latest/download/appcast.xml"
+expected_feed_url="${official_base_url}/releases/appcast.xml"
 [[ "$(read_info SUFeedURL)" == "$expected_feed_url" ]] \
   || fail "Final app SUFeedURL does not match $expected_feed_url."
 codesign --verify --deep --strict "$archive_app"
@@ -134,10 +135,10 @@ if [[ "$mounted_image" == true ]]; then
   mounted_image=false
 fi
 
-download_prefix="https://github.com/$update_repo/releases/download/$release_tag/"
+download_prefix="${official_base_url}/releases/"
 ditto "$archive" "$feed_scratch/updates/$archive_name"
 if ! "$sparkle_bin/generate_appcast" --account "$signing_account" \
-  --download-url-prefix "$download_prefix" --link "https://github.com/$update_repo" \
+  --download-url-prefix "$download_prefix" --link "${official_base_url}/" \
   --versions "$bundle_version" --maximum-versions 0 --maximum-deltas 0 \
   -o "$feed_scratch/appcast.xml" "$feed_scratch/updates" >"$feed_scratch/generate.log" 2>&1; then
   tail -20 "$feed_scratch/generate.log" >&2
@@ -171,5 +172,5 @@ ditto "$feed_scratch/appcast.xml" "$feed_output_temp"
 chmod 644 "$feed_output_temp"
 mv -f "$feed_output_temp" "$output_dir/appcast.xml"
 feed_output_temp=""
-echo "Signed appcast: $output_dir/appcast.xml (version $short_version, build $bundle_version, tag $release_tag)"
-echo "Publish this feed with the exact, unchanged $archive_name in the matching GitHub Release."
+echo "Signed appcast: $output_dir/appcast.xml (version $short_version, build $bundle_version)"
+echo "Publish $output_dir/appcast.xml and the exact, unchanged $archive_name to ${official_base_url}/releases/."
