@@ -33,9 +33,11 @@ private enum DarwinProcessInspector {
     static func listAllPIDs() -> [Int32] {
         let estimated = proc_listallpids(nil, 0)
         guard estimated > 0 else { return [] }
-        var pids = [Int32](repeating: 0, count: Int(estimated) + 128)
-        let actual = pids.withUnsafeMutableBytes { rawBuffer in
-            proc_listallpids(rawBuffer.baseAddress, Int32(rawBuffer.count))
+        let cappedCount = min(Int(estimated) + 128, 131_072)
+        var pids = [Int32](repeating: 0, count: cappedCount)
+        let actual = pids.withUnsafeMutableBytes { rawBuffer -> Int32 in
+            let byteCap = Int32(min(rawBuffer.count, Int(Int32.max)))
+            return proc_listallpids(rawBuffer.baseAddress, byteCap)
         }
         guard actual > 0 else { return [] }
         let count = min(Int(actual), pids.count)
@@ -71,13 +73,13 @@ private enum DarwinProcessInspector {
 
     static func fallbackCommandName(from bsd: proc_bsdinfo) -> String {
         let fullName = withUnsafeBytes(of: bsd.pbi_name) { raw -> String in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else { return "" }
-            return String(cString: base)
+            let prefix = raw.prefix { $0 != 0 }
+            return String(decoding: prefix, as: UTF8.self)
         }
         if !fullName.isEmpty { return fullName }
         let comm = withUnsafeBytes(of: bsd.pbi_comm) { raw -> String in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else { return "" }
-            return String(cString: base)
+            let prefix = raw.prefix { $0 != 0 }
+            return String(decoding: prefix, as: UTF8.self)
         }
         return comm.isEmpty ? "pid \(bsd.pbi_pid)" : comm
     }
@@ -137,6 +139,18 @@ public final class CPUProcessSampler: Sampler<[TopProcess]> {
     private var previousSnapshot: CPUSnapshot?
     private let cancelLock = NSLock()
     private var coldStartWaiter: DispatchSemaphore?
+
+    private static let latestCPULock = NSLock()
+    private static var latestCPUByRunID: (at: Date, map: [String: Double])?
+
+    public static func recentPerProcessCPU(maxAge: TimeInterval = 20) -> [String: Double] {
+        latestCPULock.lock()
+        defer { latestCPULock.unlock() }
+        guard let cached = latestCPUByRunID, Date().timeIntervalSince(cached.at) <= maxAge else {
+            return [:]
+        }
+        return cached.map
+    }
 
     /// Cold-start measurement window used only on the very first read of a sampling session
     /// when no prior tick baseline exists yet. Subsequent ticks are single-pass delta reads.
@@ -198,6 +212,8 @@ public final class CPUProcessSampler: Sampler<[TopProcess]> {
 
         var candidates: [(key: ProcessRunKey, fallbackName: String, usage: Double)] = []
         candidates.reserveCapacity(latest.ticksByProcess.count)
+        var perRunMap: [String: Double] = [:]
+        perRunMap.reserveCapacity(latest.ticksByProcess.count)
         for (key, entry) in latest.ticksByProcess {
             guard let prevEntry = baseline.ticksByProcess[key],
                   entry.cpuTicks >= prevEntry.cpuTicks
@@ -207,8 +223,14 @@ public final class CPUProcessSampler: Sampler<[TopProcess]> {
             let deltaTicks = entry.cpuTicks - prevEntry.cpuTicks
             let cpuNs = DarwinProcessInspector.machTicksToNanoseconds(deltaTicks)
             let pct = max(0, (cpuNs / wallNs) * 100.0)
+            if pct >= 0.05 {
+                perRunMap["\(key.pid):\(key.startSeconds):\(key.startMicroseconds)"] = pct
+            }
             candidates.append((key: key, fallbackName: entry.fallbackName, usage: pct))
         }
+        Self.latestCPULock.lock()
+        Self.latestCPUByRunID = (Date(), perRunMap)
+        Self.latestCPULock.unlock()
 
         candidates.sort {
             if $0.usage != $1.usage { return $0.usage > $1.usage }

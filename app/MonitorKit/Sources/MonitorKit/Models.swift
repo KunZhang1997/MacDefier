@@ -528,10 +528,13 @@ public struct MonitorSnapshot: Sendable, Equatable {
     public var ram: RAMUsage?
     public var topCPU: [TopProcess]
     public var topRAM: [TopProcess]
+    public var processFamilies: [ProcessFamilySummary] = []
     public var topCPUSampledAt: Date
     public var topRAMSampledAt: Date
+    public var processFamiliesSampledAt: Date = .distantPast
     public var topCPUFreshnessLimit: TimeInterval = 15
     public var topRAMFreshnessLimit: TimeInterval = 15
+    public var processFamiliesFreshnessLimit: TimeInterval = 25
     public var diskActivity: DiskActivity? = nil
     public var disks: [DiskVolume]
     public var disksSampledAt: Date
@@ -591,6 +594,12 @@ public struct MonitorSnapshot: Sendable, Equatable {
     public func topRAMIsFresh(at now: Date = Date()) -> Bool {
         Self.isFresh(topRAMSampledAt, at: now, limit: topRAMFreshnessLimit)
             && topRAM.allSatisfy { $0.pid > 0 && $0.usage.isFinite && $0.usage >= 0 }
+    }
+
+    public func processFamiliesAreFresh(at now: Date = Date()) -> Bool {
+        !processFamilies.isEmpty
+            && Self.isFresh(processFamiliesSampledAt, at: now, limit: processFamiliesFreshnessLimit)
+            && processFamilies.allSatisfy { $0.footprintBytes.isFinite && $0.footprintBytes >= 0 && $0.cpuUsage.isFinite && $0.cpuUsage >= 0 }
     }
 
     public func gpusAreFresh(at now: Date = Date()) -> Bool {

@@ -49,10 +49,12 @@ enum DiagnosticScanStore {
         var metric: String?
         var action: String
         var actionTitle: String
+        var secondaryAction: String?
         var processPID: Int?
         var processName: String?
         var appPath: String?
         var appBundleID: String?
+        var serviceFocusLabel: String?
     }
 
     struct AppDTO: Codable {
@@ -77,10 +79,12 @@ enum DiagnosticScanStore {
                 metric: $0.metric,
                 action: $0.action.rawValue,
                 actionTitle: $0.actionTitle,
+                secondaryAction: $0.secondaryAction?.rawValue,
                 processPID: $0.processPID,
                 processName: $0.processName,
                 appPath: $0.appPath,
-                appBundleID: $0.appBundleID
+                appBundleID: $0.appBundleID,
+                serviceFocusLabel: $0.serviceFocusLabel
             )
         }
         let apps = report.largeApps.map { AppDTO(name: $0.name, bytes: $0.bytes) }

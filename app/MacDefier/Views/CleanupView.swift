@@ -275,12 +275,11 @@ struct CleanupView: View {
                     .padding(.top, 6)
             }
             if let narrative = cleanup.aiNarrative, !narrative.isEmpty {
-                DisclosureGroup(L10n.t("common.ai_review"), isExpanded: $showAIReview) {
-                    MDAIResultCard(text: narrative).padding(.top, 6)
+                MDDisclosureBar(L10n.t("common.ai_review"), isExpanded: $showAIReview) {
+                    MDAIResultCard(text: narrative).padding(.top, 2)
                 }
-                .font(.system(size: 12, weight: .medium))
                 .padding(.horizontal, MDTheme.pagePadding)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
             }
             if cleanup.groups.isEmpty {
                 VStack {
@@ -460,7 +459,7 @@ struct CleanupView: View {
         case .item(_, let item, let isLast, let separator):
             VStack(spacing: 0) {
                 itemRow(item)
-                if separator { MDRowSeparator(leading: 36) }
+                if separator { MDRowSeparator(leading: MDTheme.checkSeparatorLeading) }
             }
             .background(groupRowBackground(last: isLast))
             .padding(.bottom, isLast ? MDTheme.resultCardGap : 0)
@@ -489,8 +488,8 @@ struct CleanupView: View {
         let caution = needsCaution(group.category)
         let selectable = group.items.filter { $0.risk != .skip }
         // Selection stays in the same leading column as item checkboxes.
-        // The separate disclosure button never changes selection.
-        return HStack(spacing: 8) {
+        // The full-height disclosure button covers the entire remaining header area.
+        return HStack(spacing: 0) {
                 MDCheckbox(
                     L10n.t("cleanup.select_group", group.category.localizedTitle),
                     isOn: Binding(
@@ -504,6 +503,8 @@ struct CleanupView: View {
                         }
                     )
                 )
+                .padding(.leading, MDTheme.resultInset)
+                .padding(.trailing, 8)
                 .disabled(!canSelectPreview || selectable.isEmpty)
                 .help(L10n.t("cleanup.select_group_help"))
                 .accessibilityIdentifier("cleanup.selectGroup.\(group.category.rawValue)")
@@ -535,14 +536,15 @@ struct CleanupView: View {
                             .foregroundStyle(MDTheme.secondary)
                             .frame(minWidth: MDTheme.metaSizeWidth, alignment: .trailing)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 10)
+                    .padding(.trailing, MDTheme.resultInset)
+                    .frame(maxWidth: .infinity, minHeight: MDTheme.resultHeaderHeight, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(group.category.localizedWhatIsIt)
 
             }
-            .mdResultHeader()
             .mdRowHover(cornerRadius: isOpen ? 0 : MDTheme.resultCardRadius)
             .background(groupRowBackground(first: true, last: !isOpen))
             .padding(.bottom, isOpen ? 0 : MDTheme.resultCardGap)
@@ -635,7 +637,7 @@ struct CleanupView: View {
                             .lineLimit(2)
                     }
                 }
-                .padding(.leading, 28)
+                .padding(.leading, 36)
             }
         }
         .padding(.horizontal, 14)
@@ -818,7 +820,7 @@ struct CleanupView: View {
                             ForEach(CleanupFailureKind.allCases, id: \.self) { kind in
                                 let items = failures.filter { $0.kind == kind }
                                 if !items.isEmpty {
-                                    DisclosureGroup {
+                                    MDDisclosureBar(L10n.t("cleanup.group.\(kind.rawValue)") + " · \(items.count)") {
                                         ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                                             VStack(alignment: .leading, spacing: 3) {
                                                 Text(item.name).font(.body.weight(.medium))
@@ -826,8 +828,6 @@ struct CleanupView: View {
                                                     .textSelection(.enabled)
                                             }.padding(.vertical, 4)
                                         }
-                                    } label: {
-                                        Text(L10n.t("cleanup.group.\(kind.rawValue)") + " · \(items.count)")
                                     }
                                     Text(L10n.t("cleanup.reason.\(kind.rawValue)"))
                                         .font(.caption).foregroundStyle(MDTheme.secondary)
@@ -838,7 +838,7 @@ struct CleanupView: View {
                     }.frame(maxHeight: 240).frame(maxWidth: 560)
                 }
                 if !errors.isEmpty {
-                    DisclosureGroup(L10n.t("cleanup.technical_details")) {
+                    MDDisclosureBar(L10n.t("cleanup.technical_details")) {
                         ScrollView {
                             Text(errors.joined(separator: "\n")).font(.caption).textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)

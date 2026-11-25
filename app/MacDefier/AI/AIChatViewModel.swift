@@ -628,6 +628,17 @@ final class AIChatViewModel: ObservableObject {
                 lines.append("- \(p.name) pid=\(p.pid) cpu=\(String(format: "%.0f", p.usage))%")
             }
         }
+        let userServices = await Task.detached(priority: .utility) {
+            UserLaunchAgentService.scan(isCancelled: { Task.isCancelled }).items
+        }.value
+        let activeKeepAlive = userServices.filter { $0.runState == .running && $0.isKeepAlive }
+        if !activeKeepAlive.isEmpty {
+            lines.append("运行中的用户自动复活后台服务（KeepAlive，open_software_services 可暂停而不删配置）：")
+            for svc in activeKeepAlive.prefix(6) {
+                let pStr = svc.pid.map { " pid=\($0)" } ?? ""
+                lines.append("- \(svc.displayName) | \(svc.label)\(pStr)")
+            }
+        }
         lines.append("提醒：cleanup 只打开清理页并预览；uninstall 只打开软件卸载弹窗，均不直接删除。")
         return lines.joined(separator: "\n")
     }

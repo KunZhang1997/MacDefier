@@ -84,6 +84,27 @@ enum UninstallFileBoundary {
         return lstat(path, &value) != 0 && errno == ENOENT
     }
 
+    /// Verifies that `destination` still refers to `expected` even when `~/.Trash`
+    /// cannot be opened with `O_DIRECTORY` because Full Disk Access is not granted.
+    static func matchesTrashedItem(_ expected: Identity, at destination: String) -> Bool {
+        if let snap = try? snapshot(destination) {
+            return snap.item == expected
+        }
+        guard destination.hasPrefix("/"), !destination.utf8.contains(0),
+              !destination.split(separator: "/").contains("..") else { return false }
+        let url = URL(fileURLWithPath: destination).standardizedFileURL
+        guard !url.lastPathComponent.isEmpty, url.path != "/" else { return false }
+        let parentPath = url.deletingLastPathComponent().path
+        var parentStat = stat()
+        guard lstat(parentPath, &parentStat) == 0,
+              (parentStat.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+              parentStat.st_uid == getuid(),
+              (parentStat.st_mode & 0o022) == 0 else { return false }
+        var itemStat = stat()
+        guard lstat(url.path, &itemStat) == 0 else { return false }
+        return Identity(itemStat) == expected
+    }
+
     /// Passing a destination is an internal fixture seam; production uses the user's Trash.
     @discardableResult
     static func move(_ source: Snapshot, toTrashDirectory destination: String? = nil) throws -> String {
@@ -115,6 +136,11 @@ enum UninstallFileBoundary {
             // permission and other I/O failures retain their own diagnosis.
             throw Failure(code: "uninstall_trash_unsafe", path: trashPath,
                           errno: failure.errno, operation: failure.operation)
+        }
+        catch let failure as Failure where destination == nil && (failure.errno == EPERM || failure.errno == EACCES) {
+            // On macOS without Full Disk Access, TCC denies direct O_DIRECTORY open on ~/.Trash
+            // while system unprivileged FileManager.trashItem succeeds and returns the exact receipt.
+            return try moveViaSystemUnprivilegedTrash(source: source, trashPath: trashPath)
         }
         defer { close(trashFD) }
         var trash = stat()
@@ -150,6 +176,39 @@ enum UninstallFileBoundary {
             throw posixFailure(source.path, errno: errorNumber, operation: "renameatx_np")
         }
         throw Failure(code: "uninstall_trash_unsafe", path: trashPath)
+    }
+
+    private static func moveViaSystemUnprivilegedTrash(source: Snapshot, trashPath: String) throws -> String {
+        var trashStat = stat()
+        guard lstat(trashPath, &trashStat) == 0 else {
+            throw posixFailure(trashPath, errno: errno, operation: "move.trash_stat")
+        }
+        guard (trashStat.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+              trashStat.st_uid == getuid(),
+              (trashStat.st_mode & 0o022) == 0 else {
+            throw Failure(code: "uninstall_trash_unsafe", path: trashPath)
+        }
+        guard trashStat.st_dev == source.item.device else {
+            throw Failure(code: "uninstall_cross_volume", path: source.path, operation: "move.trash_device")
+        }
+        var rawItem = stat()
+        if lstat(source.path, &rawItem) == 0,
+           rawItem.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) != 0 {
+            throw Failure(code: "uninstall_locked", path: source.path)
+        }
+        try validate(source)
+        var resulting: NSURL?
+        do {
+            try FileManager.default.trashItem(at: URL(fileURLWithPath: source.path), resultingItemURL: &resulting)
+        } catch {
+            throw fileSystemFailure(error, path: source.path, operation: "renameatx_np")
+        }
+        guard let receiptPath = resulting?.path,
+              isMissing(source.path),
+              matchesTrashedItem(source.item, at: receiptPath) else {
+            throw Failure(code: "uninstall_system_result_unknown", path: source.path)
+        }
+        return receiptPath
     }
 
     private static func defaultTrashPath(for source: Snapshot) throws -> String {

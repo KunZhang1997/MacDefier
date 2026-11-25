@@ -50,10 +50,17 @@ final class DiagnosticScanService: ObservableObject {
     private var lastScanApps: [InstalledApp] = []
     /// Language raw value when `report` titles were last resolved.
     private var reportLanguageRaw: String = ""
+    private var resourceObserver: AnyCancellable?
 
     init(initialReport: DiagnosticReport = .empty) {
         report = initialReport
         reportLanguageRaw = AppLanguage.current.rawValue
+        resourceObserver = NotificationCenter.default.publisher(for: CleanupResourceEvents.didChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.report.scannedAt != .distantPast else { return }
+                self.refreshCachedReport(snapshot: MonitorService.shared.snapshot)
+            }
     }
 
     /// Fresh enough to show again without re-scanning (rules + optional AI already on report).
@@ -91,8 +98,21 @@ final class DiagnosticScanService: ObservableObject {
             return false
         }()
 
+        // Reconcile retained LaunchAgent services with SoftwareService mutations & on-disk existence
+        var workingReport = report
+        if let latestServicesAt = SoftwareService.shared.lastServicesInventoryAt,
+           latestServicesAt > workingReport.scannedAt {
+            workingReport.retainedUserServices = SoftwareService.shared.userServices.filter {
+                !SoftwareService.shared.isServiceTrashed($0) && FileManager.default.fileExists(atPath: $0.plistPath)
+            }
+        } else if !workingReport.retainedUserServices.isEmpty {
+            workingReport.retainedUserServices = workingReport.retainedUserServices.filter {
+                !SoftwareService.shared.isServiceTrashed($0) && FileManager.default.fileExists(atPath: $0.plistPath)
+            }
+        }
+
         let refreshed = DiagnosticScanEngine.refreshReport(
-            report, snapshot: snapshot, apps: lastScanApps,
+            workingReport, snapshot: snapshot, apps: lastScanApps,
             preserveAI: reportLanguageRaw == lang && !findingsLookWrongLanguage, now: now
         )
         if refreshed.findings != report.findings || refreshed.summaryLine != report.summaryLine
@@ -115,7 +135,7 @@ final class DiagnosticScanService: ObservableObject {
         if !force, hasFreshResult {
             await Self.waitForCoreSamples(monitor: monitor)
             relocalizeForCurrentLanguage(monitor: monitor)
-            var actions = report.findings.compactMap { Self.defierAction(from: $0) }
+            var actions = Self.chatActions(from: report.findings)
             if actions.isEmpty {
                 actions = Self.defaultNavigationActions(junkBytes: report.junkBytes)
             }
@@ -189,6 +209,9 @@ final class DiagnosticScanService: ObservableObject {
         let apps = await Task.detached(priority: .userInitiated) {
             AppInventory.fetchInstalledApps(computeSize: false)
         }.value
+        let userServices = await Task.detached(priority: .utility) {
+            UserLaunchAgentService.scan(isCancelled: { Task.isCancelled }).items
+        }.value
 
         if gen != scanGeneration {
             return DiagnosticChatResult(
@@ -216,6 +239,7 @@ final class DiagnosticScanService: ObservableObject {
 
         phaseHint = L10n.t("diag.phase.pack")
         await Self.waitForCoreSamples(monitor: monitor)
+        _ = await monitor.refreshProcessFamiliesNow()
         guard gen == scanGeneration, !Task.isCancelled else {
             if gen == scanGeneration { phaseHint = ""; isScanning = false }
             return DiagnosticChatResult(summary: Self.chatSummary(for: self.report), actions: [],
@@ -229,7 +253,8 @@ final class DiagnosticScanService: ObservableObject {
             trashBytes: trashBytes,
             apps: apps,
             appSizesAvailable: false,
-            cleanupIsPartial: cleanupIsPartial
+            cleanupIsPartial: cleanupIsPartial,
+            userServices: userServices
         )
         // A 收口：无论规则是否「有问题」，都保证有人话结论 + 可点下一步
         report = Self.ensureUserFacingFindings(report, junkBytes: junkBytes, trashBytes: trashBytes)
@@ -265,7 +290,7 @@ final class DiagnosticScanService: ObservableObject {
                 - Focus: slowness, memory/CPU stress, truly tight disk, reclaimable junk/Trash.
                 - Large apps alone are not problems — no uninstall for size-only; not priority alerts.
                 - uninstall only if rules already suggest it or disk is tight — copy must say optional/preview.
-                - If disk not tight: no uninstall for large apps; open_monitor / cleanup / open_diagnostic only.
+                - If disk not tight: no uninstall for large apps; prefer open_monitor / cleanup / open_ai_tools / open_software_services / quit_automated_browser / shutdown_simulators / open_diagnostic as supported by live findings.
                 - Disk tight now: \(lang.yesNo(diskTight)).
                 - cleanup/uninstall buttons = open preview only.
                 - Only names/bundleIDs from the lists; no invented paths/GB.
@@ -281,7 +306,7 @@ final class DiagnosticScanService: ObservableObject {
                         messages: [AIMessage(role: .user, content: prompt)],
                         settings: settings,
                         intensity: .standard,
-                        systemExtra: ctx
+                        systemExtra: nil
                     )
                     rawAI = reply.content
                     if !reply.actions.isEmpty {
@@ -370,7 +395,7 @@ final class DiagnosticScanService: ObservableObject {
 
         // Chat needs DefierAction cards even when AI skipped or only rules ran.
         if chatActions.isEmpty {
-            chatActions = report.findings.compactMap { Self.defierAction(from: $0) }
+            chatActions = Self.chatActions(from: report.findings)
         }
         // 保证聊天至少有一个可点下一步（关 AI / 模型失败时也成立）
         if chatActions.isEmpty {
@@ -408,7 +433,10 @@ final class DiagnosticScanService: ObservableObject {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(2))
         while !Task.isCancelled, clock.now < deadline {
-            if monitor.snapshot.cpuIsFresh(), monitor.snapshot.ramIsFresh(), monitor.snapshot.systemDiskIsFresh() { return }
+            if monitor.snapshot.cpuIsFresh(),
+               monitor.snapshot.ramIsFresh(),
+               monitor.snapshot.systemDiskIsFresh(),
+               monitor.snapshot.topCPUIsFresh() { return }
             do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
         }
     }
@@ -525,18 +553,50 @@ final class DiagnosticScanService: ObservableObject {
         return L10n.t("diag.chat_issues", head)
     }
 
+    private static func chatActions(from findings: [DiagnosticFinding]) -> [DefierAction] {
+        var result: [DefierAction] = []
+        var seenServicesFocus = Set<String>()
+        for finding in findings {
+            if let primary = defierAction(from: finding) {
+                result.append(primary)
+            }
+            if finding.secondaryAction == .openSoftwareServices,
+               finding.action != .openSoftwareServices {
+                let focusKey = finding.serviceFocusLabel ?? "*"
+                if seenServicesFocus.insert(focusKey).inserted {
+                    result.append(DefierAction(
+                        id: "\(finding.id)-services",
+                        kind: .openSoftwareServices,
+                        title: finding.secondaryActionTitle ?? L10n.t("act.open_services"),
+                        detail: L10n.t("software.tab.services"),
+                        bundleID: finding.serviceFocusLabel
+                    ))
+                }
+            }
+        }
+        return result
+    }
+
     /// Map rule/AI findings back to navigation actions for chat cards.
     private static func defierAction(from finding: DiagnosticFinding) -> DefierAction? {
         let kind: DefierAction.Kind
         switch finding.action {
         case .openCleanupAndScan:
             kind = .cleanup
+        case .openAITools:
+            kind = .openAITools
         case .openSoftware:
             kind = (finding.appPath != nil || finding.appBundleID != nil) ? .uninstall : .openSoftware
+        case .openSoftwareServices:
+            kind = .openSoftwareServices
         case .openMonitor:
             kind = .openMonitor
         case .quitProcess:
             kind = .quitProcess
+        case .quitAutomatedBrowser:
+            kind = .quitAutomatedBrowser
+        case .shutdownSimulators:
+            kind = .shutdownSimulators
         case .openMister:
             kind = .openDiagnostic
         case .none:
@@ -549,10 +609,11 @@ final class DiagnosticScanService: ObservableObject {
             title: title,
             detail: finding.detail,
             appName: finding.processName,
-            bundleID: finding.appBundleID,
+            bundleID: finding.serviceFocusLabel ?? finding.appBundleID,
             appPath: finding.appPath,
             processPID: finding.processPID,
             processName: finding.processName,
+            processIdentity: finding.processIdentity,
             metric: finding.metric
         )
     }
@@ -564,14 +625,26 @@ final class DiagnosticScanService: ObservableObject {
         case .cleanup:
             fa = .openCleanupAndScan
             kind = .cleanup
+        case .openAITools:
+            fa = .openAITools
+            kind = .cleanup
         case .uninstall, .openSoftware:
             fa = .openSoftware
             kind = .software
+        case .openSoftwareServices:
+            fa = .openSoftwareServices
+            kind = .monitor
         case .openMonitor:
             fa = .openMonitor
             kind = .monitor
         case .quitProcess:
             fa = .quitProcess
+            kind = .monitor
+        case .quitAutomatedBrowser:
+            fa = .quitAutomatedBrowser
+            kind = .monitor
+        case .shutdownSimulators:
+            fa = .shutdownSimulators
             kind = .monitor
         case .openDiagnostic, .openSettings, .none:
             // open settings not in FindingAction — map to openMister for settings-like, or skip
@@ -598,18 +671,24 @@ final class DiagnosticScanService: ObservableObject {
             actionTitle: cta(for: action.kind),
             processPID: action.processPID,
             processName: action.processName ?? action.appName,
+            processIdentity: action.processIdentity,
             appPath: action.appPath,
-            appBundleID: action.bundleID
+            appBundleID: action.kind == .openSoftwareServices ? nil : action.bundleID,
+            serviceFocusLabel: action.kind == .openSoftwareServices ? (action.bundleID ?? action.appName) : nil
         )
     }
 
     private static func cta(for kind: DefierAction.Kind) -> String {
         switch kind {
         case .cleanup: return L10n.t("act.open_cleanup")
+        case .openAITools: return L10n.t("act.open_ai_tools")
         case .uninstall: return L10n.t("act.see_detail")
         case .openSoftware: return L10n.t("act.open_software")
+        case .openSoftwareServices: return L10n.t("act.open_services")
         case .openMonitor: return L10n.t("act.open_monitor")
         case .quitProcess: return L10n.t("act.quit_process")
+        case .quitAutomatedBrowser: return L10n.t("diag.act.quit_auto_browser")
+        case .shutdownSimulators: return L10n.t("diag.act.shutdown_sim")
         case .openSettings: return L10n.t("act.open_settings")
         case .openDiagnostic: return L10n.t("act.open_diagnostic")
         case .none: return L10n.t("act.go_look")

@@ -291,8 +291,15 @@ struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(MDTheme.warning)
                         }
-                        DisclosureGroup(L10n.t("settings.local_advanced"), isExpanded: $showLocalAdvanced) {
-                            settingsRow("Endpoint", showLine: true) {
+                        MDDisclosureBar(
+                            L10n.t("settings.local_advanced"),
+                            isExpanded: $showLocalAdvanced,
+                            font: .system(size: 13),
+                            horizontalPadding: 14,
+                            verticalPadding: 8
+                        ) {
+                            MDRowSeparator(leading: 14)
+                            settingsRow(L10n.t("settings.local_endpoint"), showLine: true) {
                                 TextField("http://127.0.0.1:11434/v1", text: $localEndpoint)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(maxWidth: 260)
@@ -305,9 +312,8 @@ struct SettingsView: View {
                                     .onSubmit { saveAI() }
                             }
                         }
-                        .font(.callout)
-                        .padding(.vertical, 8)
                         .disabled(localModels.activeModel != nil)
+                        MDRowSeparator(leading: 14)
                     }
 
                     settingsRow(L10n.t("settings.intensity"), showLine: true) {

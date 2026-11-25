@@ -141,20 +141,46 @@ public enum AIWorktreeInventory {
         return result
     }
 
+    /// Resolves a real installed Git binary without ever invoking `/usr/bin/git` as an
+    /// `xcrun` stub on Macs that lack Xcode/CLT (which would pop up a system download prompt)
+    /// and preferring CLT/Homebrew Git so an unaccepted Xcode.app EULA cannot block read-only status.
+    static func resolveGitExecutables() -> [(executable: String, developerDir: String?)] {
+        let fm = FileManager.default
+        var out: [(String, String?)] = []
+        if fm.isExecutableFile(atPath: "/Library/Developer/CommandLineTools/usr/bin/git") {
+            out.append(("/Library/Developer/CommandLineTools/usr/bin/git", "/Library/Developer/CommandLineTools"))
+        }
+        for candidate in ["/opt/homebrew/bin/git", "/usr/local/bin/git"] where fm.isExecutableFile(atPath: candidate) {
+            out.append((candidate, nil))
+        }
+        if fm.isExecutableFile(atPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/git") {
+            out.append(("/Applications/Xcode.app/Contents/Developer/usr/bin/git", "/Applications/Xcode.app/Contents/Developer"))
+        }
+        return out
+    }
+
     private static func git(_ arguments: [String], at path: String, home: String,
                             isCancelled: @escaping @Sendable () -> Bool) -> ProcessRunResult? {
         guard !isCancelled() else { return nil }
+        let candidates = resolveGitExecutables()
+        guard !candidates.isEmpty else { return nil }
         // Status must not run user fsmonitor hooks, inherit GIT_DIR redirects,
         // refresh the index, or fetch objects from a promisor remote.
-        let environment = ["PATH": "/usr/bin:/bin", "HOME": home, "LC_ALL": "C",
-                           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
-                           "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"]
-        guard let result = try? ProcessRunner.runSync(
-            ["/usr/bin/git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false",
-             "-c", "core.hooksPath=/dev/null", "-C", path] + arguments,
-            environment: environment, timeout: 1.25,
-            outputLimits: ProcessOutputLimits(stdoutBytes: 256 * 1024, stderrBytes: 16 * 1024), isCancelled: isCancelled
-        ), result.succeeded else { return nil }
-        return result
+        for (executable, devDir) in candidates {
+            if isCancelled() { return nil }
+            var environment = ["PATH": "/usr/bin:/bin", "HOME": home, "LC_ALL": "C",
+                               "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+                               "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"]
+            if let devDir { environment["DEVELOPER_DIR"] = devDir }
+            if let result = try? ProcessRunner.runSync(
+                [executable, "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false",
+                 "-c", "core.hooksPath=/dev/null", "-C", path] + arguments,
+                environment: environment, timeout: 1.25,
+                outputLimits: ProcessOutputLimits(stdoutBytes: 256 * 1024, stderrBytes: 16 * 1024), isCancelled: isCancelled
+            ), result.succeeded {
+                return result
+            }
+        }
+        return nil
     }
 }

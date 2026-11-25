@@ -37,8 +37,12 @@ enum FindingSeverity: Int, Comparable, Sendable {
 enum FindingAction: String, Sendable {
     case openMonitor
     case openCleanupAndScan   // 跳清理并开始扫
+    case openAITools          // 跳 AI 工具专项页
     case openSoftware
+    case openSoftwareServices // 跳 AI 工具 → 后台服务
     case quitProcess          // 尝试结束进程（需 pid）
+    case quitAutomatedBrowser // 尝试结束后台自动化/调试浏览器实例
+    case shutdownSimulators   // 关闭后台 Booted iOS 模拟器
     case openMister
     case none
 }
@@ -57,9 +61,11 @@ struct DiagnosticFinding: Identifiable, Sendable, Equatable {
     let secondaryActionTitle: String?
     let processPID: Int?
     let processName: String?
+    let processIdentity: MonitoredProcessIdentity?
     /// Deep link for uninstall (from AI actions)
     let appPath: String?
     let appBundleID: String?
+    let serviceFocusLabel: String?
 
     init(
         id: String = UUID().uuidString,
@@ -74,8 +80,10 @@ struct DiagnosticFinding: Identifiable, Sendable, Equatable {
         secondaryActionTitle: String? = nil,
         processPID: Int? = nil,
         processName: String? = nil,
+        processIdentity: MonitoredProcessIdentity? = nil,
         appPath: String? = nil,
-        appBundleID: String? = nil
+        appBundleID: String? = nil,
+        serviceFocusLabel: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -89,8 +97,10 @@ struct DiagnosticFinding: Identifiable, Sendable, Equatable {
         self.secondaryActionTitle = secondaryActionTitle
         self.processPID = processPID
         self.processName = processName
+        self.processIdentity = processIdentity
         self.appPath = appPath
         self.appBundleID = appBundleID
+        self.serviceFocusLabel = serviceFocusLabel
     }
 }
 
@@ -101,6 +111,8 @@ struct DiagnosticReport: Sendable {
     /// 废纸篓单独体积（评分/预警用）
     var trashBytes: UInt64
     var largeApps: [(name: String, bytes: UInt64)]
+    var retainedProcessFamilies: [ProcessFamilySummary] = []
+    var retainedUserServices: [UserLaunchAgentItem] = []
     var summaryLine: String
     var aiNarrative: String?
     /// A bounded or failed directory walk supplies a lower bound, never an all-clear.
@@ -130,20 +142,9 @@ enum DiagnosticScanEngine {
     private static let trashWarnBytes: UInt64 = HealthThresholds.trashWarnBytes
     private static let trashHighBytes: UInt64 = HealthThresholds.trashHighBytes
 
-    /// hog 提示只针对可解析的第三方 App：系统进程/后台守护不给「结束进程」入口
+    /// hog 提示只针对可安全正常退出的前台第三方 App（与 MonitoredApplicationExit 严格一致）
     private static func isUserAppProcess(pid: Int) -> Bool {
-        guard let pid32 = pid_t(exactly: pid) else { return false }
-        guard let app = NSRunningApplication(processIdentifier: pid32) else { return false }
-        if let bid = app.bundleIdentifier?.lowercased() {
-            if bid.hasPrefix("com.apple.") { return false }
-            if bid == "com.macdefier.app" || bid.hasPrefix("com.macdefier.") { return false }
-        }
-        // Never offer quit for our own process
-        if app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return false }
-        if let path = app.bundleURL?.path, path.localizedCaseInsensitiveContains("MacDefier.app") {
-            return false
-        }
-        return true
+        DefierActionGuard.isSafeToQuit(pid: pid)
     }
 
     static func buildReport(
@@ -153,12 +154,26 @@ enum DiagnosticScanEngine {
         apps: [InstalledApp],
         appSizesAvailable: Bool = true,
         cleanupIsPartial: Bool = false,
+        retainedFamilies: [ProcessFamilySummary] = [],
+        userServices: [UserLaunchAgentItem] = [],
+        retainedScannedAt: Date = .distantPast,
         now: Date = Date()
     ) -> DiagnosticReport {
         var findings: [DiagnosticFinding] = []
 
         let openMon = L10n.t("diag.act.open_monitor")
         let goClean = L10n.t("diag.act.cleanup_scan")
+
+        let effectiveFamilies: [ProcessFamilySummary] = {
+            if snapshot.processFamiliesAreFresh(at: now) {
+                return snapshot.processFamilies
+            }
+            if snapshot.hasFreshDiagnosticMetrics(at: now),
+               ScanReusePolicy.isFresh(retainedScannedAt, ttl: ScanReusePolicy.diagnosticTTL) {
+                return retainedFamilies
+            }
+            return []
+        }()
 
         if !snapshot.hasFreshCoreMetrics(at: now) {
             findings.append(DiagnosticFinding(
@@ -181,7 +196,9 @@ enum DiagnosticScanEngine {
             let pct = cpu.totalUsage * 100
             if cpu.totalUsage >= HealthThresholds.cpuHighUsage {
                 let sep = AppLanguage.current.isEnglish ? ", " : "、"
-                let top = snapshot.topCPU.prefix(3).map { "\($0.name) \(String(format: "%.0f", $0.usage))%" }.joined(separator: sep)
+                let top = snapshot.topCPUIsFresh(at: now)
+                    ? snapshot.topCPU.prefix(3).map { "\($0.name) \(String(format: "%.0f", $0.usage))%" }.joined(separator: sep)
+                    : ""
                 findings.append(DiagnosticFinding(
                     id: "cpu-high",
                     kind: .monitor,
@@ -212,6 +229,17 @@ enum DiagnosticScanEngine {
             let pct = ram.usage * 100
             let used = ByteCountFormatter.string(fromByteCount: Int64(ram.used), countStyle: .memory)
             let total = ByteCountFormatter.string(fromByteCount: Int64(ram.total), countStyle: .memory)
+            let disksForSwap = snapshot.disks.physical.isEmpty ? snapshot.disks : snapshot.disks.physical
+            let sysTight = snapshot.systemDiskIsFresh(at: now) && HealthThresholds.isSystemDiskTight(disksForSwap)
+            let swapStr = ByteCountFormatter.string(fromByteCount: Int64(ram.swap.used), countStyle: .memory)
+            let sysFree = disksForSwap.first(where: DiagnosticScore.isSystemVolume)
+                .map { ByteCountFormatter.string(fromByteCount: Int64($0.free), countStyle: .file) } ?? "—"
+            let hasHighSwapCombo = ram.swap.isAvailable
+                && sysTight
+                && ram.swap.used >= HealthThresholds.swapElevatedBytes
+                && (ram.swap.used >= HealthThresholds.swapHighComboBytes
+                    || (disksForSwap.first(where: DiagnosticScore.isSystemVolume).map(HealthThresholds.isSystemDiskCritical) ?? false))
+
             switch ram.pressure.value {
             case .critical:
                 findings.append(DiagnosticFinding(
@@ -222,20 +250,65 @@ enum DiagnosticScanEngine {
                     detail: L10n.t("diag.find.ram_crit_detail", used, total),
                     metric: String(format: "%.0f%%", pct),
                     action: .openMonitor,
-                    actionTitle: openMon
+                    actionTitle: openMon,
+                    secondaryAction: sysTight ? .openCleanupAndScan : nil,
+                    secondaryActionTitle: sysTight ? goClean : nil
                 ))
             case .warning:
-                findings.append(DiagnosticFinding(
-                    id: "ram-warning",
-                    kind: .monitor,
-                    severity: .warn,
-                    title: L10n.t("diag.find.ram_warn"),
-                    detail: L10n.t("diag.find.ram_warn_detail", used, total),
-                    metric: String(format: "%.0f%%", pct),
-                    action: .openMonitor,
-                    actionTitle: openMon
-                ))
-            case .normal, .unknown:
+                if ram.swap.isAvailable, sysTight, ram.swap.used >= HealthThresholds.swapElevatedBytes {
+                    findings.append(DiagnosticFinding(
+                        id: "ram-warning",
+                        kind: .monitor,
+                        severity: hasHighSwapCombo ? .high : .warn,
+                        title: L10n.t("diag.find.swap_disk_combo"),
+                        detail: L10n.t("diag.find.swap_disk_combo_detail", swapStr, sysFree),
+                        metric: swapStr,
+                        action: .openMonitor,
+                        actionTitle: openMon,
+                        secondaryAction: .openCleanupAndScan,
+                        secondaryActionTitle: goClean
+                    ))
+                } else {
+                    findings.append(DiagnosticFinding(
+                        id: "ram-warning",
+                        kind: .monitor,
+                        severity: .warn,
+                        title: L10n.t("diag.find.ram_warn"),
+                        detail: L10n.t("diag.find.ram_warn_detail", used, total),
+                        metric: String(format: "%.0f%%", pct),
+                        action: .openMonitor,
+                        actionTitle: openMon
+                    ))
+                }
+            case .normal:
+                if ram.swap.isAvailable {
+                    if sysTight && ram.swap.used >= HealthThresholds.swapElevatedBytes {
+                        findings.append(DiagnosticFinding(
+                            id: "swap-disk-combo",
+                            kind: .monitor,
+                            severity: hasHighSwapCombo ? .high : .warn,
+                            title: L10n.t("diag.find.swap_disk_combo"),
+                            detail: L10n.t("diag.find.swap_disk_combo_detail", swapStr, sysFree),
+                            metric: swapStr,
+                            action: .openMonitor,
+                            actionTitle: openMon,
+                            secondaryAction: .openCleanupAndScan,
+                            secondaryActionTitle: goClean
+                        ))
+                    } else if ram.swap.used >= HealthThresholds.swapHeavyStandaloneBytes {
+                        findings.append(DiagnosticFinding(
+                            id: "swap-elevated",
+                            kind: .monitor,
+                            severity: .warn,
+                            title: L10n.t("diag.find.swap_elevated"),
+                            detail: L10n.t("diag.find.swap_elevated_detail", swapStr, used, total),
+                            metric: swapStr,
+                            action: .openMonitor,
+                            actionTitle: openMon
+                        ))
+                    }
+                }
+            case .unknown:
                 break
             }
         }
@@ -392,7 +465,17 @@ enum DiagnosticScanEngine {
             ))
         }
 
-        if snapshot.cpuIsFresh(at: now), let hog = snapshot.topCPU.first, hog.usage >= 70, isUserAppProcess(pid: hog.pid) {
+        let automatedBrowserPIDs = Set(effectiveFamilies.filter { $0.kind == .automatedBrowser }.compactMap(\.rootPID))
+        var reportedSingleHogPID: Int?
+        var reportedSingleHogAppPath: String?
+        if snapshot.cpuIsFresh(at: now),
+           snapshot.topCPUIsFresh(at: now),
+           let hog = snapshot.topCPU.first,
+           hog.usage >= 70,
+           !automatedBrowserPIDs.contains(hog.pid),
+           isUserAppProcess(pid: hog.pid) {
+            reportedSingleHogPID = hog.pid
+            reportedSingleHogAppPath = hog.identity?.appPath
             let usageStr = String(format: "%.0f", hog.usage)
             findings.append(DiagnosticFinding(
                 id: "proc-\(hog.pid)",
@@ -406,7 +489,161 @@ enum DiagnosticScanEngine {
                 secondaryAction: .openMonitor,
                 secondaryActionTitle: openMon,
                 processPID: hog.pid,
-                processName: hog.name
+                processName: hog.name,
+                processIdentity: hog.identity
+            ))
+        }
+
+        // WindowServer compositing pressure (either via fresh topCPU or effectiveFamilies)
+        let wsFromTop = (snapshot.cpuIsFresh(at: now) && snapshot.topCPUIsFresh(at: now))
+            ? snapshot.topCPU.first(where: { $0.name == "WindowServer" })?.usage
+            : nil
+        let wsFromFamilies = effectiveFamilies.first(where: { $0.id == "sys:WindowServer" })?.cpuUsage
+        let wsCPU = max(wsFromTop ?? 0, wsFromFamilies ?? 0)
+        if wsCPU >= HealthThresholds.windowServerWarnCPU {
+            let pctStr = String(format: "%.0f", wsCPU)
+            findings.append(DiagnosticFinding(
+                id: "windowserver-high",
+                kind: .monitor,
+                severity: wsCPU >= HealthThresholds.windowServerHighCPU ? .high : .warn,
+                title: L10n.t("diag.find.windowserver_high"),
+                detail: L10n.t("diag.find.windowserver_high_detail", pctStr),
+                metric: "\(pctStr)%",
+                action: .openMonitor,
+                actionTitle: openMon
+            ))
+        }
+
+        // Process family rollup findings (Simulator, Automated Browser, Multi-process App Hogs)
+        if !effectiveFamilies.isEmpty {
+            let ramStrained = snapshot.ramIsFresh(at: now) && (
+                snapshot.ram?.pressure.value == .warning
+                    || snapshot.ram?.pressure.value == .critical
+                    || (snapshot.ram?.swap.isAvailable == true && (snapshot.ram?.swap.used ?? 0) >= HealthThresholds.swapElevatedBytes)
+                    || (snapshot.ram?.usage ?? 0) >= 0.82
+            )
+            let nameSep = AppLanguage.current.isEnglish ? ", " : "、"
+
+            for family in effectiveFamilies {
+                switch family.kind {
+                case .iosSimulator:
+                    let hasActiveSim = family.hasActiveSimulatedOS || !family.bootedSimulators.isEmpty
+                    guard hasActiveSim,
+                          (family.footprintBytes >= HealthThresholds.simulatorNoticeBytes || !family.bootedSimulators.isEmpty)
+                    else {
+                        continue
+                    }
+                    let memStr = ByteCountFormatter.string(fromByteCount: Int64(family.footprintBytes), countStyle: .memory)
+                    let devNames = family.bootedSimulators.map(\.name).joined(separator: nameSep)
+                    let detail = devNames.isEmpty
+                        ? L10n.t("diag.find.sim_running_detail", family.processCount, memStr)
+                        : L10n.t("diag.find.sim_running_named_detail", devNames, family.processCount, memStr)
+                    findings.append(DiagnosticFinding(
+                        id: "simulator-running",
+                        kind: .monitor,
+                        severity: ramStrained ? .warn : .info,
+                        title: L10n.t("diag.find.sim_running"),
+                        detail: detail,
+                        metric: memStr,
+                        action: .shutdownSimulators,
+                        actionTitle: L10n.t("diag.act.shutdown_sim"),
+                        secondaryAction: .openMonitor,
+                        secondaryActionTitle: openMon
+                    ))
+
+                case .automatedBrowser:
+                    guard family.footprintBytes >= HealthThresholds.automatedBrowserNoticeBytes
+                            || family.cpuUsage >= HealthThresholds.automatedBrowserNoticeCPU,
+                          let rootPID = family.rootPID
+                    else {
+                        continue
+                    }
+                    let memStr = ByteCountFormatter.string(fromByteCount: Int64(family.footprintBytes), countStyle: .memory)
+                    let hint = family.automationHint ?? "automation"
+                    let supervisor = UserLaunchAgentService.findSupervisorService(forPID: rootPID, in: userServices)
+                    let detail = supervisor.map {
+                        L10n.t("diag.find.auto_browser_supervised_detail", hint, family.processCount, memStr, $0.displayName)
+                    } ?? L10n.t("diag.find.auto_browser_detail", hint, family.processCount, memStr)
+                    findings.append(DiagnosticFinding(
+                        id: "auto-browser-\(rootPID)",
+                        kind: .monitor,
+                        severity: (ramStrained || family.cpuUsage >= 30) ? .warn : .info,
+                        title: L10n.t("diag.find.auto_browser", family.name),
+                        detail: detail,
+                        metric: memStr,
+                        action: .quitAutomatedBrowser,
+                        actionTitle: L10n.t("diag.act.quit_auto_browser"),
+                        secondaryAction: supervisor != nil ? .openSoftwareServices : .openMonitor,
+                        secondaryActionTitle: supervisor != nil ? L10n.t("act.open_services") : openMon,
+                        processPID: rootPID,
+                        processName: family.name,
+                        processIdentity: family.rootIdentity,
+                        serviceFocusLabel: supervisor?.label
+                    ))
+
+                case .userApp:
+                    if let bid = family.bundleID?.lowercased(),
+                       bid == "com.macdefier.app" || bid.hasPrefix("com.macdefier.") {
+                        continue
+                    }
+                    let alreadyReportedCPU = (family.rootPID != nil && family.rootPID == reportedSingleHogPID)
+                        || (reportedSingleHogAppPath != nil && family.appPath == reportedSingleHogAppPath)
+                    let canQuit = family.rootPID.map(isUserAppProcess) ?? false
+                    if !alreadyReportedCPU, family.processCount > 1, family.cpuUsage >= HealthThresholds.familyCPUHogUsage {
+                        let cpuStr = String(format: "%.0f", family.cpuUsage)
+                        findings.append(DiagnosticFinding(
+                            id: "family-cpu-\(family.id)",
+                            kind: .monitor,
+                            severity: family.cpuUsage >= HealthThresholds.familyCPUHighUsage ? .high : .warn,
+                            title: L10n.t("diag.find.family_cpu_hog", family.name),
+                            detail: L10n.t("diag.find.family_cpu_hog_detail", family.processCount, cpuStr),
+                            metric: "\(cpuStr)%",
+                            action: canQuit ? .quitProcess : .openMonitor,
+                            actionTitle: canQuit ? L10n.t("diag.act.quit_proc") : openMon,
+                            secondaryAction: canQuit ? .openMonitor : nil,
+                            secondaryActionTitle: canQuit ? openMon : nil,
+                            processPID: canQuit ? family.rootPID : nil,
+                            processName: family.name,
+                            processIdentity: canQuit ? family.rootIdentity : nil
+                        ))
+                    }
+                    if ramStrained, family.footprintBytes >= HealthThresholds.familyRAMHogWhenStrainedBytes {
+                        let memStr = ByteCountFormatter.string(fromByteCount: Int64(family.footprintBytes), countStyle: .memory)
+                        findings.append(DiagnosticFinding(
+                            id: "family-ram-\(family.id)",
+                            kind: .monitor,
+                            severity: .warn,
+                            title: L10n.t("diag.find.family_ram_hog", family.name),
+                            detail: L10n.t("diag.find.family_ram_hog_detail", family.processCount, memStr),
+                            metric: memStr,
+                            action: .openMonitor,
+                            actionTitle: openMon,
+                            secondaryAction: canQuit ? .quitProcess : nil,
+                            secondaryActionTitle: canQuit ? L10n.t("diag.act.quit_proc") : nil,
+                            processPID: canQuit ? family.rootPID : nil,
+                            processName: family.name,
+                            processIdentity: canQuit ? family.rootIdentity : nil
+                        ))
+                    }
+
+                case .systemService, .cliOrDaemon:
+                    break
+                }
+            }
+        }
+
+        let brokenAgents = userServices.filter { !$0.targetExistsOnDisk }
+        if !brokenAgents.isEmpty {
+            let names = brokenAgents.prefix(2).map(\.displayName).joined(separator: AppLanguage.current.isEnglish ? ", " : "、")
+            findings.append(DiagnosticFinding(
+                id: "orphan-launch-agent",
+                kind: .cleanup,
+                severity: .info,
+                title: L10n.t("diag.find.orphan_agent", brokenAgents.count),
+                detail: L10n.t("diag.find.orphan_agent_detail", names),
+                action: .openSoftwareServices,
+                actionTitle: L10n.t("act.open_services"),
+                serviceFocusLabel: brokenAgents.first?.label
             ))
         }
 
@@ -439,11 +676,13 @@ enum DiagnosticScanEngine {
             trashBytes: trashBytes,
             // 对外/给 AI 的大应用体积用 totalBytes（包+严格相关数据），避免只报壳体积
             largeApps: topLarge.map { ($0.name, $0.totalBytes) },
+            retainedProcessFamilies: effectiveFamilies,
+            retainedUserServices: userServices,
             summaryLine: summary,
             aiNarrative: nil,
             cleanupIsPartial: cleanupIsPartial,
             monitorEvidenceIsComplete: snapshot.hasFreshDiagnosticMetrics(at: now),
-            monitorEvidenceFingerprint: evidenceFingerprint(snapshot, at: now)
+            monitorEvidenceFingerprint: evidenceFingerprint(snapshot, families: effectiveFamilies, findings: findings, at: now)
         )
     }
 
@@ -456,8 +695,16 @@ enum DiagnosticScanEngine {
         now: Date = Date()
     ) -> DiagnosticReport {
         var rebuilt = buildReport(
-            snapshot: snapshot, junkBytes: previous.junkBytes, trashBytes: previous.trashBytes,
-            apps: apps, appSizesAvailable: false, cleanupIsPartial: previous.cleanupIsPartial, now: now
+            snapshot: snapshot,
+            junkBytes: previous.junkBytes,
+            trashBytes: previous.trashBytes,
+            apps: apps,
+            appSizesAvailable: false,
+            cleanupIsPartial: previous.cleanupIsPartial,
+            retainedFamilies: previous.retainedProcessFamilies,
+            userServices: previous.retainedUserServices,
+            retainedScannedAt: previous.scannedAt,
+            now: now
         )
         rebuilt.scannedAt = previous.scannedAt
         if preserveAI, rebuilt.monitorEvidenceIsComplete, !rebuilt.cleanupIsPartial,
@@ -475,17 +722,45 @@ enum DiagnosticScanEngine {
         return rebuilt
     }
 
-    private static func evidenceFingerprint(_ snapshot: MonitorSnapshot, at now: Date) -> String {
-        let cpu = snapshot.cpuIsFresh(at: now) ? snapshot.cpu.map { String(Int($0.totalUsage * 20)) } ?? "?" : "?"
-        let ram = snapshot.ramIsFresh(at: now)
-            ? snapshot.ram.map { "\($0.pressure.value.rawValue):\($0.swap.isAvailable):\(Int($0.usage * 10))" } ?? "?"
-            : "?"
+    /// Threshold-banded fingerprint so minor telemetry jitter (e.g. 2% idle CPU changes) never wipes fresh AI output.
+    private static func evidenceFingerprint(
+        _ snapshot: MonitorSnapshot,
+        families: [ProcessFamilySummary],
+        findings: [DiagnosticFinding],
+        at now: Date
+    ) -> String {
+        let cpuBand: String = {
+            guard snapshot.cpuIsFresh(at: now), let u = snapshot.cpu?.totalUsage else { return "?" }
+            if u >= HealthThresholds.cpuHighUsage { return "high" }
+            if u >= HealthThresholds.cpuWarnUsage { return "warn" }
+            return "ok"
+        }()
+        let ramBand: String = {
+            guard snapshot.ramIsFresh(at: now), let r = snapshot.ram else { return "?" }
+            let swapBand: Int
+            if !r.swap.isAvailable { swapBand = -1 }
+            else if r.swap.used >= HealthThresholds.swapHeavyStandaloneBytes { swapBand = 3 }
+            else if r.swap.used >= HealthThresholds.swapHighComboBytes { swapBand = 2 }
+            else if r.swap.used >= HealthThresholds.swapElevatedBytes { swapBand = 1 }
+            else { swapBand = 0 }
+            return "\(r.pressure.value.rawValue):\(swapBand)"
+        }()
         let disks = snapshot.disks.physical.isEmpty ? snapshot.disks : snapshot.disks.physical
-        let disk = snapshot.systemDiskIsFresh(at: now)
-            ? disks.map { "\($0.id):\(Int($0.usage * 20)):\($0.free < HealthThresholds.systemDiskTightFreeBytes)" }.sorted().joined(separator: ",")
+        let diskBand: String = snapshot.systemDiskIsFresh(at: now)
+            ? disks.filter(DiagnosticScore.isSystemVolume).map { d in
+                if HealthThresholds.isSystemDiskCritical(d) { return "\(d.id):crit" }
+                if HealthThresholds.isSystemDiskTight([d]) { return "\(d.id):tight" }
+                if d.usage >= HealthThresholds.systemDiskWarnUsage { return "\(d.id):warn" }
+                return "\(d.id):ok"
+            }.sorted().joined(separator: ",")
             : "?"
-        let hog = snapshot.cpuIsFresh(at: now) ? snapshot.topCPU.first.map { "\($0.pid):\(Int($0.usage / 10))" } ?? "" : ""
-        return "\(cpu)|\(ram)|\(disk)|\(hog)"
+        let ruleIDs = findings
+            .filter { !$0.id.hasPrefix("ai-") && $0.kind != .ok }
+            .map(\.id)
+            .sorted()
+            .joined(separator: ",")
+        let activeSim = families.contains { $0.kind == .iosSimulator && ($0.hasActiveSimulatedOS || !$0.bootedSimulators.isEmpty) }
+        return "\(cpuBand)|\(ramBand)|\(diskBand)|\(activeSim)|\(ruleIDs)"
     }
 
     /// 首页三态：正常 · 偏卡 · 空间紧（中性词，不恐吓）
@@ -532,20 +807,39 @@ enum DiagnosticScanEngine {
     }
 
     static func contextText(for report: DiagnosticReport, snapshot: MonitorSnapshot) -> String {
+        let isEN = AppLanguage.current.isEnglish
         var lines: [String] = []
-        lines.append(AIClient.monitorSnapshotTextSync(snapshot))
-        lines.append("可清理粗算（缓存/日志等可再生；不含大体积应用数据盘点）：\(ByteCountFormatter.string(fromByteCount: Int64(report.junkBytes), countStyle: .file))")
+        lines.append(AIClient.monitorSnapshotTextSync(snapshot, fallbackFamilies: report.retainedProcessFamilies))
+        let junkStr = ByteCountFormatter.string(fromByteCount: Int64(report.junkBytes), countStyle: .file)
+        lines.append(isEN
+            ? "Estimated rebuildable caches/logs (excluding large app data): \(junkStr)"
+            : "可清理粗算（缓存/日志等可再生；不含大体积应用数据盘点）：\(junkStr)")
         if report.cleanupIsPartial {
-            lines.append("清理盘点未完成：以上体积仅为下限，不能据此判断无垃圾或空间正常。")
+            lines.append(isEN
+                ? "Cleanup estimate is partial (lower bound only; do not assume storage is all clear)."
+                : "清理盘点未完成：以上体积仅为下限，不能据此判断无垃圾或空间正常。")
         }
         if !report.largeApps.isEmpty {
-            lines.append("大体积应用：" + report.largeApps.map {
+            let sep = isEN ? "; " : "；"
+            let joined = report.largeApps.map {
                 "\($0.name) \(ByteCountFormatter.string(fromByteCount: Int64($0.bytes), countStyle: .file))"
-            }.joined(separator: "；"))
+            }.joined(separator: sep)
+            lines.append(isEN ? "Large apps: \(joined)" : "大体积应用：\(joined)")
         }
-        lines.append("规则发现：")
+        let activeKeepAlive = report.retainedUserServices.filter { $0.runState == .running && $0.isKeepAlive }
+        if !activeKeepAlive.isEmpty {
+            let sep = isEN ? "; " : "；"
+            let joined = activeKeepAlive.prefix(6).map { svc in
+                let pStr = svc.pid.map { " PID \($0)" } ?? ""
+                return "\(svc.displayName) [\(svc.label)\(pStr)]"
+            }.joined(separator: sep)
+            lines.append(isEN
+                ? "Active auto-respawning user LaunchAgents (KeepAlive): \(joined)"
+                : "正在运行且自动复活的用户后台服务（KeepAlive）：\(joined)")
+        }
+        lines.append(isEN ? "Rule findings:" : "规则发现：")
         for f in report.findings.prefix(12) {
-            lines.append("- [\(f.severity.label)/\(f.kind.title)] \(f.title)：\(f.detail)")
+            lines.append("- [\(f.severity.label)/\(f.kind.title)] \(f.title): \(f.detail)")
         }
         return lines.joined(separator: "\n")
     }
@@ -557,44 +851,81 @@ enum DiagnosticScanEngine {
 }
 
 extension AIClient {
-    static func monitorSnapshotTextSync(_ s: MonitorSnapshot) -> String {
+    static func monitorSnapshotTextSync(_ s: MonitorSnapshot, fallbackFamilies: [ProcessFamilySummary] = []) -> String {
+        let isEN = AppLanguage.current.isEnglish
+        let sep = isEN ? "; " : "；"
         var lines: [String] = []
         let now = Date()
         if s.cpuIsFresh(at: now), let c = s.cpu {
-            lines.append(String(format: "CPU 占用约 %.0f%%", c.totalUsage * 100))
+            lines.append(String(format: isEN ? "CPU usage ~%.0f%%" : "CPU 占用约 %.0f%%", c.totalUsage * 100))
         }
         if s.ramIsFresh(at: now), let r = s.ram {
+            let usedStr = ByteCountFormatter.string(fromByteCount: Int64(r.used), countStyle: .memory)
+            let totalStr = ByteCountFormatter.string(fromByteCount: Int64(r.total), countStyle: .memory)
+            let compStr = ByteCountFormatter.string(fromByteCount: Int64(r.compressed), countStyle: .memory)
             lines.append(String(
-                format: "内存约 %.0f%%（%@ / %@）",
+                format: isEN ? "Memory ~%.0f%% (%@ / %@)" : "内存约 %.0f%%（%@ / %@）",
                 r.usage * 100,
-                ByteCountFormatter.string(fromByteCount: Int64(r.used), countStyle: .memory),
-                ByteCountFormatter.string(fromByteCount: Int64(r.total), countStyle: .memory)
+                usedStr,
+                totalStr
             ))
-            lines.append("内存压力：\(r.pressure.value.rawValue)")
-            lines.append(r.swap.isAvailable
-                ? "Swap：\(ByteCountFormatter.string(fromByteCount: Int64(r.swap.used), countStyle: .memory))"
-                : "Swap：读取不可用，不能视为零")
+            lines.append(isEN ? "Memory pressure: \(r.pressure.value.rawValue)" : "内存压力：\(r.pressure.value.rawValue)")
+            lines.append(isEN ? "Compressed memory: \(compStr)" : "压缩内存：\(compStr)")
+            if r.swap.isAvailable {
+                let swapStr = ByteCountFormatter.string(fromByteCount: Int64(r.swap.used), countStyle: .memory)
+                lines.append(isEN ? "Swap: \(swapStr)" : "Swap：\(swapStr)")
+            } else {
+                lines.append(isEN ? "Swap: unavailable (do not treat as zero)" : "Swap：读取不可用，不能视为零")
+            }
         }
         if !s.hasFreshDiagnosticMetrics(at: now) {
-            lines.append("监控证据不足：CPU/内存/系统磁盘数据缺失、过期或读取失败，不能据此判断系统正常。")
+            lines.append(isEN
+                ? "Monitoring evidence is incomplete or stale; do not declare the system healthy."
+                : "监控证据不足：CPU/内存/系统磁盘数据缺失、过期或读取失败，不能据此判断系统正常。")
         }
-        if !s.systemDiskIsFresh(at: now) {
-            // no-op
-        } else {
+        if s.systemDiskIsFresh(at: now) {
             for d in s.disks.prefix(8) {
+                let freeStr = ByteCountFormatter.string(fromByteCount: Int64(d.free), countStyle: .file)
                 lines.append(String(
-                    format: "磁盘 · %@（%@）约 %.0f%%，剩余 %@",
+                    format: isEN ? "Volume · %@ (%@) ~%.0f%%, %@ free" : "磁盘 · %@（%@）约 %.0f%%，剩余 %@",
                     d.name,
                     d.localizedKindLabel,
                     d.usage * 100,
-                    ByteCountFormatter.string(fromByteCount: Int64(d.free), countStyle: .file)
+                    freeStr
                 ))
             }
         }
-        if s.cpuIsFresh(at: now), !s.topCPU.isEmpty {
-            let top = s.topCPU.prefix(5).map { "\($0.name) \(String(format: "%.0f", $0.usage))%" }.joined(separator: "；")
-            lines.append("Top CPU：\(top)")
+        if s.cpuIsFresh(at: now), s.topCPUIsFresh(at: now), !s.topCPU.isEmpty {
+            let top = s.topCPU.prefix(5).map { "\($0.name) \(String(format: "%.0f", $0.usage))%" }.joined(separator: sep)
+            lines.append("Top CPU: \(top)")
         }
-        return lines.isEmpty ? "（监控数据尚未就绪）" : lines.joined(separator: "\n")
+        let families = s.processFamiliesAreFresh(at: now) ? s.processFamilies : fallbackFamilies
+        if !families.isEmpty {
+            let topFam = families.prefix(5).map { fam -> String in
+                let mem = ByteCountFormatter.string(fromByteCount: Int64(fam.footprintBytes), countStyle: .memory)
+                switch fam.kind {
+                case .iosSimulator:
+                    let devs = fam.bootedSimulators.map(\.name).joined(separator: "/")
+                    let suffix = devs.isEmpty ? "" : "[\(devs)]"
+                    return isEN
+                        ? "\(fam.name)\(suffix) (\(fam.processCount) procs · \(mem))"
+                        : "\(fam.name)\(suffix)（\(fam.processCount)进程 · \(mem)）"
+                case .automatedBrowser:
+                    let hint = fam.automationHint ?? "auto"
+                    let pidNote = fam.rootPID.map { " PID \($0)" } ?? ""
+                    return isEN
+                        ? "\(fam.name) automated instance[\(hint)]\(pidNote) (\(fam.processCount) procs · \(mem))"
+                        : "\(fam.name) 后台调试实例[\(hint)]\(pidNote)（\(fam.processCount)进程 · \(mem)）"
+                default:
+                    return isEN
+                        ? "\(fam.name) (\(fam.processCount) procs · \(mem))"
+                        : "\(fam.name)（\(fam.processCount)进程 · \(mem)）"
+                }
+            }.joined(separator: sep)
+            if !topFam.isEmpty {
+                lines.append(isEN ? "Top App Families by Memory: \(topFam)" : "软件进程族内存合账 Top：\(topFam)")
+            }
+        }
+        return lines.isEmpty ? (isEN ? "(Monitoring data not ready yet)" : "（监控数据尚未就绪）") : lines.joined(separator: "\n")
     }
 }

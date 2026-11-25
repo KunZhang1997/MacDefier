@@ -94,13 +94,18 @@ public final class SoftwareService: ObservableObject {
 
     @Published public private(set) var apps: [InstalledApp] = []
     @Published public private(set) var cliTools: [CliTool] = []
+    @Published public private(set) var userServices: [UserLaunchAgentItem] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var isSizingApps = false
     @Published public private(set) var isCLILoading = false
+    @Published public private(set) var isServicesLoading = false
     @Published public private(set) var loadError: String?
     @Published public private(set) var cliLoadError: String?
+    @Published public private(set) var servicesLoadError: String?
+    @Published public private(set) var servicesProbeFailed = false
     @Published public private(set) var appScanJourney = ScanJourney()
     @Published public private(set) var cliScanJourney = ScanJourney()
+    @Published public private(set) var servicesScanJourney = ScanJourney()
     /// Generation that currently owns `isLoading=true` for app inventory refresh.
     /// Used so stale MainActor callbacks after cancellation can clear the spinner
     /// without clobbering a newer refresh that already re-took ownership.
@@ -120,6 +125,8 @@ public final class SoftwareService: ObservableObject {
     /// 原位标记「已清理」的应用路径与 CLI 工具 ID（避免卸载后整页重扫丢失上下文）
     @Published public private(set) var cleanedAppPaths: Set<String> = []
     @Published public private(set) var cleanedCLIToolIDs: Set<String> = []
+    @Published public private(set) var trashedServicePaths: Set<String> = []
+    @Published public private(set) var actingServicePaths: Set<String> = []
 
     private var resourceObserver: AnyCancellable?
 
@@ -140,6 +147,14 @@ public final class SoftwareService: ObservableObject {
 
     public func isCLIToolCleaned(_ tool: CliTool) -> Bool {
         cleanedCLIToolIDs.contains(tool.id)
+    }
+
+    public func isServiceTrashed(_ item: UserLaunchAgentItem) -> Bool {
+        trashedServicePaths.contains(item.plistPath) || trashedServicePaths.contains(PathGate.normalize(item.plistPath))
+    }
+
+    public func isServiceActing(_ item: UserLaunchAgentItem) -> Bool {
+        actingServicePaths.contains(item.plistPath)
     }
 
     public func markAppCleaned(_ app: InstalledApp, result: CleanupResult) {
@@ -202,6 +217,25 @@ public final class SoftwareService: ObservableObject {
         }
     }
 
+    public func filteredServices(query rawQuery: String) -> [UserLaunchAgentItem] {
+        let q = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        var list = userServices
+        if !q.isEmpty {
+            list = list.filter {
+                $0.displayName.localizedCaseInsensitiveContains(q)
+                    || $0.label.localizedCaseInsensitiveContains(q)
+                    || $0.plistPath.localizedCaseInsensitiveContains(q)
+                    || ($0.programPath?.localizedCaseInsensitiveContains(q) ?? false)
+                    || ($0.targetPath?.localizedCaseInsensitiveContains(q) ?? false)
+            }
+        }
+        return UserLaunchAgentService.defaultSort(list)
+    }
+
+    public var filteredServices: [UserLaunchAgentItem] {
+        filteredServices(query: query)
+    }
+
     /// 按体积分档分组（组内仍尊重当前 sort）。空档不返回。
     public var tierGroups: [SoftwareTierGroup] {
         let list = filtered
@@ -230,14 +264,18 @@ public final class SoftwareService: ObservableObject {
     /// When last inventory finished.
     @Published public private(set) var lastInventoryAt: Date?
     @Published public private(set) var lastCLIInventoryAt: Date?
+    @Published public private(set) var lastServicesInventoryAt: Date?
 
     /// Waiters while inventory is loading (so chat never gets empty busy).
     private var pendingRefreshCompletions: [() -> Void] = []
     private var inventoryGeneration = 0
     private var cliInventoryGeneration = 0
+    private var servicesInventoryGeneration = 0
     private var pendingCLIRefreshCompletions: [() -> Void] = []
+    private var pendingServicesRefreshCompletions: [() -> Void] = []
     private var inventoryTask: Task<Void, Never>?
     private var cliInventoryTask: Task<Void, Never>?
+    private var servicesInventoryTask: Task<Void, Never>?
     private var sizeTask: Task<Void, Never>?
     private var sizeGeneration = 0
 
@@ -254,6 +292,10 @@ public final class SoftwareService: ObservableObject {
     public var hasFreshCLIInventory: Bool {
         !cliTools.isEmpty
             && CleanupReusePolicy.isFresh(lastCLIInventoryAt, ttl: CleanupReusePolicy.softwareTTL)
+    }
+
+    public var hasFreshServicesInventory: Bool {
+        CleanupReusePolicy.isFresh(lastServicesInventoryAt, ttl: 30)
     }
 
     /// Force: false and list still fresh → skip enum, keep AI copy.
@@ -404,20 +446,36 @@ public final class SoftwareService: ObservableObject {
         isSizingApps = false
     }
 
+    public func cancelServicesScanIfRunning() {
+        guard isServicesLoading else { return }
+        servicesScanJourney.stop()
+        servicesInventoryGeneration += 1
+        servicesInventoryTask?.cancel()
+        servicesInventoryTask = nil
+        isServicesLoading = false
+        flushServicesRefreshWaiters(extra: nil)
+    }
+
     public func cancelInventoryWork() {
         cancelSizeCalculation()
         appScanJourney.stop()
         cliScanJourney.stop()
+        servicesScanJourney.stop()
         inventoryGeneration += 1
         inventoryTask?.cancel()
         inventoryTask = nil
         cliInventoryGeneration += 1
         cliInventoryTask?.cancel()
         cliInventoryTask = nil
+        servicesInventoryGeneration += 1
+        servicesInventoryTask?.cancel()
+        servicesInventoryTask = nil
         isLoading = false
         isCLILoading = false
+        isServicesLoading = false
         flushRefreshWaiters(extra: nil)
         flushCLIRefreshWaiters(extra: nil)
+        flushServicesRefreshWaiters(extra: nil)
     }
 
     /// CLI tools inventory (npm / brew / uv + data dirs). C0 list only.
@@ -482,6 +540,142 @@ public final class SoftwareService: ObservableObject {
         pendingCLIRefreshCompletions = []
         extra?()
         for c in pending { c() }
+    }
+
+    private func flushServicesRefreshWaiters(extra: (() -> Void)?) {
+        let pending = pendingServicesRefreshCompletions
+        pendingServicesRefreshCompletions = []
+        extra?()
+        for c in pending { c() }
+    }
+
+    /// User `~/Library/LaunchAgents/*.plist` background services inventory.
+    public func refreshServices(force: Bool = true, completion: (() -> Void)? = nil) {
+        if !force, hasFreshServicesInventory {
+            completion?()
+            return
+        }
+        if isServicesLoading || !actingServicePaths.isEmpty {
+            if let completion { pendingServicesRefreshCompletions.append(completion) }
+            return
+        }
+        servicesInventoryGeneration += 1
+        servicesInventoryTask?.cancel()
+        let gen = servicesInventoryGeneration
+        isServicesLoading = true
+        servicesScanJourney.begin(["scan.stage.launch_agents", "scan.stage.verify"])
+        servicesScanJourney.start("scan.stage.launch_agents")
+        servicesLoadError = nil
+        if force {
+            trashedServicePaths.removeAll()
+            lastServicesInventoryAt = nil
+        }
+
+        servicesInventoryTask = Task.detached(priority: .userInitiated) {
+            let scanResult = UserLaunchAgentService.scan(isCancelled: { Task.isCancelled })
+            await MainActor.run {
+                guard self.servicesInventoryGeneration == gen else {
+                    completion?()
+                    return
+                }
+                self.userServices = scanResult.items
+                self.servicesProbeFailed = scanResult.probeFailed
+                self.servicesScanJourney.complete(
+                    "scan.stage.launch_agents",
+                    count: scanResult.items.count,
+                    partial: scanResult.probeFailed
+                )
+                self.servicesScanJourney.start("scan.stage.verify")
+                self.servicesScanJourney.complete(
+                    "scan.stage.verify",
+                    count: scanResult.items.count,
+                    partial: scanResult.probeFailed
+                )
+                self.servicesScanJourney.finish(partial: scanResult.probeFailed)
+                self.isServicesLoading = false
+                self.lastServicesInventoryAt = Date()
+                self.flushServicesRefreshWaiters(extra: completion)
+            }
+        }
+    }
+
+    public func pauseService(_ item: UserLaunchAgentItem) async -> UserLaunchAgentActionResult {
+        guard !actingServicePaths.contains(item.plistPath) else {
+            return UserLaunchAgentActionResult(ok: false, errorCode: "busy")
+        }
+        actingServicePaths.insert(item.plistPath)
+        defer { actingServicePaths.remove(item.plistPath) }
+        let res = await Task.detached(priority: .userInitiated) {
+            await UserLaunchAgentService.pause(item)
+        }.value
+        await reloadServicesInPlace()
+        return res
+    }
+
+    public func resumeService(_ item: UserLaunchAgentItem) async -> UserLaunchAgentActionResult {
+        guard !actingServicePaths.contains(item.plistPath) else {
+            return UserLaunchAgentActionResult(ok: false, errorCode: "busy")
+        }
+        actingServicePaths.insert(item.plistPath)
+        defer { actingServicePaths.remove(item.plistPath) }
+        let res = await Task.detached(priority: .userInitiated) {
+            await UserLaunchAgentService.resume(item)
+        }.value
+        await reloadServicesInPlace()
+        return res
+    }
+
+    public func trashService(_ item: UserLaunchAgentItem) async -> UserLaunchAgentActionResult {
+        guard !actingServicePaths.contains(item.plistPath) else {
+            return UserLaunchAgentActionResult(ok: false, errorCode: "busy")
+        }
+        actingServicePaths.insert(item.plistPath)
+        defer { actingServicePaths.remove(item.plistPath) }
+        let res = await Task.detached(priority: .userInitiated) {
+            await UserLaunchAgentService.moveToTrash(item)
+        }.value
+        if res.ok {
+            trashedServicePaths.insert(item.plistPath)
+            trashedServicePaths.insert(PathGate.normalize(item.plistPath))
+        }
+        await reloadServicesInPlace(preservingTrashed: item)
+        return res
+    }
+
+    private func reloadServicesInPlace(preservingTrashed trashed: UserLaunchAgentItem? = nil) async {
+        servicesInventoryGeneration += 1
+        servicesInventoryTask?.cancel()
+        servicesInventoryTask = nil
+        let gen = servicesInventoryGeneration
+        let scanResult = await Task.detached(priority: .userInitiated) {
+            UserLaunchAgentService.scan(isCancelled: { Task.isCancelled })
+        }.value
+        guard servicesInventoryGeneration == gen else { return }
+        var next = scanResult.items
+        if let trashed, isServiceTrashed(trashed), !next.contains(where: { $0.plistPath == trashed.plistPath }) {
+            var placeholder = trashed
+            placeholder.runState = .paused
+            placeholder.pid = nil
+            placeholder.processStartMicros = nil
+            next.append(placeholder)
+        }
+        // Keep previously trashed rows visible in session for confirmation feedback
+        for prev in userServices where isServiceTrashed(prev) && !next.contains(where: { $0.plistPath == prev.plistPath }) {
+            var placeholder = prev
+            placeholder.runState = .paused
+            placeholder.pid = nil
+            placeholder.processStartMicros = nil
+            next.append(placeholder)
+        }
+        userServices = UserLaunchAgentService.defaultSort(next)
+        servicesProbeFailed = scanResult.probeFailed
+        servicesScanJourney.begin(["scan.stage.launch_agents", "scan.stage.verify"])
+        servicesScanJourney.complete("scan.stage.launch_agents", count: scanResult.items.count, partial: scanResult.probeFailed)
+        servicesScanJourney.complete("scan.stage.verify", count: scanResult.items.count, partial: scanResult.probeFailed)
+        servicesScanJourney.finish(partial: scanResult.probeFailed)
+        isServicesLoading = false
+        lastServicesInventoryAt = Date()
+        flushServicesRefreshWaiters(extra: nil)
     }
 
     private func flushRefreshWaiters(extra: (() -> Void)?) {

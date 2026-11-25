@@ -18,6 +18,7 @@ struct DiagnosticView: View {
 
     @State private var aiSettings = AISettingsStore.load()
     @State private var quitMessage: String?
+    @State private var isActionInFlight = false
 
     private var aiConfigured: Bool {
         AIClient.resolveEndpoint(aiSettings) != nil && aiSettings.enabled && aiSettings.mode != .off
@@ -393,48 +394,113 @@ struct DiagnosticView: View {
         switch action {
         case .openMonitor: onOpenMonitor(finding)
         case .openCleanupAndScan: onOpenCleanupAndScan(finding)
+        case .openAITools: AppNavigator.shared.openAIToolsStorage()
         case .openSoftware: onOpenSoftware(finding)
-        case .quitProcess: quitProcess(pid: finding.processPID, name: finding.processName)
+        case .openSoftwareServices: AppNavigator.shared.openSoftwareServices(focusLabel: finding.serviceFocusLabel)
+        case .quitProcess:
+            quitProcess(pid: finding.processPID, name: finding.processName, expectedIdentity: finding.processIdentity)
+        case .quitAutomatedBrowser:
+            quitAutomatedBrowser(pid: finding.processPID, name: finding.processName, expectedIdentity: finding.processIdentity)
+        case .shutdownSimulators:
+            shutdownSimulators()
         case .openMister: onOpenMister()
         case .none: break
         }
     }
 
-    private func quitProcess(pid: Int?, name: String?) {
+    private func quitAutomatedBrowser(pid: Int?, name: String?, expectedIdentity: MonitoredProcessIdentity?) {
+        guard !isActionInFlight else { return }
+        guard let pid,
+              let identity = DefierActionGuard.validatedAutomatedBrowserIdentity(pid: pid, expected: expectedIdentity)
+        else {
+            quitMessage = L10n.t("diag.quit.blocked")
+            return
+        }
+        let shown = identity.ownerName
+        let alert = NSAlert()
+        alert.messageText = L10n.t("diag.auto_browser.confirm", shown)
+        alert.informativeText = L10n.t("diag.auto_browser.confirm_body", pid)
+        alert.addButton(withTitle: L10n.t("diag.act.quit_auto_browser"))
+        alert.addButton(withTitle: L10n.t("diag.quit.confirm_cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        isActionInFlight = true
+        if AutomatedBrowserExit.terminate(identity) == .requested {
+            quitMessage = L10n.t("diag.quit.sent", shown, pid)
+        } else {
+            quitMessage = L10n.t("diag.quit.fail", shown)
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            await scan.scan(monitor: monitor, useAI: false, force: true)
+            isActionInFlight = false
+        }
+    }
+
+    private func shutdownSimulators() {
+        guard !isActionInFlight else { return }
+        guard SimulatorControl.isSimulatorEnvironmentInstalled else {
+            quitMessage = L10n.t("diag.sim.none")
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.t("diag.sim.confirm")
+        alert.informativeText = L10n.t("diag.sim.confirm_body")
+        alert.addButton(withTitle: L10n.t("diag.act.shutdown_sim"))
+        alert.addButton(withTitle: L10n.t("diag.quit.confirm_cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        isActionInFlight = true
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                SimulatorControl.shutdownBooted()
+            }.value
+            switch outcome {
+            case .shutDown(let count):
+                quitMessage = L10n.t("diag.sim.done", count)
+            case .noneBooted:
+                quitMessage = L10n.t("diag.sim.none")
+            case .invalidIdentifier, .failed:
+                quitMessage = L10n.t("diag.sim.failed")
+            }
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            await scan.scan(monitor: monitor, useAI: false, force: true)
+            isActionInFlight = false
+        }
+    }
+
+    private func quitProcess(pid: Int?, name: String?, expectedIdentity: MonitoredProcessIdentity?) {
+        guard !isActionInFlight else { return }
         guard let pid else {
             quitMessage = L10n.t("diag.quit.no_pid")
             return
         }
-        // 与聊天路径同一道闸：系统进程 / 本应用 / 无效 PID 一律不杀
-        guard DefierActionGuard.isSafeToQuit(pid: pid) else {
-            quitMessage = L10n.t("diag.quit.blocked")
+        guard let pid32 = pid_t(exactly: pid),
+              let identity = DefierActionGuard.validatedQuitIdentity(pid: pid, expected: expectedIdentity, expectedName: name),
+              let app = NSRunningApplication(processIdentifier: pid32)
+        else {
+            if let pid32 = pid_t(exactly: pid), NSRunningApplication(processIdentifier: pid32) == nil {
+                quitMessage = L10n.t("diag.quit.gone", name ?? "\(pid)")
+            } else {
+                quitMessage = L10n.t("diag.quit.blocked")
+            }
             return
         }
-        guard let pid32 = pid_t(exactly: pid) else {
-            quitMessage = L10n.t("diag.quit.blocked")
-            return
-        }
-        guard let app = NSRunningApplication(processIdentifier: pid32),
-              let identity = MonitoredProcessIdentity.read(pid: pid32) else {
-            quitMessage = L10n.t("diag.quit.gone", name ?? "\(pid)")
-            return
-        }
-        // 确认框显示当前进程名（防 PID 复用误杀）；terminate 失败不再自动 SIGKILL
-        let shown = app.localizedName ?? name ?? "PID \(pid)"
+        let shown = app.localizedName ?? identity.ownerName
         let alert = NSAlert()
         alert.messageText = L10n.t("diag.quit.confirm", shown)
         alert.informativeText = L10n.t("diag.quit.confirm_body")
         alert.addButton(withTitle: L10n.t("diag.quit.confirm_ok"))
         alert.addButton(withTitle: L10n.t("diag.quit.confirm_cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        isActionInFlight = true
         if MonitoredApplicationExit.request(identity) == .requested {
             quitMessage = L10n.t("diag.quit.sent", shown, pid)
         } else {
             quitMessage = L10n.t("diag.quit.fail", shown)
         }
         Task {
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            try? await Task.sleep(nanoseconds: 900_000_000)
             await scan.scan(monitor: monitor, useAI: false, force: true)
+            isActionInFlight = false
         }
     }
 
@@ -458,9 +524,13 @@ struct DiagnosticView: View {
         if monitor.snapshot.ramIsFresh(), let r = monitor.snapshot.ram {
             switch r.pressure.value {
             case .critical, .warning:
-                lines.append(L10n.t("diag.live.ram_pressure", r.pressure.value.rawValue))
+                lines.append(L10n.t("diag.live.ram_pressure"))
             case .normal, .unknown:
                 break
+            }
+            if r.swap.isAvailable, r.swap.used >= HealthThresholds.swapElevatedBytes {
+                let swapStr = ByteCountFormatter.string(fromByteCount: Int64(r.swap.used), countStyle: .memory)
+                lines.append(L10n.t("diag.live.swap", swapStr))
             }
         }
         for d in monitor.snapshot.disks.physical where d.usage > 0.85 {

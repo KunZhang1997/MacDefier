@@ -23,6 +23,22 @@ enum HealthThresholds {
     static let trashHighBytes: UInt64 = 1 * 1_000_000_000
     static let trashWarnBytes: UInt64 = 200 * 1_000_000
 
+    /// Swap & process family thresholds (binary bytes for memory footprint/swap)
+    static let swapElevatedBytes: Double = 1.5 * 1_073_741_824
+    static let swapHighComboBytes: Double = 2.2 * 1_073_741_824
+    static let swapHeavyStandaloneBytes: Double = 3.0 * 1_073_741_824
+
+    static let windowServerWarnCPU: Double = 42.0
+    static let windowServerHighCPU: Double = 75.0
+
+    static let simulatorNoticeBytes: Double = 400 * 1_048_576
+    static let automatedBrowserNoticeBytes: Double = 250 * 1_048_576
+    static let automatedBrowserNoticeCPU: Double = 15.0
+
+    static let familyCPUHogUsage: Double = 75.0
+    static let familyCPUHighUsage: Double = 110.0
+    static let familyRAMHogWhenStrainedBytes: Double = 2.2 * 1_073_741_824
+
     static func isSystemVolume(_ disk: DiskVolume) -> Bool {
         disk.kind == .system || disk.path == "/"
     }

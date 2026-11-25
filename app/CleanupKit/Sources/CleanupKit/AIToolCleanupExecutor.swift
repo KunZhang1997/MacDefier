@@ -12,6 +12,12 @@ public enum AIToolCleanupExecutor {
         var modelProof: @Sendable (AICleanupCandidate, String, Set<String>) -> Bool = {
             AIOllamaInventory.validateModel($0, home: $1, excludingMovedPaths: $2)
         }
+        var runtimeProof: @Sendable (AICleanupCandidate) -> Bool = {
+            XcodeSimulatorRuntimeInventory.validateRuntime($0)
+        }
+        var deleteRuntime: @Sendable (AICleanupCandidate) -> Bool = {
+            XcodeSimulatorRuntimeInventory.deleteRuntime($0)
+        }
         var recycle: @Sendable (AIResource) throws -> String = { try UninstallFileBoundary.move($0.boundary) }
     }
 
@@ -30,15 +36,58 @@ public enum AIToolCleanupExecutor {
         guard !candidates.isEmpty else { return result }
         var paths = candidates.flatMap { $0.resources.map(\.path) }
         if candidates.contains(where: { $0.kind == .model }) { paths.append(home + "/.ollama/models") }
+        for runtime in candidates where runtime.kind == .simulatorRuntime {
+            paths.append("/Library/Developer/CoreSimulator")
+            if !runtime.path.isEmpty, runtime.path.hasPrefix("/") { paths.append(runtime.path) }
+        }
         guard let lease = await ResourceMutationCoordinator.shared.acquire(paths: paths) else {
             result.errors.append("mutation_busy"); return result
         }
         var changedPaths: [String] = []
         var acceptedResources: [AIResource] = []
         var completedModelPaths = Set<String>()
+        var seenRuntimeIDs = Set<String>()
 
         for (index, candidate) in candidates.enumerated() {
             onProgress(Double(index) / Double(candidates.count))
+            if candidate.kind == .simulatorRuntime {
+                var failure: String?
+                let runtimeKey = candidate.metadata["runtimeUUID"] ?? candidate.id
+                if Task.isCancelled { failure = "cancelled" }
+                else if !candidate.resources.isEmpty || candidate.reportedBytes == 0 || !seenRuntimeIDs.insert(runtimeKey).inserted {
+                    failure = "invalid_catalog"
+                } else {
+                    switch execution.cleanupGuard.state(for: .xcode) {
+                    case .inUse: failure = "in_use"
+                    case .unknown: failure = "probe_unknown"
+                    case .idle:
+                        if !execution.runtimeProof(candidate) {
+                            failure = "changed"
+                        } else {
+                            // Re-check Xcode/Simulator activity right before invoking `simctl runtime delete`
+                            switch execution.cleanupGuard.state(for: .xcode) {
+                            case .inUse: failure = "in_use"
+                            case .unknown: failure = "probe_unknown"
+                            case .idle:
+                                if !execution.deleteRuntime(candidate) {
+                                    failure = "runtime_delete_failed"
+                                }
+                            }
+                        }
+                    }
+                }
+                if let failure {
+                    result.errors.append("\(failure):\(candidate.path)")
+                    result.failedPaths.append(candidate.path)
+                } else {
+                    result.cleanedCount += 1
+                    result.succeededPaths.append(candidate.path)
+                    let addition = result.freedBytes.addingReportingOverflow(candidate.reportedBytes)
+                    result.freedBytes = addition.overflow ? UInt64.max : addition.partialValue
+                    changedPaths.append(candidate.path)
+                }
+                continue
+            }
             var moved: [Moved] = []
             var movedPaths = Set<String>()
             var failure: String?
@@ -75,8 +124,7 @@ public enum AIToolCleanupExecutor {
                         movedPaths.insert(resource.path)
                         changedPaths.append(resource.path)
                         guard UninstallFileBoundary.isMissing(resource.path),
-                              let inTrash = try? UninstallFileBoundary.snapshot(destination),
-                              inTrash.item == resource.boundary.item else { failure = "changed"; break }
+                              UninstallFileBoundary.matchesTrashedItem(resource.boundary.item, at: destination) else { failure = "changed"; break }
                     } catch {
                         let boundary = error as? UninstallFileBoundary.Failure
                         failure = ["uninstall_manual_required", "uninstall_trash_unsafe", "uninstall_permission_denied",
@@ -122,6 +170,7 @@ public enum AIToolCleanupExecutor {
                                  completedModels: Set<String>, execution: Execution) -> Bool {
         switch candidate.kind {
         case .cache, .oldVersion: return moved.isEmpty && AIToolCleanupScanner.validate(candidate, home: home)
+        case .simulatorRuntime: return moved.isEmpty && execution.runtimeProof(candidate)
         case .conversation: return execution.conversationProof(candidate, home, moved)
         case .model: return execution.modelProof(candidate, home, moved.union(completedModels))
         default: return false
@@ -142,20 +191,32 @@ public enum AIToolCleanupExecutor {
         guard UninstallFileBoundary.isMissing(source.path),
               AIToolCleanupScanner.isPhysical(source.parentPath),
               AIToolCleanupScanner.isPhysical(moved.destination),
-              let trash = try? UninstallFileBoundary.snapshot(moved.destination),
-              trash.item == source.item else { return false }
-        let fromFD = open(trash.parentPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard fromFD >= 0 else { return false }
-        defer { close(fromFD) }
+              UninstallFileBoundary.matchesTrashedItem(source.item, at: moved.destination) else { return false }
         let toFD = open(source.parentPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard toFD >= 0 else { return false }
         defer { close(toFD) }
-        var parent = stat(), fromParent = stat(), item = stat(), target = stat()
+        var parent = stat(), target = stat()
         guard fstat(toFD, &parent) == 0, UninstallFileBoundary.Identity(parent) == source.parent,
-              fstat(fromFD, &fromParent) == 0, UninstallFileBoundary.Identity(fromParent) == trash.parent,
-              fstatat(fromFD, trash.name, &item, AT_SYMLINK_NOFOLLOW) == 0,
-              UninstallFileBoundary.Identity(item) == source.item,
               fstatat(toFD, source.name, &target, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT else { return false }
-        return renameatx_np(fromFD, trash.name, toFD, source.name, UInt32(RENAME_EXCL)) == 0
+
+        let trashURL = URL(fileURLWithPath: moved.destination).standardizedFileURL
+        let trashParentPath = trashURL.deletingLastPathComponent().path
+        let fromFD = open(trashParentPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        if fromFD >= 0 {
+            defer { close(fromFD) }
+            var item = stat()
+            guard fstatat(fromFD, trashURL.lastPathComponent, &item, AT_SYMLINK_NOFOLLOW) == 0,
+                  UninstallFileBoundary.Identity(item) == source.item else { return false }
+            return renameatx_np(fromFD, trashURL.lastPathComponent, toFD, source.name, UInt32(RENAME_EXCL)) == 0
+        }
+        guard errno == EPERM || errno == EACCES else { return false }
+        do {
+            try FileManager.default.moveItem(atPath: trashURL.path, toPath: source.path)
+            var restored = stat()
+            guard fstatat(toFD, source.name, &restored, AT_SYMLINK_NOFOLLOW) == 0 else { return false }
+            return UninstallFileBoundary.Identity(restored) == source.item
+        } catch {
+            return false
+        }
     }
 }

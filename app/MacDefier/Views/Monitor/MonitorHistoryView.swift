@@ -281,7 +281,7 @@ struct MonitorHistoryPane: View {
                 } else {
                     LabeledContent(L10n.t("history.pressure"), value: L10n.t("history.pressure.\(sample.memoryPressure?.rawValue ?? "unknown")"))
                     LabeledContent(L10n.t("history.swap_used"), value: sample.swapUsed.map(historyBytes) ?? "—")
-                    DisclosureGroup(L10n.t("history.sources")) {
+                    MDDisclosureBar(L10n.t("history.sources"), font: .caption, foreground: MDTheme.secondary) {
                         ForEach(sample.sampledAt.keys.sorted(), id: \.self) { key in
                             LabeledContent(key, value: sample.sampledAt[key]!.formatted(date: .omitted, time: .standard))
                         }

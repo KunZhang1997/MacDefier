@@ -16,7 +16,7 @@ public enum LargeFileScanner {
 
     public static func scanReport() async -> LargeFileScanResult {
         let roots = ["Downloads", "Desktop", "Documents", "Movies", "Music", "Pictures",
-                     "Library/Application Support", ".ollama", ".lmstudio", ".cache", ".local/share"]
+                     "Library/Application Support", ".cache", ".local/share"]
         var candidates: [String: DiskUsageNode] = [:]
         var partial = false
         for relative in roots {
@@ -33,8 +33,6 @@ public enum LargeFileScanner {
             partial = partial || result.root?.isComplete != true
             let children = result.children(of: result.rootPath)
             var nodes = children
-            // Model roots themselves can be large; scan roots otherwise stay out of the list.
-            if relative == ".ollama" || relative == ".lmstudio", let rootNode = result.root { nodes.append(rootNode) }
             for child in children where child.isDirectory {
                 nodes += result.children(of: child.path).filter { !$0.isDirectory }
             }
@@ -81,8 +79,9 @@ public enum LargeFileScanner {
         if p.contains("mobile documents") || p.contains("clouddocs") { return true }
         // Photos library: show is OK but trash blocked; still skip deep noise
         if name.hasSuffix(".photoslibrary") { return true }
-        // inventory-only 根（.colima、SpeakSend 等）不进大文件可清理列表
+        // inventory-only 根（.colima、SpeakSend 等）与专属 AI 工具数据根不进通用大文件可清理列表
         if AppDataLocations.isUnderAllowedRoot(path) { return true }
+        if !AIToolCleanupGuard.affectedTools(path: path, home: home).isEmpty { return true }
         // 不允许直接清理的 Application Support 根本身
         let asRoot = PathGate.standardizeOnly(home + "/Library/Application Support")
         let n = PathGate.normalize(path)

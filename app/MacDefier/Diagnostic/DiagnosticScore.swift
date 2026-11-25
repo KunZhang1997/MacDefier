@@ -121,14 +121,38 @@ enum DiagnosticScore {
         let ramAvailable = snapshot.ramIsFresh(at: now)
             && snapshot.ram?.pressure.value != .unknown && snapshot.ram?.swap.isAvailable == true
         if snapshot.ramIsFresh(at: now), let ram = snapshot.ram {
+            let sysTight = sysDisk.map { HealthThresholds.isSystemDiskTight([$0]) } ?? false
+            let swapComboPts: Int = {
+                guard ram.swap.isAvailable else { return 0 }
+                if sysTight && ram.swap.used >= HealthThresholds.swapElevatedBytes {
+                    return ram.swap.used >= HealthThresholds.swapHighComboBytes ? 14 : 9
+                }
+                if ram.swap.used >= HealthThresholds.swapHeavyStandaloneBytes {
+                    return 8
+                }
+                return 0
+            }()
+
             switch ram.pressure.value {
             case .critical:
                 memPts += 25
                 items.append(.init(domain: .memory, points: 25, reasonKey: "ram_critical"))
             case .warning:
-                memPts += 12
-                items.append(.init(domain: .memory, points: 12, reasonKey: "ram_warn"))
-            case .normal, .unknown:
+                if swapComboPts > 0 {
+                    let pts = min(24, max(12, swapComboPts) + 2)
+                    memPts += pts
+                    items.append(.init(domain: .memory, points: pts, reasonKey: "swap_disk_combo"))
+                } else {
+                    memPts += 12
+                    items.append(.init(domain: .memory, points: 12, reasonKey: "ram_warn"))
+                }
+            case .normal:
+                if swapComboPts > 0 {
+                    let reason = (sysTight && ram.swap.used >= HealthThresholds.swapElevatedBytes) ? "swap_disk_combo" : "swap_elevated"
+                    memPts += swapComboPts
+                    items.append(.init(domain: .memory, points: swapComboPts, reasonKey: reason))
+                }
+            case .unknown:
                 break
             }
         }
@@ -217,10 +241,6 @@ enum DiagnosticScore {
     }
 
     private static func isUserAppProcess(pid: Int) -> Bool {
-        guard let pid32 = pid_t(exactly: pid) else { return false }
-        guard let app = NSRunningApplication(processIdentifier: pid32) else { return false }
-        if let bid = app.bundleIdentifier?.lowercased(), bid.hasPrefix("com.apple.") { return false }
-        if app == NSRunningApplication.current { return false }
-        return true
+        DefierActionGuard.isSafeToQuit(pid: pid)
     }
 }

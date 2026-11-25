@@ -813,20 +813,29 @@ private struct MDTopProcessList<P: Identifiable>: View {
     let name: (P) -> String
     let detail: (P) -> String
     let value: (P) -> String
-    var pid: ((P) -> Int)? = nil
+    var pid: ((P) -> Int?)? = nil
+    var customAction: ((P) -> DefierAction?)? = nil
     var highlight: (P) -> Bool = { _ in false }
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(processes.enumerated()), id: \.element.id) { idx, p in
                 let procName = name(p)
-                let procPID = pid?(p)
+                let procPID = pid?(p).flatMap { $0 > 0 ? $0 : nil }
                 MDProcessRow(name: procName, detail: detail(p), value: value(p))
                     .padding(.horizontal, 4)
                     .background(highlight(p) ? MDTheme.surfaceSelected : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .mdRowHover(cornerRadius: 6)
                     .contextMenu {
+                        if let special = customAction?(p) {
+                            Button {
+                                AppNavigator.shared.handle(special)
+                            } label: {
+                                Label(special.buttonLabel, systemImage: "xmark.circle")
+                            }
+                            Divider()
+                        }
                         if let procPID {
                             if let pid32 = pid_t(exactly: procPID),
                                let app = NSRunningApplication(processIdentifier: pid32),
@@ -846,7 +855,7 @@ private struct MDTopProcessList<P: Identifiable>: View {
                                     Label(L10n.t("history.software"), systemImage: "square.grid.2x2")
                                 }
                             }
-                            if DefierActionGuard.isSafeToQuit(pid: procPID) {
+                            if customAction?(p) == nil, DefierActionGuard.isSafeToQuit(pid: procPID) {
                                 Button {
                                     AppNavigator.shared.handle(
                                         DefierAction(
@@ -1500,6 +1509,66 @@ struct MonitorRAMPane: View {
                         Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            }
+            if monitor.snapshot.processFamiliesAreFresh() {
+                MDCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        MDSectionTitle(title: L10n.t("monitor.ram.families"))
+                        MDTopProcessList(
+                            processes: Array(monitor.snapshot.processFamilies.prefix(10)),
+                            name: { fam in
+                                switch fam.kind {
+                                case .automatedBrowser:
+                                    return L10n.t("monitor.family.auto_browser", fam.name)
+                                case .iosSimulator:
+                                    return L10n.t("monitor.family.ios_sim")
+                                default:
+                                    return fam.name
+                                }
+                            },
+                            detail: { fam in
+                                switch fam.kind {
+                                case .automatedBrowser:
+                                    let hint = fam.automationHint ?? "automation"
+                                    return L10n.t("monitor.family.procs_hint", fam.processCount, hint)
+                                case .iosSimulator:
+                                    let devs = fam.bootedSimulators.map(\.name).joined(separator: ", ")
+                                    return devs.isEmpty
+                                        ? L10n.t("monitor.family.procs", fam.processCount)
+                                        : L10n.t("monitor.family.procs_hint", fam.processCount, devs)
+                                default:
+                                    return L10n.t("monitor.family.procs", fam.processCount)
+                                }
+                            },
+                            value: { Format.memoryBytes($0.footprintBytes) },
+                            pid: { $0.rootPID },
+                            customAction: { fam in
+                                switch fam.kind {
+                                case .automatedBrowser:
+                                    guard let rpid = fam.rootPID else { return nil }
+                                    return DefierAction(
+                                        kind: .quitAutomatedBrowser,
+                                        title: L10n.t("diag.act.quit_auto_browser"),
+                                        processPID: rpid,
+                                        processName: fam.name,
+                                        processIdentity: fam.rootIdentity
+                                    )
+                                case .iosSimulator:
+                                    guard fam.hasActiveSimulatedOS || !fam.bootedSimulators.isEmpty else { return nil }
+                                    return DefierAction(
+                                        kind: .shutdownSimulators,
+                                        title: L10n.t("diag.act.shutdown_sim")
+                                    )
+                                default:
+                                    return nil
+                                }
+                            },
+                            highlight: { fam in
+                                (fam.rootPID != nil && nav.monitorFocusPID == fam.rootPID) || nav.monitorFocusName == fam.name
+                            }
+                        )
+                    }
                 }
             }
             MDCard {

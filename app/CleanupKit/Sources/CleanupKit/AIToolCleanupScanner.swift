@@ -18,21 +18,62 @@ public enum AIToolCleanupScanner {
         for profile in ["Default", "Default/Partitions/codex-browser-app", "codex-browser-app"] {
             for leaf in ["Cache", "Code Cache"] { add(.codex, "Library/Caches/Codex/\(profile)/\(leaf)", "Codex · \(profile) · \(leaf)") }
         }
-        for (tool, product) in [(AITool.cursor, "Cursor"), (.claude, "Claude"), (.antigravity, "Antigravity"), (.lmstudio, "LM Studio")] {
-            for leaf in ["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache"] {
+        for (tool, product) in [
+            (AITool.cursor, "Cursor"),
+            (.vscode, "Code"),
+            (.windsurf, "Windsurf"),
+            (.claude, "Claude"),
+            (.antigravity, "Antigravity"),
+            (.chatgpt, "ChatGPT"),
+            (.workbuddy, "WorkBuddy"),
+            (.openclaw, "OpenClaw"),
+            (.lmstudio, "LM Studio"),
+        ] {
+            for leaf in ["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "GPUPersistentCache", "GraphiteDawnCache"] {
                 add(tool, "Library/Application Support/\(product)/\(leaf)", "\(tool.name) · \(leaf)")
             }
         }
-        for leaf in ["CachedData", "CachedExtensionVSIXs"] { add(.cursor, "Library/Application Support/Cursor/\(leaf)", "Cursor · \(leaf)") }
+        for (tool, product) in [(AITool.cursor, "Cursor"), (.vscode, "Code"), (.windsurf, "Windsurf")] {
+            for leaf in ["CachedData", "CachedExtensionVSIXs", "logs"] {
+                add(tool, "Library/Application Support/\(product)/\(leaf)", "\(tool.name) · \(leaf)")
+            }
+        }
+        for (tool, product) in [(AITool.antigravity, "Antigravity"), (.workbuddy, "WorkBuddy"), (.openclaw, "OpenClaw")] {
+            add(tool, "Library/Application Support/\(product)/logs", "\(tool.name) · logs")
+        }
         for leaf in ["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache"] {
             add(.antigravity, ".gemini/antigravity-browser-profile/Default/\(leaf)", "Antigravity · \(leaf)")
         }
         for (tool, relative, name) in [
-            (AITool.opencode, ".cache/opencode", "OpenCode cache"), (.gemini, ".cache/gemini", "Gemini cache"),
-            (.kimi, ".cache/kimi", "Kimi cache"), (.kimi, "Library/Caches/kimi", "Kimi cache"),
-            (.ollama, ".ollama/logs", "Ollama logs"), (.ollama, "Library/Caches/ollama", "Ollama cache"),
+            (AITool.antigravity, ".gemini/antigravity/cache", "Antigravity · cache"),
+            (.antigravity, ".gemini/antigravity/crashes", "Antigravity · crashes"),
+            (.vscode, "Library/Caches/com.microsoft.VSCode", "VS Code · System Cache"),
+            (.vscode, "Library/Caches/com.microsoft.VSCode.ShipIt", "VS Code · Update Cache"),
+            (.windsurf, "Library/Caches/com.exafunction.windsurf", "Windsurf · System Cache"),
+            (.chatgpt, "Library/Caches/com.openai.chat/fsCachedData", "ChatGPT · fsCachedData"),
+            (.chatgpt, "Library/Caches/com.openai.chat/WebKit", "ChatGPT · WebKit Cache"),
+            (.workbuddy, "Library/Caches/com.tencent.workbuddy.mac/fsCachedData", "WorkBuddy · fsCachedData"),
+            (.workbuddy, "Library/Caches/com.tencent.workbuddy.mac/WebKit", "WorkBuddy · WebKit Cache"),
+            (.workbuddy, ".workbuddy/cache", "WorkBuddy · cache"),
+            (.workbuddy, ".workbuddy/logs", "WorkBuddy · logs"),
+            (.workbuddy, ".workbuddy/crashes", "WorkBuddy · crashes"),
+            (.openclaw, ".openclaw/cache", "OpenClaw · cache"),
+            (.openclaw, ".openclaw/logs", "OpenClaw · logs"),
+            (.opencode, ".cache/opencode", "OpenCode cache"),
+            (.gemini, ".cache/gemini", "Gemini cache"),
+            (.kimi, ".cache/kimi", "Kimi cache"),
+            (.kimi, "Library/Caches/kimi", "Kimi cache"),
+            (.ollama, ".ollama/logs", "Ollama logs"),
+            (.ollama, "Library/Caches/ollama", "Ollama cache"),
             (.ollama, "Library/Caches/com.electron.ollama", "Ollama cache"),
-            (.lmstudio, ".lmstudio/server-logs", "LM Studio server logs")
+            (.lmstudio, ".lmstudio/server-logs", "LM Studio server logs"),
+            (.xcode, "Library/Developer/Xcode/iOS DeviceSupport", "Xcode · iOS DeviceSupport"),
+            (.xcode, "Library/Developer/Xcode/watchOS DeviceSupport", "Xcode · watchOS DeviceSupport"),
+            (.xcode, "Library/Developer/Xcode/tvOS DeviceSupport", "Xcode · tvOS DeviceSupport"),
+            (.xcode, "Library/Developer/Xcode/visionOS DeviceSupport", "Xcode · visionOS DeviceSupport"),
+            (.xcode, "Library/Developer/Xcode/DocumentationCache", "Xcode · DocumentationCache"),
+            (.xcode, "Library/Developer/Xcode/CodingAssistant/Cache", "Xcode · CodingAssistant Cache"),
+            (.xcode, "Library/Developer/CoreSimulator/Temp", "Xcode · CoreSimulator Temp"),
         ] { add(tool, relative, name) }
         return result
     }
@@ -77,7 +118,7 @@ public enum AIToolCleanupScanner {
         }
         // An absent executable alone is not an uninstall record. Reuse the
         // existing owner proof, and keep durable whole stores inspection-only.
-        for (tool, relative) in [(AITool.codex, ".codex"), (.claude, ".claude"), (.kimi, ".kimi")] {
+        for (tool, relative) in [(AITool.codex, ".codex"), (.claude, ".claude"), (.kimi, ".kimi"), (.openclaw, ".openclaw"), (.gemini, ".gemini")] {
             if let section, section != .cliData { continue }
             let path = home + "/" + relative
             guard exists(path), OrphanScanner.isVerifiedCLIDataOrphan(path, cliInventory: cliInventory, home: home),
@@ -100,8 +141,19 @@ public enum AIToolCleanupScanner {
               resource.boundary.item.owner == getuid() else { return nil }
         let status: AICandidateState = !measurement.complete ? .reviewOnly : (state == .idle ? .ready : (state == .inUse ? .inUse : .unknown))
         let why = !measurement.complete ? "partial_scan" : (state == .idle ? reason : (state == .inUse ? "in_use" : "probe_unknown"))
-        return AICleanupCandidate(tool: tool, kind: kind, title: title, resources: [resource], state: status,
-            reason: why, lastActivity: resource.modifiedAt, metadata: ["metadataSHA256": measurement.signature])
+        return AICleanupCandidate(
+            tool: tool,
+            kind: kind,
+            title: title,
+            resources: [resource],
+            state: status,
+            reason: why,
+            lastActivity: resource.modifiedAt,
+            metadata: [
+                "metadataSHA256": measurement.signature,
+                "sizeComplete": measurement.complete ? "true" : "false",
+            ]
+        )
     }
 
     private static func versionCandidates(_ target: VersionTarget, state: AIToolCleanupActivity,
@@ -189,23 +241,34 @@ public enum AIToolCleanupScanner {
     }
 
     /// Metadata only; no prompt/session contents. Any incomplete walk is not executable.
+    /// Single-pass `fstatat` walk computes allocated bytes AND metadata SHA256 simultaneously,
+    /// handling large symbol caches like `Xcode/iOS DeviceSupport` (30,000+ entries) cleanly.
     static func measure(_ path: String, isCancelled: @Sendable () -> Bool = { Task.isCancelled }) -> Measurement? {
         guard isPhysical(path) else { return nil }
         let stdPath = URL(fileURLWithPath: path).standardizedFileURL.path
-        let budget = DiskScanBudget(maxEntries: 5_000, maxSeconds: 0.5)
-        let byteSummary = DiskUsageScanner.sumAllocatedBytes(
-            root: URL(fileURLWithPath: stdPath),
-            budget: budget,
-            isCancelled: isCancelled
-        )
+        let budget = DiskScanBudget(maxEntries: 100_000, maxSeconds: 3.0)
 
         var rootInfo = stat()
         guard lstat(stdPath, &rootInfo) == 0 else { return nil }
         let started = ContinuousClock.now
         var entriesVisited = 0
-        var complete = byteSummary.isComplete
+        var complete = true
         var stopped = false
+        var allocatedBytes: UInt64 = 0
+        var seenHardlinks = Set<String>()
         var records: [(path: String, line: String)] = []
+
+        func accumulateBytes(_ info: stat) {
+            let fmt = info.st_mode & mode_t(S_IFMT)
+            guard fmt == mode_t(S_IFREG) || fmt == mode_t(S_IFLNK) else { return }
+            if info.st_nlink > 1 {
+                let key = "\(info.st_dev):\(info.st_ino)"
+                guard seenHardlinks.insert(key).inserted else { return }
+            }
+            let itemBytes = UInt64(max(0, info.st_blocks)) &* 512
+            let sum = allocatedBytes.addingReportingOverflow(itemBytes)
+            allocatedBytes = sum.overflow ? UInt64.max : sum.partialValue
+        }
 
         func makeRecord(for itemPath: String, _ info: stat) -> String {
             "\(itemPath)|\(info.st_dev)|\(info.st_ino)|\(info.st_mode)|\(info.st_uid)|\(info.st_size)|\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)|\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)\n"
@@ -263,6 +326,8 @@ public enum AIToolCleanupScanner {
                             }
                         }
                     }
+                } else {
+                    accumulateBytes(info)
                 }
             }
         }
@@ -283,6 +348,8 @@ public enum AIToolCleanupScanner {
                     walkRecords(fd, dirPath: stdPath, depth: 0, device: rootInfo.st_dev)
                 }
             }
+        } else {
+            accumulateBytes(rootInfo)
         }
 
         records.sort { $0.path < $1.path }
@@ -291,7 +358,7 @@ public enum AIToolCleanupScanner {
             hasher.update(data: Data(item.line.utf8))
         }
         return Measurement(
-            bytes: byteSummary.allocatedBytes,
+            bytes: allocatedBytes,
             signature: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
             complete: complete
         )

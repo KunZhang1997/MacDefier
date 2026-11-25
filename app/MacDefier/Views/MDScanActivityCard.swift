@@ -397,9 +397,13 @@ private struct MDScanVectorArtwork: View {
         let strokeW = compact ? 1.2 : 1.5
 
         let cycleIndex = Int((elapsed / 1.35).truncatingRemainder(dividingBy: Double(ids.count)))
-        let explicitActive = ids.firstIndex { "scan.stage." + $0 == (journey.activeID ?? stageID) }
+        let currentStage = journey.activeID ?? stageID
+        let explicitActive: Int? = {
+            if currentStage == "scan.stage.devRuntimes" { return 1 }
+            return ids.firstIndex { "scan.stage." + $0 == currentStage }
+        }()
         let activeIdx = explicitActive ?? (reduceMotion ? 2 : cycleIndex)
-        let verifying = (journey.activeID ?? stageID) == "scan.stage.verify"
+        let verifying = currentStage == "scan.stage.verify"
 
         // Organizer dock body
         let dock = rect(0.06, 0.54, 0.88, 0.36, size)

@@ -94,6 +94,8 @@ enum MDTheme {
     static let entityIconSpacing: CGFloat = 10
     /// 分隔线缩进 = 行左右 padding + 28 + 间距
     static var entitySeparatorLeading: CGFloat { 14 + entityIconSize + entityIconSpacing }
+    /// C · 勾选行分隔线缩进 = 14 + 28(MDCheckbox) + 8 = 50
+    static let checkSeparatorLeading: CGFloat = 50
     static let metaSizeWidth: CGFloat = 72
     static let metaVersionWidth: CGFloat = 48
 }
@@ -178,6 +180,7 @@ struct MDSelectionActionBar<Status: View>: View {
     let selectedBytes: String
     let canClean: Bool
     var progress: Double? = nil
+    var progressTitle: String = L10n.t("aitools.moving")
     let buttonIdentifier: String
     var actionHelp: String = L10n.t("cleanup.review_selected")
     let action: () -> Void
@@ -204,7 +207,7 @@ struct MDSelectionActionBar<Status: View>: View {
                 .accessibilityIdentifier(buttonIdentifier).help(actionHelp)
             }
             if let progress {
-                MDWorkProgressView(value: progress, title: L10n.t("aitools.moving"))
+                MDWorkProgressView(value: progress, title: progressTitle)
             }
         }
         .padding(.horizontal, MDTheme.pagePadding).padding(.vertical, 10)
@@ -401,6 +404,41 @@ struct MDEntityLeading: View {
             }
             .frame(width: size, height: size)
         }
+    }
+}
+
+private enum MDAppIconCache {
+    static let shared: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 256
+        return cache
+    }()
+}
+
+/// Async cached `.app` icon so frequent view updates never block the main thread on LaunchServices I/O.
+struct MDAppIcon: View {
+    let path: String
+    var fallbackSymbol: String = "app"
+    @State private var image: NSImage?
+
+    var body: some View {
+        let resolved = image ?? MDAppIconCache.shared.object(forKey: path as NSString)
+        MDEntityLeading(kind: resolved.map { .appIcon($0) } ?? .symbol(fallbackSymbol))
+            .task(id: path) {
+                if let cached = MDAppIconCache.shared.object(forKey: path as NSString) {
+                    if image !== cached { image = cached }
+                    return
+                }
+                let loaded = await Task.detached(priority: .utility) { () -> NSImage? in
+                    guard FileManager.default.fileExists(atPath: path) else { return nil }
+                    return NSWorkspace.shared.icon(forFile: path)
+                }.value
+                if let loaded {
+                    MDAppIconCache.shared.setObject(loaded, forKey: path as NSString)
+                    image = loaded
+                }
+            }
+            .accessibilityHidden(true)
     }
 }
 
@@ -761,6 +799,96 @@ enum LocalIdentity {
 }
 
 // MARK: - Selection checkbox
+
+/// Full-width clickable disclosure header so users never have to aim at a tiny triangle.
+struct MDDisclosureBar<Content: View>: View {
+    private let title: String
+    private let externalExpanded: Binding<Bool>?
+    private let labelFont: Font
+    private let labelColor: Color
+    private let horizontalPadding: CGFloat
+    private let verticalPadding: CGFloat
+    @State private var internalExpanded = false
+    @ViewBuilder private let content: () -> Content
+
+    init(
+        _ title: String,
+        isExpanded: Binding<Bool>,
+        font: Font = .system(size: 12, weight: .medium),
+        foreground: Color = MDTheme.label,
+        horizontalPadding: CGFloat = 4,
+        verticalPadding: CGFloat = 6,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.externalExpanded = isExpanded
+        self.labelFont = font
+        self.labelColor = foreground
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self.content = content
+    }
+
+    init(
+        _ title: String,
+        initiallyExpanded: Bool = false,
+        font: Font = .system(size: 12, weight: .medium),
+        foreground: Color = MDTheme.label,
+        horizontalPadding: CGFloat = 4,
+        verticalPadding: CGFloat = 6,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.externalExpanded = nil
+        self.labelFont = font
+        self.labelColor = foreground
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self._internalExpanded = State(initialValue: initiallyExpanded)
+        self.content = content
+    }
+
+    private var isOpen: Bool {
+        externalExpanded?.wrappedValue ?? internalExpanded
+    }
+
+    private func toggle() {
+        if let externalExpanded {
+            externalExpanded.wrappedValue.toggle()
+        } else {
+            internalExpanded.toggle()
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: toggle) {
+                HStack(spacing: 6) {
+                    Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(MDTheme.secondary)
+                        .frame(width: 12)
+                    Text(title)
+                        .font(labelFont)
+                        .foregroundStyle(labelColor)
+                    Spacer(minLength: 8)
+                }
+                .padding(.vertical, verticalPadding)
+                .padding(.horizontal, horizontalPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .mdRowHover(cornerRadius: 6)
+            .accessibilityLabel(title)
+            .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
+
+            if isOpen {
+                content()
+            }
+        }
+    }
+}
 
 /// Native checkbox appearance with a generous pointer target. Only selection is
 /// interactive here; Finder, disclosure and management buttons stay outside it.

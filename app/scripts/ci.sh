@@ -3,6 +3,7 @@
 # 任何一步失败即退出；发布前必跑。
 # Vault 在 iCloud Desktop 时，构建与单测在缓存目录跑，避免 NSFileCoordinator 卡死。
 set -euo pipefail
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LIFECYCLE="$ROOT/app/scripts/single_app_build.py"

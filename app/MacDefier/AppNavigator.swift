@@ -21,6 +21,7 @@ final class AppNavigator: ObservableObject {
     @Published var softwareFocusPath: String?
     @Published var softwareFocusBundleID: String?
     @Published var softwareFocusName: String?
+    @Published var softwareServiceFocusLabel: String?
 
     /// Software page should present uninstall sheet for this app when ready.
     @Published var pendingUninstallPath: String?
@@ -51,6 +52,24 @@ final class AppNavigator: ObservableObject {
         route = .software
     }
 
+    func openAIToolsStorage() {
+        AIToolCleanupService.shared.activeTab = .storage
+        route = .aiTools
+    }
+
+    func openSoftwareServices(focusLabel: String? = nil) {
+        clearPendingUninstall()
+        _ = consumeSoftwareFocus()
+        softwareServiceFocusLabel = focusLabel
+        AIToolCleanupService.shared.activeTab = .services
+        route = .aiTools
+    }
+
+    func consumeSoftwareServiceFocus() -> String? {
+        defer { softwareServiceFocusLabel = nil }
+        return softwareServiceFocusLabel
+    }
+
     func clearMonitorFocus() {
         monitorFocusPID = nil
         monitorFocusName = nil
@@ -74,8 +93,8 @@ final class AppNavigator: ObservableObject {
     private static func monitorTab(for finding: DiagnosticFinding?) -> MonitorTab {
         guard let finding else { return .dashboard }
         let id = finding.id
-        if finding.processPID != nil || id.hasPrefix("cpu") || id.hasPrefix("proc-") { return .cpu }
-        if id.hasPrefix("ram") { return .ram }
+        if id.hasPrefix("ram") || id.hasPrefix("swap") || id.hasPrefix("simulator") || id.hasPrefix("family-ram-") || id.hasPrefix("auto-browser-") { return .ram }
+        if finding.processPID != nil || id.hasPrefix("cpu") || id.hasPrefix("proc-") || id.hasPrefix("windowserver") || id.hasPrefix("family-cpu-") { return .cpu }
         if id.hasPrefix("disk") || id == "storage-incomplete" { return .disk }
         if id.contains("network") { return .network }
         return .dashboard
@@ -91,6 +110,9 @@ final class AppNavigator: ObservableObject {
             route = .cleanup
             // Keep chat usable; user asked to jump to page without losing the assistant flow.
             // Still bring main window content to cleanup.
+            misterOpen = false
+        case .openAITools:
+            openAIToolsStorage()
             misterOpen = false
         case .uninstall:
             // 仅采纳真实存在的 .app path；否则靠 bundle/name 在软件页查找
@@ -109,6 +131,9 @@ final class AppNavigator: ObservableObject {
             }
             route = .software
             misterOpen = false
+        case .openSoftwareServices:
+            openSoftwareServices(focusLabel: a.bundleID ?? a.appName)
+            misterOpen = false
         case .openMonitor:
             clearMonitorFocus()
             route = .monitor
@@ -121,20 +146,50 @@ final class AppNavigator: ObservableObject {
             route = .settings
             misterOpen = false
         case .quitProcess:
-            // 不杀系统关键进程；执行前用户确认；失败不自动 SIGKILL（不给保存机会的强杀已移除）
-            guard let pid = a.processPID, DefierActionGuard.isSafeToQuit(pid: pid) else { return }
-            guard let pid32 = pid_t(exactly: pid) else { return }
-            guard let app = NSRunningApplication(processIdentifier: pid32),
-                  let identity = MonitoredProcessIdentity.read(pid: pid32) else { return }
-            // 确认框显示当前进程名，PID 复用时用户能看出来
-            let shown = app.localizedName ?? "PID \(pid)"
+            guard let pid = a.processPID, let identity = a.processIdentity,
+                  let pid32 = pid_t(exactly: pid),
+                  let app = NSRunningApplication(processIdentifier: pid32) else { return }
+            let shown = app.localizedName ?? identity.ownerName
             let alert = NSAlert()
             alert.messageText = L10n.t("process.quit_title", shown)
             alert.informativeText = L10n.t("process.quit_body")
             alert.addButton(withTitle: L10n.t("process.quit_action"))
             alert.addButton(withTitle: L10n.t("common.cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            _ = MonitoredApplicationExit.request(identity)
+            if MonitoredApplicationExit.request(identity) == .requested {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    _ = await DiagnosticScanService.shared.scan(monitor: MonitorService.shared, useAI: false, force: true)
+                }
+            }
+        case .quitAutomatedBrowser:
+            guard let pid = a.processPID, let identity = a.processIdentity else { return }
+            let shown = identity.ownerName
+            let alert = NSAlert()
+            alert.messageText = L10n.t("diag.auto_browser.confirm", shown)
+            alert.informativeText = L10n.t("diag.auto_browser.confirm_body", pid)
+            alert.addButton(withTitle: L10n.t("diag.act.quit_auto_browser"))
+            alert.addButton(withTitle: L10n.t("common.cancel"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            if AutomatedBrowserExit.terminate(identity) == .requested {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    _ = await DiagnosticScanService.shared.scan(monitor: MonitorService.shared, useAI: false, force: true)
+                }
+            }
+        case .shutdownSimulators:
+            guard SimulatorControl.isSimulatorEnvironmentInstalled else { return }
+            let alert = NSAlert()
+            alert.messageText = L10n.t("diag.sim.confirm")
+            alert.informativeText = L10n.t("diag.sim.confirm_body")
+            alert.addButton(withTitle: L10n.t("diag.act.shutdown_sim"))
+            alert.addButton(withTitle: L10n.t("common.cancel"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            Task.detached(priority: .userInitiated) {
+                _ = SimulatorControl.shutdownBooted()
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                _ = await DiagnosticScanService.shared.scan(monitor: MonitorService.shared, useAI: false, force: true)
+            }
         case .none:
             break
         }

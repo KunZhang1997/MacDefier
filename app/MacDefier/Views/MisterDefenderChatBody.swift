@@ -276,23 +276,23 @@ struct MisterDefenderChatBody: View {
                 }
 
                 if let think = msg.thinking, !think.isEmpty, !isUser {
-                    DisclosureGroup(
+                    MDDisclosureBar(
+                        L10n.t("chat.thinking"),
                         isExpanded: Binding(
                             get: { vm.expandedThinkingIDs.contains(msg.id) },
                             set: { on in
                                 if on { vm.expandedThinkingIDs.insert(msg.id) }
                                 else { vm.expandedThinkingIDs.remove(msg.id) }
                             }
-                        )
+                        ),
+                        font: .system(size: 10, weight: .medium),
+                        foreground: MDTheme.tertiary,
+                        verticalPadding: 3
                     ) {
                         Text(think)
                             .font(.system(size: 11))
                             .foregroundStyle(MDTheme.secondary)
                             .textSelection(.enabled)
-                    } label: {
-                        Text(L10n.t("chat.thinking"))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(MDTheme.tertiary)
                     }
                     .frame(maxWidth: bubbleMax, alignment: .leading)
                 }
@@ -567,12 +567,15 @@ struct MisterDefenderChatBody: View {
     private func icon(for kind: DefierAction.Kind) -> String {
         switch kind {
         case .cleanup: return "trash"
+        case .openAITools: return "sparkles.rectangle.stack"
         case .uninstall: return "shippingbox"
         case .openSoftware: return "square.grid.2x2"
+        case .openSoftwareServices: return "gearshape.2"
         // fallthrough handled below if more cases exist
         case .openMonitor: return "gauge.with.dots.needle.67percent"
         case .openDiagnostic: return "stethoscope"
-        case .quitProcess: return "xmark.circle"
+        case .quitProcess, .quitAutomatedBrowser: return "xmark.circle"
+        case .shutdownSimulators: return "iphone.slash"
         case .openSettings: return "gearshape"
         case .none: return "arrow.right.circle"
         }
@@ -581,10 +584,10 @@ struct MisterDefenderChatBody: View {
     private func cta(for kind: DefierAction.Kind) -> String {
         // Navigation-only wording — never sound like instant delete/uninstall.
         switch kind {
-        case .cleanup, .openSoftware, .openMonitor, .openDiagnostic, .openSettings:
+        case .cleanup, .openAITools, .openSoftware, .openSoftwareServices, .openMonitor, .openDiagnostic, .openSettings:
             return L10n.t("chat.act.open")
         case .uninstall: return L10n.t("chat.act.preview")
-        case .quitProcess: return L10n.t("chat.act.quit")
+        case .quitProcess, .quitAutomatedBrowser, .shutdownSimulators: return L10n.t("chat.act.quit")
         case .none: return L10n.t("chat.act.go")
         }
     }

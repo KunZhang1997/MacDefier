@@ -213,4 +213,34 @@ final class UninstallBoundaryErrorTests: XCTestCase {
             assertFailure(failure, code: expected, errno: nil, operation: "trash_directory_lookup")
         }
     }
+
+    func testMatchesTrashedItemSucceedsOnExecuteOnlyTrashDirectoryWithoutOpendir() throws {
+        try XCTSkipIf(geteuid() == 0, "Execute-only directory check requires an unprivileged test process")
+        let root = try fixture()
+        let source = try file("payload", in: root, contents: "safe")
+        let snap = try UninstallFileBoundary.snapshot(source.path)
+        let lockedTrash = try folder("execute-only-trash", in: root)
+        let movedURL = lockedTrash.appendingPathComponent("payload")
+        try FileManager.default.moveItem(at: source, to: movedURL)
+        XCTAssertEqual(chmod(lockedTrash.path, 0o100), 0)
+        defer { _ = chmod(lockedTrash.path, 0o700) }
+        XCTAssertTrue(UninstallFileBoundary.matchesTrashedItem(snap.item, at: movedURL.path))
+    }
+
+    func testAntigravityOnlyGeminiDirectoryAndSafeGitResolution() throws {
+        let root = try fixture()
+        let geminiDir = try folder(".gemini", in: root)
+        _ = try folder("antigravity", in: geminiDir)
+        _ = try folder("antigravity-browser-profile", in: geminiDir)
+        XCTAssertTrue(CliToolInventory.isAntigravityOnlyGeminiDirectory(at: geminiDir.path))
+        XCTAssertTrue(CliToolInventory.manualTools(home: root.path, computeSize: false, includeData: true).isEmpty)
+
+        _ = try file("settings.json", in: geminiDir, contents: "{}")
+        XCTAssertFalse(CliToolInventory.isAntigravityOnlyGeminiDirectory(at: geminiDir.path))
+        XCTAssertEqual(CliToolInventory.manualTools(home: root.path, computeSize: false, includeData: true).map(\.id), ["data:.gemini"])
+
+        let gitCandidates = AIWorktreeInventory.resolveGitExecutables()
+        XCTAssertFalse(gitCandidates.contains { $0.executable == "/usr/bin/git" },
+                       "Must never invoke /usr/bin/git xcrun shim directly")
+    }
 }

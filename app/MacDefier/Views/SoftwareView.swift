@@ -22,6 +22,7 @@ struct SoftwareView: View {
     @State private var scrollTargetAppID: String?
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var scanAnimation = MDScanAnimationClock()
+    @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.chinese.rawValue
 
     private var aiConfigured: Bool { SoftwareAIScan.isConfigured }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -137,12 +138,8 @@ struct SoftwareView: View {
                 searchFieldFocused = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .macDefierRefreshCurrentRoute)) { _ in
-                guard !isScanning else { return }
-                if service.listKind == .apps {
-                    runInventory(force: true)
-                } else {
-                    ensureCLIInventory()
-                }
+                guard !isScanning, service.actingServicePaths.isEmpty else { return }
+                startCurrentScan()
             }
             .sheet(item: $target) { app in
                 UninstallSheet(app: app) { result in
@@ -352,6 +349,17 @@ struct SoftwareView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($searchFieldFocused)
+                if !service.query.isEmpty {
+                    Button {
+                        service.query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MDTheme.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.t("common.clear"))
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -407,10 +415,9 @@ struct SoftwareView: View {
                     }
 
                     if let narrative = service.aiNarrative, !narrative.isEmpty {
-                        DisclosureGroup(L10n.t("common.ai_review"), isExpanded: $showAIReview) {
-                            MDAIResultCard(text: narrative).padding(.top, 6)
+                        MDDisclosureBar(L10n.t("common.ai_review"), isExpanded: $showAIReview) {
+                            MDAIResultCard(text: narrative).padding(.top, 2)
                         }
-                        .font(.system(size: 12, weight: .medium))
                     }
 
                     if !service.aiPreviewActions.isEmpty {
@@ -499,9 +506,13 @@ struct SoftwareView: View {
                         .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(MDTheme.secondary)
                 }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .mdRowHover(cornerRadius: 6)
 
             if !collapsed {
                 MDGroupedList {
@@ -533,9 +544,13 @@ struct SoftwareView: View {
                         .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(MDTheme.secondary)
                 }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .mdRowHover(cornerRadius: 6)
             if !unmeasuredCollapsed {
                 MDGroupedList {
                     LazyVStack(spacing: 0) {
@@ -567,7 +582,7 @@ struct SoftwareView: View {
             verticalPadding: MDTheme.rowVerticalPadding
         ) {
             HStack(spacing: MDTheme.entityIconSpacing) {
-                SoftwareAppIcon(path: app.path)
+                MDAppIcon(path: app.path)
 
                 HStack(spacing: 6) {
                     Text(app.name)
@@ -785,37 +800,6 @@ struct SoftwareView: View {
             parts.append(L10n.t("software.cli.agents_count", tool.agents.count))
         }
         return parts.joined(separator: " · ")
-    }
-}
-
-private enum SoftwareAppIconCache {
-    static let shared: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 256
-        return cache
-    }()
-}
-
-/// Keep size/progress publications from reloading every visible icon in the view body.
-private struct SoftwareAppIcon: View {
-    let path: String
-    @State private var image: NSImage?
-
-    var body: some View {
-        let resolved = image ?? SoftwareAppIconCache.shared.object(forKey: path as NSString)
-        MDEntityLeading(kind: resolved.map { .appIcon($0) } ?? .symbol("app"))
-            .task(id: path) {
-                if let cached = SoftwareAppIconCache.shared.object(forKey: path as NSString) {
-                    if image !== cached { image = cached }
-                    return
-                }
-                let loaded = await Task.detached(priority: .utility) {
-                    NSWorkspace.shared.icon(forFile: path)
-                }.value
-                SoftwareAppIconCache.shared.setObject(loaded, forKey: path as NSString)
-                image = loaded
-            }
-            .accessibilityHidden(true)
     }
 }
 

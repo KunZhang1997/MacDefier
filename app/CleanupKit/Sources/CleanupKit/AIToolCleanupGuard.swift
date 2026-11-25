@@ -189,6 +189,10 @@ public struct AIToolCleanupGuard: Sendable {
         usesLiveProcessProbe: true
     )
 
+    public static func capturedSnapshotGuard() -> AIToolCleanupGuard {
+        withCapturedProcessSnapshot(.init())
+    }
+
     static func withCapturedProcessSnapshot(_ snapshot: CleanupProcessSnapshot = .init()) -> AIToolCleanupGuard {
         AIToolCleanupGuard(
             processState: { snapshot.aiToolActivity(for: $0) },
@@ -294,24 +298,39 @@ public struct AIToolCleanupGuard: Sendable {
         }
     }
 
-    static func affectedTools(path: String, home: String) -> [AITool] {
+    public static func affectedTools(path: String, home: String = FileManager.default.homeDirectoryForCurrentUser.path) -> [AITool] {
         let paths = [PathGate.standardizeOnly(path), PathGate.normalize(path)].map(AIToolCleanupScanner.physicalPath)
         let physicalHome = AIToolCleanupScanner.physicalPath(PathGate.normalize(home))
+        let antigravityGeminiPrefixes = [
+            physicalHome + "/.gemini/antigravity",
+            physicalHome + "/.gemini/antigravity-browser-profile",
+        ]
+        let isExclusivelyAntigravitySubpath = paths.allSatisfy { p in
+            antigravityGeminiPrefixes.contains { prefix in p == prefix || p.hasPrefix(prefix + "/") }
+        }
         var roots: [(AITool, String)] = AIToolCleanupScanner.cacheTargets(home: physicalHome).map { ($0.tool, $0.path) }
         let durable: [(AITool, [String])] = [
             (.codex, [".codex", "Library/Application Support/Codex", "Library/Caches/Codex", "Library/Caches/com.openai.codex"]),
             (.claude, [".claude", ".local/share/claude", "Library/Application Support/Claude", "Library/Caches/Claude", "Library/Caches/com.anthropic.claude"]),
-            (.cursor, [".cursor", ".cursor-agent", ".local/share/cursor-agent", "Library/Application Support/Cursor", "Library/Caches/Cursor", "Library/Caches/com.todesktop.cursor"]),
-            (.copilot, [".copilot"]), (.antigravity, ["Library/Application Support/Antigravity", ".gemini/antigravity-browser-profile", "Library/Caches/Antigravity", "Library/Caches/com.google.antigravity"]),
+            (.cursor, [".cursor", ".cursor-agent", ".local/share/cursor-agent", "Library/Application Support/Cursor", "Library/Caches/Cursor", "Library/Caches/com.todesktop.cursor", "Library/Caches/com.todesktop.230313mzl4w4u92"]),
+            (.vscode, [".vscode", "Library/Application Support/Code", "Library/Caches/com.microsoft.VSCode", "Library/Caches/com.microsoft.VSCode.ShipIt"]),
+            (.windsurf, [".codeium/windsurf", "Library/Application Support/Windsurf", "Library/Caches/com.exafunction.windsurf"]),
+            (.copilot, [".copilot"]),
+            (.antigravity, ["Library/Application Support/Antigravity", ".gemini/antigravity", ".gemini/antigravity-browser-profile", "Library/Caches/Antigravity", "Library/Caches/com.google.antigravity"]),
+            (.chatgpt, ["Library/Application Support/com.openai.chat", "Library/Application Support/ChatGPT", "Library/Caches/com.openai.chat", "Library/WebKit/com.openai.chat"]),
+            (.workbuddy, [".workbuddy", "Library/Application Support/WorkBuddy", "Library/Caches/com.tencent.workbuddy.mac"]),
+            (.openclaw, [".openclaw", "Library/Application Support/OpenClaw"]),
             (.opencode, [".local/share/opencode", ".config/opencode"]),
             (.kimi, [".kimi", ".kimi-code", "Library/Application Support/kimi", "Library/Application Support/kimi-desktop"]),
             (.gemini, [".gemini"]),
             (.ollama, [".ollama", "Library/WebKit/com.electron.ollama", "Library/Saved Application State/com.electron.ollama.savedState"]),
-            (.lmstudio, [".lmstudio", "Library/Application Support/LM Studio", "Library/Caches/LM Studio", "Library/Caches/ai.elementlabs.lmstudio"])
+            (.lmstudio, [".lmstudio", "Library/Application Support/LM Studio", "Library/Caches/LM Studio", "Library/Caches/ai.elementlabs.lmstudio"]),
+            (.xcode, ["Library/Developer/Xcode/CodingAssistant", "Library/Developer/Xcode/UserData", "Library/Developer/CoreSimulator/Devices"]),
         ]
         roots += durable.flatMap { tool, relative in relative.map { (tool, physicalHome + "/" + $0) } }
         return AITool.allCases.filter { tool in
-            roots.contains { root in root.0 == tool && paths.contains { ResourceMutationCoordinator.overlaps($0, root.1) } }
+            if tool == .gemini && isExclusivelyAntigravitySubpath { return false }
+            return roots.contains { root in root.0 == tool && paths.contains { ResourceMutationCoordinator.overlaps($0, root.1) } }
         }
     }
 
@@ -321,28 +340,61 @@ public struct AIToolCleanupGuard: Sendable {
 
     static func matches(tool: AITool, bundleID: String? = nil, command: String) -> Bool {
         let bundles: [AITool: [String]] = [
-            .codex: ["com.openai.codex"], .claude: ["com.anthropic.claude"], .cursor: ["com.todesktop.cursor"],
-            .antigravity: ["com.google.antigravity"], .ollama: ["com.electron.ollama"],
-            .lmstudio: ["ai.elementlabs.lmstudio", "com.lmstudio.app"], .kimi: ["com.moonshot.kimi"]
+            .codex: ["com.openai.codex"],
+            .claude: ["com.anthropic.claude"],
+            .cursor: ["com.todesktop.cursor", "com.todesktop.230313mzl4w4u92"],
+            .vscode: ["com.microsoft.vscode", "com.microsoft.vscodeinsiders"],
+            .windsurf: ["com.exafunction.windsurf"],
+            .antigravity: ["com.google.antigravity"],
+            .chatgpt: ["com.openai.chat", "com.openai.codex"],
+            .workbuddy: ["com.tencent.workbuddy.mac"],
+            .openclaw: ["ai.openclaw.app", "com.openclaw.app"],
+            .ollama: ["com.electron.ollama"],
+            .lmstudio: ["ai.elementlabs.lmstudio", "com.lmstudio.app"],
+            .kimi: ["com.moonshot.kimi"],
+            .xcode: ["com.apple.dt.xcode", "com.apple.iphonesimulator"],
         ]
-        if let id = bundleID?.lowercased(), bundles[tool, default: []].contains(id) { return true }
+        if let id = bundleID?.lowercased(), bundles[tool, default: []].contains(id) {
+            return true
+        }
         let text = command.lowercased()
         let tokens = text.split(whereSeparator: \.isWhitespace).map { URL(fileURLWithPath: String($0)).lastPathComponent }
         let names: [AITool: Set<String>] = [
-            .codex: ["codex", "codex-app-server"], .claude: ["claude", "claude-code"],
-            .cursor: ["cursor", "cursor-agent"], .copilot: ["copilot"],
-            .antigravity: ["antigravity"], .opencode: ["opencode"], .kimi: ["kimi", "kimi-code"],
-            .gemini: ["gemini"], .ollama: ["ollama"], .lmstudio: ["lms", "lmstudio"]
+            .codex: ["codex", "codex-app-server"],
+            .claude: ["claude", "claude-code"],
+            .cursor: ["cursor", "cursor-agent"],
+            .vscode: ["code-insiders"],
+            .windsurf: ["windsurf"],
+            .copilot: ["copilot"],
+            .antigravity: ["antigravity"],
+            .chatgpt: ["chatgpthelper"],
+            .workbuddy: ["workbuddy"],
+            .openclaw: ["openclaw"],
+            .opencode: ["opencode"],
+            .kimi: ["kimi", "kimi-code"],
+            .gemini: ["gemini"],
+            .ollama: ["ollama"],
+            .lmstudio: ["lms", "lmstudio"],
+            .xcode: ["xcodebuild", "simctl"],
         ]
         if tokens.contains(where: { names[tool, default: []].contains($0) }) { return true }
         let markers: [AITool: [String]] = [
             .codex: ["codex.app/", "/@openai/codex/", "/.codex/", "/codex/bin/"],
             .claude: ["claude.app/", "/@anthropic-ai/claude-code/", "/.local/share/claude/versions/"],
             .cursor: ["cursor.app/", "/.local/share/cursor-agent/versions/"],
-            .copilot: ["/github-copilot/", "/.copilot/pkg/"], .antigravity: ["antigravity.app/", "antigravity-browser-profile"],
-            .opencode: ["/opencode/bin/"], .kimi: ["/kimi-cli/", "/kimi-code/"],
-            .gemini: ["/@google/gemini-cli/", "antigravity-browser-profile"],
-            .ollama: ["ollama.app/", "/ollama serve"], .lmstudio: ["lm studio.app/", "/lmstudio/"]
+            .vscode: ["visual studio code.app/", "visual studio code - insiders.app/", "/.vscode-server/"],
+            .windsurf: ["windsurf.app/"],
+            .copilot: ["/github-copilot/", "/.copilot/pkg/"],
+            .antigravity: ["antigravity.app/", "antigravity-browser-profile", "/.gemini/antigravity/"],
+            .chatgpt: ["chatgpt.app/", "/contents/macos/chatgpt", "/com.openai.chat/"],
+            .workbuddy: ["workbuddy.app/", "/.workbuddy/"],
+            .openclaw: ["openclaw.app/", "/.openclaw/"],
+            .opencode: ["/opencode/bin/"],
+            .kimi: ["/kimi-cli/", "/kimi-code/"],
+            .gemini: ["/@google/gemini-cli/"],
+            .ollama: ["ollama.app/", "/ollama serve"],
+            .lmstudio: ["lm studio.app/", "/lmstudio/"],
+            .xcode: ["xcode.app/", ".app/contents/developer/", "/applications/simulator.app/", "/coresimulator/volumes/"],
         ]
         return markers[tool, default: []].contains { text.contains($0) }
     }

@@ -161,4 +161,147 @@ final class DiagnosticMemoryTests: XCTestCase {
         let warnRAM = RAMUsage(total: 100, used: 80, free: 20, pressure: .init(level: 2, value: .warning))
         XCTAssertTrue(HealthThresholds.isMemoryPressureElevated(warnRAM))
     }
+
+    func testPhase1DarkLagAndProcessFamilyFindingsReplayRealIncident() {
+        let now = Date()
+        let tightDisk = DiskVolume(
+            name: "Macintosh HD",
+            path: "/",
+            total: 460 * 1_073_741_824,
+            free: 23 * 1_000_000_000,
+            kind: .system
+        )
+        var cpu = CPULoad(sampledAt: now)
+        cpu.totalUsage = 0.35 // Total CPU < 65%, previously blind
+
+        let ram = RAMUsage(
+            total: 16 * 1_073_741_824,
+            used: 15 * 1_073_741_824,
+            free: 1 * 1_073_741_824,
+            compressed: 3.67 * 1_073_741_824,
+            swap: .init(total: 3 * 1_073_741_824, used: 2.45 * 1_073_741_824, free: 0.55 * 1_073_741_824, isAvailable: true),
+            pressure: .init(level: 1, value: .normal), // Kernel pressure still normal!
+            sampledAt: now
+        )
+
+        var snapshot = MonitorSnapshot(
+            cpu: cpu,
+            ram: ram,
+            topCPU: [
+                TopProcess(pid: 682, name: "Google Chrome", usage: 59.1),
+                TopProcess(pid: 417, name: "WindowServer", usage: 48.5)
+            ],
+            disks: [tightDisk],
+            disksSampledAt: now,
+            topCPUSampledAt: now
+        )
+        snapshot.processFamilies = [
+            ProcessFamilySummary(
+                id: "app:/Applications/Google Chrome.app",
+                name: "Google Chrome",
+                kind: .userApp,
+                processCount: 24,
+                footprintBytes: 2.56 * 1_073_741_824,
+                cpuUsage: 81.5,
+                rootPID: 682,
+                appPath: "/Applications/Google Chrome.app",
+                bundleID: "com.google.Chrome"
+            ),
+            ProcessFamilySummary(
+                id: "simulator:ios",
+                name: "iOS Simulator",
+                kind: .iosSimulator,
+                processCount: 160,
+                footprintBytes: 2.30 * 1_073_741_824,
+                cpuUsage: 1.5,
+                bootedSimulators: [
+                    BootedSimulatorDevice(udid: "EF96C0C8-FDF7-478E-947E-987810995207", name: "iPhone 16 Pro", runtime: "iOS 18.6")
+                ]
+            ),
+            ProcessFamilySummary(
+                id: "automated-browser:37231:100",
+                name: "Google Chrome",
+                kind: .automatedBrowser,
+                processCount: 11,
+                footprintBytes: 506 * 1_048_576,
+                cpuUsage: 0.7,
+                rootPID: 37231,
+                appPath: "/Applications/Google Chrome.app",
+                bundleID: "com.google.Chrome",
+                automationHint: ":9333 · .maitian-data"
+            ),
+            ProcessFamilySummary(
+                id: "sys:WindowServer",
+                name: "WindowServer",
+                kind: .systemService,
+                processCount: 1,
+                footprintBytes: 108 * 1_048_576,
+                cpuUsage: 48.5,
+                rootPID: 417
+            )
+        ]
+        snapshot.processFamiliesSampledAt = now
+
+        let report = DiagnosticScanEngine.buildReport(snapshot: snapshot, junkBytes: 0, apps: [], now: now)
+        let ids = Set(report.findings.map(\.id))
+
+        XCTAssertTrue(ids.contains("swap-disk-combo"), "Must catch high swap + tight disk even when pressure is normal")
+        XCTAssertTrue(ids.contains("windowserver-high"), "Must catch elevated WindowServer CPU")
+        XCTAssertTrue(ids.contains("simulator-running"), "Must catch 160-process background iOS Simulator")
+        XCTAssertTrue(ids.contains("auto-browser-37231"), "Must separate background automated Chrome from primary Chrome")
+        XCTAssertTrue(ids.contains("family-cpu-app:/Applications/Google Chrome.app"), "Must catch multi-process family CPU >= 75%")
+
+        let simFinding = report.findings.first { $0.id == "simulator-running" }
+        XCTAssertEqual(simFinding?.action, .shutdownSimulators)
+        XCTAssertTrue(simFinding?.detail.contains("iPhone 16 Pro") ?? false)
+
+        let ctx = DiagnosticScanEngine.contextText(for: report, snapshot: snapshot)
+        XCTAssertTrue(ctx.contains("iPhone 16 Pro"))
+        XCTAssertTrue(ctx.contains("压缩内存"))
+
+        let breakdown = DiagnosticScore.evaluate(snapshot: snapshot, cleanup: nil, now: now)
+        XCTAssertLessThan(breakdown.memoryScore ?? 100, 100, "Score must reflect swap+disk strain")
+
+        // Regression: pressure worsening from .normal to .warning must never INCREASE score!
+        var worseRAM = ram
+        worseRAM.pressure = .init(level: 2, value: .warning)
+        let worseSnapshot = MonitorSnapshot(cpu: cpu, ram: worseRAM, disks: [tightDisk], disksSampledAt: now)
+        let worseBreakdown = DiagnosticScore.evaluate(snapshot: worseSnapshot, cleanup: nil, now: now)
+        XCTAssertLessThanOrEqual(worseBreakdown.memoryScore ?? 100, breakdown.memoryScore ?? 0)
+
+        // Regression: at t = +45s, workbench keeps CPU/RAM/Disk fresh while processFamilies aged out;
+        // refreshReport MUST retain scan-time family findings and AI narrative instead of self-destructing!
+        let later = now.addingTimeInterval(45)
+        var laterCPU = cpu
+        laterCPU.sampledAt = later
+        var laterRAM = ram
+        laterRAM.sampledAt = later
+        var laterSnap = snapshot
+        laterSnap.cpu = laterCPU
+        laterSnap.ram = laterRAM
+        laterSnap.disksSampledAt = later
+        var withAI = report
+        withAI.scannedAt = now
+        withAI.aiNarrative = "AI summary retained"
+        let refreshed45 = DiagnosticScanEngine.refreshReport(withAI, snapshot: laterSnap, apps: [], preserveAI: true, now: later)
+        XCTAssertTrue(refreshed45.findings.contains { $0.id == "simulator-running" })
+        XCTAssertEqual(refreshed45.aiNarrative, "AI summary retained")
+
+        // Regression: empty Simulator.app GUI with 0 booted devices must NOT emit simulator-running
+        var idleSimSnap = snapshot
+        idleSimSnap.processFamilies = [
+            ProcessFamilySummary(
+                id: "simulator:ios",
+                name: "iOS Simulator",
+                kind: .iosSimulator,
+                processCount: 1,
+                footprintBytes: 600 * 1_048_576,
+                cpuUsage: 0,
+                bootedSimulators: [],
+                hasActiveSimulatedOS: false
+            )
+        ]
+        let idleSimReport = DiagnosticScanEngine.buildReport(snapshot: idleSimSnap, junkBytes: 0, apps: [], now: now)
+        XCTAssertFalse(idleSimReport.findings.contains { $0.id == "simulator-running" })
+    }
 }

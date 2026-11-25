@@ -15,10 +15,17 @@ struct AIToolCleanupGroup: Identifiable {
     var selectable: [AICleanupCandidate] { visible.filter(\.canSelect) }
 }
 
+enum AIToolsTab: String, CaseIterable, Identifiable, Hashable {
+    case storage
+    case services
+    var id: String { rawValue }
+}
+
 @MainActor
 final class AIToolCleanupService: ObservableObject {
     static let shared = AIToolCleanupService()
     enum Phase: Equatable { case idle, scanning, preview, cleaning }
+    @Published var activeTab: AIToolsTab = .storage
     @Published private(set) var phase = Phase.idle
     @Published private(set) var groups: [AIToolCleanupGroup] = []
     @Published private(set) var selectedIDs = Set<String>()
@@ -33,6 +40,7 @@ final class AIToolCleanupService: ObservableObject {
     @Published private(set) var eligibleBytes: UInt64 = 0
     @Published private(set) var selectedCount = 0
     @Published private(set) var progress: Double = 0
+    @Published private(set) var cleaningHasRuntimes = false
     @Published private(set) var lastResult: CleanupResult?
     @Published private(set) var requiresRescan = false
     private var candidates: [AICleanupCandidate] = []
@@ -116,7 +124,7 @@ final class AIToolCleanupService: ObservableObject {
     func clearSelection() { selectedIDs.removeAll(); refreshSelection() }
     func selectLowRiskOnly() {
         guard phase == .preview, !requiresRescan else { return }
-        selectedIDs = Set(
+        selectedIDs.formUnion(
             visibleCandidates
                 .filter { $0.canSelect && !cleanedIDs.contains($0.id) && ($0.kind == .cache || $0.kind == .oldVersion) }
                 .map(\.id)
@@ -125,7 +133,12 @@ final class AIToolCleanupService: ObservableObject {
     }
     func selectAllEligible() {
         guard phase == .preview, !requiresRescan else { return }
-        selectedIDs = Set(visibleCandidates.filter { $0.canSelect && !cleanedIDs.contains($0.id) }.map(\.id))
+        // Never bulk-select permanent non-Trash simulator runtimes; users must explicitly check them.
+        selectedIDs = Set(
+            visibleCandidates
+                .filter { $0.canSelect && !cleanedIDs.contains($0.id) && $0.kind != .simulatorRuntime }
+                .map(\.id)
+        )
         refreshSelection()
     }
     var selectedCandidates: [AICleanupCandidate] { AICleanupSelection.approved(selectedIDs, candidates: visibleCandidates) }
@@ -134,11 +147,12 @@ final class AIToolCleanupService: ObservableObject {
         AICleanupSelection.visible(candidates, ages: ages, now: scanDate ?? Date())
     }
 
-    static let scanStages = ["appData", "cliData", "conversations", "models", "worktrees", "verify"]
+    static let scanStages = ["appData", "cliData", "devRuntimes", "conversations", "models", "worktrees", "verify"]
 
     func startScan(resuming: Bool = false) {
         guard phase != .cleaning else { return }
-        let resume = resuming && scanJourney.status == .stopped
+        let resumeFresh = scanJourney.startedAt.map { Date().timeIntervalSince($0) <= Self.ttl } ?? false
+        let resume = resuming && scanJourney.status == .stopped && resumeFresh
         cancelScan()
         generation += 1
         let token = generation
@@ -163,29 +177,41 @@ final class AIToolCleanupService: ObservableObject {
                     let checked = await Task.detached(priority: .utility) {
                         var all = current
                         var activities: [AITool: AIToolCleanupActivity] = [:]
+                        let sharedGuard = AIToolCleanupGuard.capturedSnapshotGuard()
                         let openPaths = AIToolCleanupGuard.captureOpenFilePaths()
                         for index in all.indices where all[index].state == .ready {
                             let item = all[index]
-                            if item.kind == .model && item.tool == .ollama {
-                                let states = item.resources.map {
+                            let owners: Set<AITool> = Set(
+                                [item.tool] + item.resources.flatMap { AIToolCleanupGuard.affectedTools(path: $0.path, home: home) }
+                            )
+                            if !(item.kind == .model && owners == [.ollama]) {
+                                var ownerStates: [AIToolCleanupActivity] = []
+                                for owner in owners {
+                                    let st = activities[owner] ?? sharedGuard.state(for: owner)
+                                    activities[owner] = st
+                                    ownerStates.append(st)
+                                }
+                                if ownerStates.contains(.inUse) {
+                                    all[index].state = .inUse
+                                    all[index].reason = "in_use"
+                                    continue
+                                } else if ownerStates.contains(.unknown) {
+                                    all[index].state = .unknown
+                                    all[index].reason = "probe_unknown"
+                                    continue
+                                }
+                            }
+                            if !item.resources.isEmpty {
+                                let openStates = item.resources.map {
                                     AIToolCleanupGuard.openFileActivity(for: $0.path, in: openPaths)
                                 }
-                                if states.contains(.inUse) {
+                                if openStates.contains(.inUse) {
                                     all[index].state = .inUse
                                     all[index].reason = "open_files"
-                                } else if states.contains(.unknown) {
+                                } else if openStates.contains(.unknown) {
                                     all[index].state = .unknown
                                     all[index].reason = "probe_unknown"
                                 }
-                                continue
-                            }
-                            let tool = item.tool
-                            let state = activities[tool] ?? AIToolCleanupGuard.live.state(for: tool)
-                            activities[tool] = state
-                            switch state {
-                            case .idle: break
-                            case .inUse: all[index].state = .inUse; all[index].reason = "in_use"
-                            case .unknown: all[index].state = .unknown; all[index].reason = "probe_unknown"
                             }
                         }
                         return all
@@ -218,6 +244,8 @@ final class AIToolCleanupService: ObservableObject {
                                 section: .cliData, isCancelled: { Task.isCancelled })
                             data.candidates += Self.toolCandidates(tools)
                             return data
+                        case "devRuntimes":
+                            return XcodeSimulatorRuntimeInventory.scan(now: now, isCancelled: { Task.isCancelled })
                         case "conversations":
                             return AIConversationInventory.scan(home: home, now: now,
                                 includeWorktrees: false, isCancelled: { Task.isCancelled })
@@ -234,7 +262,7 @@ final class AIToolCleanupService: ObservableObject {
                 self.candidates += result.candidates.filter { seen.insert($0.id).inserted }
                 self.issues = Array(Set(self.issues + result.issues)).sorted()
                 self.scanJourney.complete(key, count: result.candidates.count,
-                    bytes: AIResourceTotals.bytes(result.candidates.flatMap(\.resources)),
+                    bytes: AIResourceTotals.candidateBytes(result.candidates),
                     partial: !result.issues.isEmpty)
                 self.rebuildGroups()
             }
@@ -272,10 +300,14 @@ final class AIToolCleanupService: ObservableObject {
         guard !frozen.isEmpty, frozen.count == selectedCandidates.count else { return }
         generation += 1
         let token = generation
+        cleaningHasRuntimes = frozen.contains { $0.kind == .simulatorRuntime }
         phase = .cleaning
         progress = 0
         let home = self.home
-        ownMutationPaths.formUnion(frozen.flatMap { $0.resources.map { PathGate.normalize($0.path) } })
+        ownMutationPaths.formUnion(frozen.flatMap {
+            $0.resources.map { PathGate.normalize($0.path) }
+                + ($0.kind == .simulatorRuntime ? [PathGate.normalize($0.path), "/Library/Developer/CoreSimulator"] : [])
+        })
         let cleanedAnyModel = frozen.contains { $0.kind == .model }
         task = Task { @MainActor [weak self] in
             let worker = Task.detached(priority: .userInitiated) {
@@ -306,6 +338,13 @@ final class AIToolCleanupService: ObservableObject {
             let moved = Set(result.succeededPaths)
             var newlyCleaned = Set<String>()
             self.candidates = self.candidates.map { candidate in
+                if candidate.kind == .simulatorRuntime, moved.contains(candidate.path) {
+                    newlyCleaned.insert(candidate.id)
+                    var done = candidate
+                    done.state = .retained
+                    done.reason = "runtime_deleting"
+                    return done
+                }
                 if !candidate.resources.isEmpty, candidate.resources.allSatisfy({ moved.contains($0.path) }) {
                     newlyCleaned.insert(candidate.id)
                     var done = candidate
@@ -325,9 +364,15 @@ final class AIToolCleanupService: ObservableObject {
             self.selectedIDs.removeAll()
             let stillFresh = self.scanDate.map { Date().timeIntervalSince($0) <= Self.ttl } ?? false
             self.requiresRescan = !stillFresh
+            self.cleaningHasRuntimes = false
             self.phase = .preview
             self.task = nil
             self.rebuildGroups()
+            // Drain self-mutation suppression on the next runloop turn after notifications flush.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.phase != .cleaning else { return }
+                self.ownMutationPaths.removeAll()
+            }
         }
     }
 
@@ -357,20 +402,20 @@ final class AIToolCleanupService: ObservableObject {
                 }
                 next.append(AIToolCleanupGroup(id: section.rawValue + ":" + kind.rawValue + (owner.map { ":" + $0.rawValue } ?? ""),
                     kind: kind, section: section, owner: owner, all: all, visible: visible,
-                    eligibleBytes: AIResourceTotals.bytes(visible.filter(\.canSelect).flatMap(\.resources)),
-                    totalBytes: AIResourceTotals.bytes(all.flatMap(\.resources))))
+                    eligibleBytes: AIResourceTotals.candidateBytes(visible.filter(\.canSelect)),
+                    totalBytes: AIResourceTotals.candidateBytes(all)))
             }
         }
         }
         groups = next
-        eligibleBytes = AIResourceTotals.bytes(visibleCandidates.filter(\.canSelect).flatMap(\.resources))
+        eligibleBytes = AIResourceTotals.candidateBytes(visibleCandidates.filter(\.canSelect))
         selectedIDs.formIntersection(Set(visibleCandidates.filter(\.canSelect).map(\.id)))
         refreshSelection()
     }
     private func refreshSelection() {
         let approved = selectedCandidates
         selectedCount = approved.count
-        selectedBytes = AIResourceTotals.bytes(approved.flatMap(\.resources))
+        selectedBytes = AIResourceTotals.candidateBytes(approved)
     }
 
     private nonisolated static func toolCandidates(_ tools: [CliTool]) -> [AICleanupCandidate] {
@@ -384,9 +429,23 @@ final class AIToolCleanupService: ObservableObject {
     }
     private nonisolated static func owner(of tool: CliTool) -> AITool? {
         let tokens = (tool.packageId + " " + tool.displayName + " " + tool.bins.joined(separator: " ")).lowercased()
-        let mapping: [(AITool, [String])] = [(.codex, ["codex"]), (.claude, ["claude"]), (.cursor, ["cursor"]),
-            (.copilot, ["copilot"]), (.antigravity, ["antigravity"]), (.opencode, ["opencode"]),
-            (.kimi, ["kimi"]), (.gemini, ["gemini"]), (.ollama, ["ollama"]), (.lmstudio, ["lmstudio", "lm-studio"])]
+        let mapping: [(AITool, [String])] = [
+            (.codex, ["codex"]),
+            (.claude, ["claude"]),
+            (.cursor, ["cursor"]),
+            (.vscode, ["vscode", "visual-studio-code"]),
+            (.windsurf, ["windsurf"]),
+            (.copilot, ["copilot"]),
+            (.antigravity, ["antigravity"]),
+            (.chatgpt, ["chatgpt"]),
+            (.workbuddy, ["workbuddy"]),
+            (.openclaw, ["openclaw"]),
+            (.opencode, ["opencode"]),
+            (.kimi, ["kimi"]),
+            (.gemini, ["gemini"]),
+            (.ollama, ["ollama"]),
+            (.lmstudio, ["lmstudio", "lm-studio"]),
+        ]
         return mapping.first { $0.1.contains { tokens.contains($0) } }?.0
     }
 }

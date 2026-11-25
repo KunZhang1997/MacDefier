@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CleanupKit
 
 /// Pure shortcut-invoked (`⌘K`) command palette. Adds zero permanent UI chrome to the window.
 struct CommandPaletteView: View {
@@ -51,10 +52,42 @@ struct CommandPaletteView: View {
                 shortcut: route == .settings ? "⌘," : "⌘\(index + 1)",
                 keywords: [route.rawValue, route.title],
                 perform: {
-                    nav.route = route
+                    if route == .aiTools {
+                        nav.openAIToolsStorage()
+                    } else {
+                        nav.route = route
+                    }
                 }
             )
         }
+
+        let subrouteItems: [CommandItem] = [
+            CommandItem(
+                id: "subroute.services",
+                group: .navigate,
+                title: "\(AppRoute.aiTools.title) · \(L10n.t("software.tab.services"))",
+                subtitle: nil,
+                systemImage: "gearshape.2",
+                shortcut: nil,
+                keywords: ["services", "launchagents", "daemon", "后台服务", "自启", "守护"],
+                perform: {
+                    nav.openSoftwareServices()
+                }
+            ),
+            CommandItem(
+                id: "subroute.cli",
+                group: .navigate,
+                title: "\(AppRoute.software.title) · \(L10n.t("software.tab.cli"))",
+                subtitle: nil,
+                systemImage: "terminal",
+                shortcut: nil,
+                keywords: ["cli", "npm", "brew", "uv", "命令行"],
+                perform: {
+                    SoftwareService.shared.listKind = .cli
+                    nav.route = .software
+                }
+            ),
+        ]
 
         let monitorItems = MonitorTab.allCases.map { tab in
             CommandItem(
@@ -139,7 +172,7 @@ struct CommandPaletteView: View {
             )
         ]
 
-        return navItems + monitorItems + actionItems
+        return navItems + subrouteItems + monitorItems + actionItems
     }
 
     private var filteredItems: [CommandItem] {

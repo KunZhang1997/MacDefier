@@ -15,6 +15,10 @@ extension MonitorSnapshot {
         if samplers.contains(.ram) { ram = nil; dashRAMSeries = [] }
         if samplers.contains(.topCPU) { topCPU = []; topCPUSampledAt = .distantPast }
         if samplers.contains(.topRAM) { topRAM = []; topRAMSampledAt = .distantPast }
+        if samplers.contains(.topCPU) || samplers.contains(.topRAM) {
+            processFamilies = []
+            processFamiliesSampledAt = .distantPast
+        }
         if samplers.contains(.diskActivity) { diskActivity = nil }
         if samplers.contains(.disks) { disks = []; disksSampledAt = .distantPast }
         if samplers.contains(.gpus) { gpus = []; gpusSampledAt = .distantPast; dashGPUSeries = [] }
@@ -140,6 +144,8 @@ public final class MonitorService: ObservableObject {
 
     private let seriesLimit = 60
     private var lastHostRefresh: Date = .distantPast
+    private var lastFamilyRefresh: Date = .distantPast
+    private var familyRefreshInFlight = false
     private var diskIdentity = ""
     private var gpuIdentity = ""
 
@@ -211,6 +217,9 @@ public final class MonitorService: ObservableObject {
                     $0.topCPUSampledAt = value == nil ? .distantPast : sampledAt
                     $0.topCPUFreshnessLimit = max(15, Double(self.topCPU.interval) * 2)
                 }
+                if value != nil {
+                    self.scheduleProcessFamilyRefreshIfNeeded()
+                }
             }
         }
         topRAM.publicationCallback = { [weak self] value, generation, sampledAt in
@@ -220,6 +229,9 @@ public final class MonitorService: ObservableObject {
                     $0.topRAM = value ?? []
                     $0.topRAMSampledAt = value == nil ? .distantPast : sampledAt
                     $0.topRAMFreshnessLimit = max(15, Double(self.topRAM.interval) * 2)
+                }
+                if value != nil {
+                    self.scheduleProcessFamilyRefreshIfNeeded()
                 }
             }
         }
@@ -414,6 +426,44 @@ public final class MonitorService: ObservableObject {
     private func stage(_ update: (inout MonitorSnapshot) -> Void) {
         update(&stagedSnapshot)
         scheduleSnapshotCommit()
+    }
+
+    @discardableResult
+    public func refreshProcessFamiliesNow() async -> [ProcessFamilySummary] {
+        let families = await Task.detached(priority: .utility) {
+            ProcessFamilyInspector.capture(limit: 16)
+        }.value
+        let now = Date()
+        lastFamilyRefresh = now
+        stage {
+            $0.processFamilies = families
+            $0.processFamiliesSampledAt = families.isEmpty ? .distantPast : now
+            $0.processFamiliesFreshnessLimit = max(25, Double(self.topRAM.interval) * 3)
+        }
+        commitStagedSnapshot()
+        return families
+    }
+
+    private func scheduleProcessFamilyRefreshIfNeeded() {
+        let now = Date()
+        guard !familyRefreshInFlight, now.timeIntervalSince(lastFamilyRefresh) >= 3.5 else { return }
+        familyRefreshInFlight = true
+        lastFamilyRefresh = now
+        let ramInterval = topRAM.interval
+        Task { @MainActor [weak self] in
+            let families = await Task.detached(priority: .utility) {
+                ProcessFamilyInspector.capture(limit: 16)
+            }.value
+            let capturedAt = Date()
+            guard let self else { return }
+            self.familyRefreshInFlight = false
+            guard self.activeSamplers.contains(.topCPU) || self.activeSamplers.contains(.topRAM) else { return }
+            self.stage {
+                $0.processFamilies = families
+                $0.processFamiliesSampledAt = families.isEmpty ? .distantPast : capturedAt
+                $0.processFamiliesFreshnessLimit = max(25, Double(ramInterval) * 3)
+            }
+        }
     }
 
     private func scheduleSnapshotCommit() {

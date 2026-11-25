@@ -268,7 +268,19 @@ public actor TrashExecutor {
                     outcome.failures.append(.init(path: path, name: item.name, kind: .inUse, detail: reason))
                     continue
                 }
-                if let reason = aiToolCleanupGuard.blockingReason(for: path, home: executionHome) {
+                let aiReason: String? = {
+                    if item.category == .orphans {
+                        guard !AIToolCleanupGuard.affectedTools(path: path, home: executionHome).isEmpty else {
+                            return nil
+                        }
+                        guard let boundary = try? UninstallFileBoundary.snapshot(path) else {
+                            return "changed"
+                        }
+                        return aiToolCleanupGuard.blockingReasonForExplicitRemoval(boundary, home: executionHome)
+                    }
+                    return aiToolCleanupGuard.blockingReason(for: path, home: executionHome)
+                }()
+                if let reason = aiReason {
                     outcome.failedPaths.append(path)
                     outcome.errors.append("\(item.name) · \(path): ai_cleanup_\(reason)")
                     continue

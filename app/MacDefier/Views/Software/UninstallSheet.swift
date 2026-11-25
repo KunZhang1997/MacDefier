@@ -244,20 +244,25 @@ struct UninstallSheet: View {
             Text(selectionSummaryTitle)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(MDTheme.label)
-            Text("本次将移入废纸篓 \(Format.bytes(Double(selectedBytes)))；将继续保留 \(Format.bytes(Double(retainedBytes))) 数据。")
+            Text(L10n.t("uninstall.summary.trash_retain",
+                        Format.bytes(Double(selectedBytes)),
+                        Format.bytes(Double(retainedBytes))))
                 .font(.system(size: 11))
                 .foregroundStyle(MDTheme.secondary)
             if let largest = retainedItems.max(by: { $0.bytes < $1.bytes }) {
-                Text("保留：\(largest.path)（\(largest.kind.localizedTitle)，\(largest.formattedSize)）。可能包含游戏资源、设置或存档。")
+                Text(L10n.t("uninstall.summary.retain_largest",
+                            largest.path,
+                            largest.kind.localizedTitle,
+                            largest.formattedSize))
                     .font(.system(size: 10))
                     .foregroundStyle(MDTheme.secondary)
                     .lineLimit(2)
                     .textSelection(.enabled)
             }
             if retainedItems.contains(where: { $0.path.contains("/Library/Group Containers/") }) {
-                Text("共享 Group Container 不会自动处理；仍有其他 App 使用时必须保留。")
+                Text(L10n.t("uninstall.summary.group_container"))
                     .font(.system(size: 10))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(MDTheme.warning)
             }
         }
         .padding(10)
@@ -303,7 +308,7 @@ struct UninstallSheet: View {
 
     private func residualRow(_ item: ResidualItem, showSeparator: Bool) -> some View {
         let retentionMessage = item.retentionReason.map { L10n.t("uninstall.error." + $0) }
-        return MDListRowChrome(showSeparator: showSeparator, separatorLeading: 40, verticalPadding: MDTheme.rowVerticalPadding) {
+        return MDListRowChrome(showSeparator: showSeparator, separatorLeading: MDTheme.checkSeparatorLeading, verticalPadding: MDTheme.rowVerticalPadding) {
             MDCheckbox(item.name, isOn: Binding(
                 get: { item.canSelect && item.isSelected },
                 set: { newVal in

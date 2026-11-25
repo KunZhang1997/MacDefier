@@ -2,17 +2,23 @@
 // AI never deletes/uninstalls; only opens preview / sheet for the user.
 
 import AppKit
+import CleanupKit
 import Foundation
+import MonitorKit
 
 /// One tappable card under an assistant message (or diagnostic finding).
 public struct DefierAction: Identifiable, Equatable, Sendable, Codable {
     public enum Kind: String, Codable, Sendable {
         case cleanup
+        case openAITools
         case uninstall
         case openSoftware
+        case openSoftwareServices
         case openMonitor
         case openDiagnostic
         case quitProcess
+        case quitAutomatedBrowser
+        case shutdownSimulators
         case openSettings
         case none
     }
@@ -25,9 +31,10 @@ public struct DefierAction: Identifiable, Equatable, Sendable, Codable {
     public var appName: String?
     public var bundleID: String?
     public var appPath: String?
-    /// For quit process
+    /// For quit process / automated browser
     public var processPID: Int?
     public var processName: String?
+    public var processIdentity: MonitoredProcessIdentity?
     /// Optional size hint from model or rules (display only)
     public var metric: String?
 
@@ -41,6 +48,7 @@ public struct DefierAction: Identifiable, Equatable, Sendable, Codable {
         appPath: String? = nil,
         processPID: Int? = nil,
         processName: String? = nil,
+        processIdentity: MonitoredProcessIdentity? = nil,
         metric: String? = nil
     ) {
         self.id = id
@@ -52,6 +60,7 @@ public struct DefierAction: Identifiable, Equatable, Sendable, Codable {
         self.appPath = appPath
         self.processPID = processPID
         self.processName = processName
+        self.processIdentity = processIdentity
         self.metric = metric
     }
 
@@ -59,11 +68,15 @@ public struct DefierAction: Identifiable, Equatable, Sendable, Codable {
         if !title.isEmpty { return title }
         switch kind {
         case .cleanup: return L10n.t("act.cleanup")
+        case .openAITools: return L10n.t("act.open_ai_tools")
         case .uninstall: return L10n.t("act.uninstall")
         case .openSoftware: return L10n.t("act.software")
+        case .openSoftwareServices: return L10n.t("act.open_services")
         case .openMonitor: return L10n.t("act.monitor")
         case .openDiagnostic: return L10n.t("act.diagnostic")
         case .quitProcess: return L10n.t("act.quit")
+        case .quitAutomatedBrowser: return L10n.t("diag.act.quit_auto_browser")
+        case .shutdownSimulators: return L10n.t("diag.act.shutdown_sim")
         case .openSettings: return L10n.t("act.settings")
         case .none: return title
         }
@@ -104,14 +117,55 @@ enum DefierActionGuard {
             // uninstall 至少要有一个定位线索，否则降级 openSoftware
             if a.kind == .uninstall, a.appPath == nil, a.bundleID == nil, a.appName == nil {
                 a.kind = .openSoftware
-                if a.title.isEmpty { a.title = "打开软件" }
+                if a.title.isEmpty { a.title = L10n.t("act.open_software") }
+            }
+        case .openSoftwareServices:
+            a.appPath = nil
+            a.processPID = nil
+            a.processIdentity = nil
+            if let bid = a.bundleID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               UserLaunchAgentService.isValidLabel(bid) {
+                a.bundleID = bid
+            } else {
+                a.bundleID = nil
+            }
+            if let name = a.appName?
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !name.isEmpty {
+                a.appName = String(name.prefix(120))
+            } else {
+                a.appName = nil
             }
         case .quitProcess:
-            if let pid = a.processPID, !isSafeToQuit(pid: pid) {
+            guard let pid = a.processPID,
+                  let resolved = validatedQuitIdentity(pid: pid, expected: a.processIdentity, expectedName: a.processName)
+            else {
                 a.kind = .openMonitor
-                a.title = a.title.isEmpty ? "打开监控" : a.title
-                a.detail = "已拦下结束进程（系统或无效 PID）"
+                a.title = a.title.isEmpty ? L10n.t("act.open_monitor") : a.title
+                a.detail = L10n.t("diag.quit.blocked")
                 a.processPID = nil
+                a.processIdentity = nil
+                return a
+            }
+            a.processIdentity = resolved
+        case .quitAutomatedBrowser:
+            guard let pid = a.processPID,
+                  let resolved = validatedAutomatedBrowserIdentity(pid: pid, expected: a.processIdentity)
+            else {
+                a.kind = .openMonitor
+                a.title = a.title.isEmpty ? L10n.t("act.open_monitor") : a.title
+                a.detail = L10n.t("diag.quit.blocked")
+                a.processPID = nil
+                a.processIdentity = nil
+                return a
+            }
+            a.processIdentity = resolved
+        case .shutdownSimulators:
+            guard SimulatorControl.isSimulatorEnvironmentInstalled else {
+                a.kind = .openMonitor
+                a.title = a.title.isEmpty ? L10n.t("act.open_monitor") : a.title
+                return a
             }
         default:
             break
@@ -123,18 +177,65 @@ enum DefierActionGuard {
         actions.map { sanitize($0, knownAppPaths: knownAppPaths) }
     }
 
-    static func isSafeToQuit(pid: Int) -> Bool {
-        guard pid > 1 else { return false }
-        // AI-hallucinated / out-of-range PID must not trap on pid_t truncation
-        guard let pid32 = pid_t(exactly: pid) else { return false }
-        guard let app = NSRunningApplication(processIdentifier: pid32) else { return false }
-        if app == NSRunningApplication.current { return false }
-        // 不杀标记为系统关键的进程
-        if app.activationPolicy == .prohibited { return false }
-        let bid = (app.bundleIdentifier ?? "").lowercased()
-        if bid.hasPrefix("com.apple.") { return false }
-        if bid == "com.macdefier.app" { return false }
-        return true
+    static func validatedQuitIdentity(
+        pid: Int,
+        expected: MonitoredProcessIdentity? = nil,
+        expectedName: String? = nil
+    ) -> MonitoredProcessIdentity? {
+        guard pid > 1, let pid32 = pid_t(exactly: pid), pid32 != getpid() else { return nil }
+        if let expected {
+            guard expected.pid == pid32, expected.isCurrent() else { return nil }
+        }
+        guard let app = NSRunningApplication(processIdentifier: pid32),
+              app != NSRunningApplication.current,
+              app.activationPolicy == .regular,
+              let bid = app.bundleIdentifier,
+              !bid.lowercased().hasPrefix("com.apple."),
+              !bid.lowercased().hasPrefix("com.macdefier."),
+              let identity = expected ?? MonitoredProcessIdentity.read(pid: pid32),
+              identity.bundleID == bid,
+              app.bundleURL?.resolvingSymlinksInPath().path == identity.appPath,
+              app.executableURL?.resolvingSymlinksInPath().path == identity.executable
+        else {
+            return nil
+        }
+        if expected == nil, let rawExpected = expectedName?.trimmingCharacters(in: .whitespacesAndNewlines), !rawExpected.isEmpty {
+            let liveNames = [app.localizedName, identity.ownerName].compactMap { $0?.lowercased() }
+            let needle = rawExpected.lowercased()
+            guard liveNames.contains(where: { $0 == needle || $0.contains(needle) || needle.contains($0) }) else {
+                return nil
+            }
+        }
+        return identity
+    }
+
+    static func validatedAutomatedBrowserIdentity(
+        pid: Int,
+        expected: MonitoredProcessIdentity? = nil
+    ) -> MonitoredProcessIdentity? {
+        guard pid > 1, let pid32 = pid_t(exactly: pid), pid32 != getpid() else { return nil }
+        if let expected {
+            guard expected.pid == pid32, expected.isCurrent() else { return nil }
+        }
+        guard let identity = expected ?? MonitoredProcessIdentity.read(pid: pid32),
+              let args = BrowserAutomationClassifier.readProcessArguments(pid: pid32),
+              BrowserAutomationClassifier.classify(
+                  executablePath: identity.executable,
+                  appPath: identity.appPath,
+                  arguments: args
+              ) != nil
+        else {
+            return nil
+        }
+        return identity
+    }
+
+    static func isSafeAutomatedBrowser(pid: Int, expected: MonitoredProcessIdentity? = nil) -> Bool {
+        validatedAutomatedBrowserIdentity(pid: pid, expected: expected) != nil
+    }
+
+    static func isSafeToQuit(pid: Int, expected: MonitoredProcessIdentity? = nil) -> Bool {
+        validatedQuitIdentity(pid: pid, expected: expected) != nil
     }
 }
 
@@ -285,6 +386,8 @@ enum DefierActionParser {
             var name: String?
             var bundleID: String?
             var bundleId: String?
+            var label: String?
+            var serviceLabel: String?
             var path: String?
             var appPath: String?
             var pid: Int?
@@ -305,11 +408,15 @@ enum DefierActionParser {
             let kind: DefierAction.Kind
             switch typeRaw {
             case "cleanup", "clean", "junk": kind = .cleanup
+            case "open_ai_tools", "openaitools", "ai_tools", "aitools": kind = .openAITools
             case "uninstall", "remove_app", "removeapp": kind = .uninstall
             case "open_software", "software", "apps": kind = .openSoftware
+            case "open_software_services", "background_services", "services", "launch_agents": kind = .openSoftwareServices
             case "open_monitor", "monitor": kind = .openMonitor
             case "open_diagnostic", "diagnostic", "home": kind = .openDiagnostic
             case "quit_process", "quit", "kill": kind = .quitProcess
+            case "quit_automated_browser", "quitautomatedbrowser": kind = .quitAutomatedBrowser
+            case "shutdown_simulators", "shutdownsimulators", "stop_simulator": kind = .shutdownSimulators
             case "open_settings", "settings": kind = .openSettings
             default: kind = .none
             }
@@ -317,20 +424,24 @@ enum DefierActionParser {
             let title = (a.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let detail = (a.detail ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let appName = a.appName ?? a.name
-            let bundleID = a.bundleID ?? a.bundleId
+            let bundleID = a.bundleID ?? a.bundleId ?? a.label ?? a.serviceLabel
             let path = a.appPath ?? a.path
             let pid = a.processPID ?? a.pid
             let resolvedTitle: String = {
                 if !title.isEmpty { return title }
                 switch kind {
-                case .cleanup: return "去清理（预览）"
-                case .uninstall: return appName.map { "卸载 \($0)" } ?? "去卸载"
-                case .openSoftware: return "打开软件列表"
-                case .openMonitor: return "打开监控"
-                case .openDiagnostic: return "打开诊断"
-                case .quitProcess: return a.processName.map { "结束 \($0)" } ?? "结束进程"
-                case .openSettings: return "打开设置"
-                case .none: return "操作"
+                case .cleanup: return L10n.t("act.open_cleanup")
+                case .openAITools: return L10n.t("act.open_ai_tools")
+                case .uninstall: return appName.map { L10n.t("act.uninstall_named", $0) } ?? L10n.t("act.uninstall")
+                case .openSoftware: return L10n.t("act.open_software")
+                case .openSoftwareServices: return L10n.t("act.open_services")
+                case .openMonitor: return L10n.t("act.open_monitor")
+                case .openDiagnostic: return L10n.t("act.open_diagnostic")
+                case .quitProcess: return L10n.t("act.quit_process")
+                case .quitAutomatedBrowser: return L10n.t("diag.act.quit_auto_browser")
+                case .shutdownSimulators: return L10n.t("diag.act.shutdown_sim")
+                case .openSettings: return L10n.t("act.open_settings")
+                case .none: return L10n.t("act.go_look")
                 }
             }()
             return DefierAction(

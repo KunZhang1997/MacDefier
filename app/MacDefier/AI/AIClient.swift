@@ -335,7 +335,7 @@ public enum AIClient {
                     ?? (message["reasoning"] as? String)
                 let thinking = [parsed.thinking, extraThink].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
                 let actionPack = DefierActionParser.parse(from: content)
-                let actions = actionPack.payload?.actions ?? []
+                let actions = DefierActionGuard.sanitizeAll(actionPack.payload?.actions ?? [])
                 let finalDisplay = Self.composeDisplay(
                     primary: actionPack.displayText,
                     secondary: parsed.answer,
@@ -353,7 +353,7 @@ public enum AIClient {
                let content = message["content"] as? String {
                 let parsed = AIReplyParser.displayText(from: content)
                 let actionPack = DefierActionParser.parse(from: content)
-                let actions = actionPack.payload?.actions ?? []
+                let actions = DefierActionGuard.sanitizeAll(actionPack.payload?.actions ?? [])
                 let finalDisplay = Self.composeDisplay(
                     primary: actionPack.displayText,
                     secondary: parsed.answer,
@@ -545,7 +545,8 @@ public enum AIClient {
         Rules for the JSON block:
         - Must be valid JSON inside a **closed** ```defier-json ... ``` fence.
         - Never leave an unclosed fence or a bare "defier-json" line in the human part.
-        - type only: cleanup | uninstall | open_software | open_monitor | open_diagnostic | quit_process | open_settings
+        - type only: cleanup | open_ai_tools | uninstall | open_software | open_software_services | open_monitor | open_diagnostic | quit_process | quit_automated_browser | shutdown_simulators | open_settings
+        - quit_automated_browser / shutdown_simulators: only when explicitly listed in the live summary; if a KeepAlive LaunchAgent is respawning background processes, suggest open_software_services (set "label" to the exact LaunchAgent label from the live summary) so the user can pause it.
         - uninstall: path/bundleID must come from the live summary.
         - Prefer ≤ 4 actions. summary language = UI language.
         - If no actions, actions=[] and put the reason in the human lines.

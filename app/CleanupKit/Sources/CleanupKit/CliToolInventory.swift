@@ -796,6 +796,9 @@ public enum CliToolInventory {
             }
             // Orphan data dir as row (e.g. leftover without package)
             if !hit {
+                if rel == ".gemini" && isAntigravityOnlyGeminiDirectory(at: path) {
+                    continue
+                }
                 let id = "data:\(rel)"
                 let base = (rel as NSString).lastPathComponent
                 let display = friendlyName(for: base.hasPrefix(".") ? String(base.dropFirst()) : base)
@@ -814,6 +817,17 @@ public enum CliToolInventory {
                 )
             }
         }
+    }
+
+    /// Antigravity IDE stores desktop state in `~/.gemini/antigravity*`. When no Gemini CLI
+    /// package is installed and `~/.gemini` contains no Gemini CLI files, do not invent a CLI row.
+    static func isAntigravityOnlyGeminiDirectory(at path: String) -> Bool {
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: path) else { return false }
+        let nonNoise = entries.map { $0.lowercased() }.filter { $0 != ".ds_store" }
+        guard !nonNoise.isEmpty,
+              nonNoise.contains(where: { $0 == "antigravity" || $0 == "antigravity-browser-profile" }) else { return false }
+        let antigravityEntries: Set<String> = ["antigravity", "antigravity-browser-profile", "config", "sandbox"]
+        return nonNoise.allSatisfy { antigravityEntries.contains($0) }
     }
 
     // MARK: merge / helpers
