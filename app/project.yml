@@ -57,7 +57,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         SUFeedURL: "https://kun97.tech/macdefier/releases/appcast.xml"
-        SUPublicEDKey: "R36J2RavRtdGzHefhmsjG9ZrUYcpOw45/bKeLRqg5Iw="
+        SUPublicEDKey: "wFwldcfXZQ5eiUPJqhz4bGytPA4sNs5NhlHyiMELX0k="
         SUEnableAutomaticChecks: false
         SUAutomaticallyUpdate: false
         SUSendProfileInfo: false
@@ -83,8 +83,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.macdefier.app
         PRODUCT_NAME: MacDefier
         PRODUCT_MODULE_NAME: MacDefier
-        MARKETING_VERSION: "0.21"
-        CURRENT_PROJECT_VERSION: "0.21"
+        MARKETING_VERSION: "0.22"
+        CURRENT_PROJECT_VERSION: "0.22"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MacDefier
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
